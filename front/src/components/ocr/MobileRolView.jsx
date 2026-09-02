@@ -858,8 +858,19 @@ const MobileRolView = ({
     if (!config.appsScriptUrl) return;
     setGuardando(true);
     try {
-      // Todo ya se guardó en tiempo real via guardarCeldaInmediato
-      // Solo limpiamos indicadores y bloqueamos edición
+      // Guardar lote como seguridad — guarda TODO el rol de una vez
+      const filas = personal.map(emp => ({
+        fila: emp.fila,
+        valores: Array.from({ length: totalDiasMes }, (_, i) => {
+          const c = turnos[emp.id]?.[i + 1];
+          return c ? (TURNO_MAP[c]?.nombre || '') : '';
+        })
+      }));
+      await fetch(config.appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: bodyAsciiJson({ accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaAsignada, responsable: responsable || 'ADMIN', filas })
+      });
       setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
       guardarRespaldoLocal();
       setCeldasModificadas(new Map());
