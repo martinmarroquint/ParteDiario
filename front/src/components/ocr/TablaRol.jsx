@@ -31,7 +31,7 @@ const TablaRol = ({
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden print:shadow-none print:border-none">
-        <div className="overflow-auto relative" style={{ maxHeight: 'calc(100vh - 180px)', maxWidth: '100%' }}>
+        <div className="overflow-x-auto relative" style={{ maxHeight: 'calc(100vh - 180px)', maxWidth: '100%' }}>
           <table className="w-max border-collapse text-sm print:text-xs relative">
             <colgroup>
               <col style={{ width: '40px' }} />
@@ -195,16 +195,17 @@ const TablaRol = ({
                       return (
                         <td 
                           key={dia} 
-                          className="p-0 border-r relative group/celda"
+                          className="p-0 border-r relative overflow-visible group/celda"
                           style={{ 
                             backgroundColor: esFinDeSemana ? '#F8FAFC' : '#FFFFFF', 
-                            borderColor: '#E5E7EB' 
+                            borderColor: '#E5E7EB',
+                            zIndex: infoMod ? 60 : 'auto'
                           }}
                         >
                           {infoMod && (
                             <>
-                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full z-[1] shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[50] whitespace-nowrap border border-gray-700">
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full z-[9999] shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
                                 <div className="flex items-center gap-1.5 mb-1">
                                   <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
                                   <span className="font-semibold">{infoMod.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
