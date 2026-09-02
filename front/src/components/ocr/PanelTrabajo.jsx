@@ -1255,11 +1255,12 @@ const PanelTrabajo = ({
     if (!config.appsScriptUrl) { mostrarMensajeTemporal('error', 'Configure Apps Script primero'); return; } 
     setGuardando(true); 
     try { 
-      const filas = personal.map(emp => ({ fila: emp.fila, valores: DIAS.map(d => { const c = turnos[emp.id]?.[d]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }), area: cambiosArea[emp.id] && cambiosArea[emp.id] !== emp.areaOriginal ? cambiosArea[emp.id] : null })); 
-      await fetch(config.appsScriptUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: bodyAsciiJson({ accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaAsignada, responsable: responsable || 'ADMIN', filas }) }); 
-      setTurnosBackup(JSON.parse(JSON.stringify(turnos))); guardarRespaldoLocal(); await marcarAreaComoFinalizada(); 
+      // Todo ya se guardó en tiempo real via guardarCeldaInmediato
+      // Solo limpiamos indicadores y bloqueamos edición
+      setTurnosBackup(JSON.parse(JSON.stringify(turnos))); guardarRespaldoLocal(); 
+      await marcarAreaComoFinalizada(); 
       setCeldasModificadas(new Map());
-      limpiarCeldasModificadasPersistidas(); // Limpiar en Google Sheets también
+      limpiarCeldasModificadasPersistidas();
       if (!esAdmin) { setRolHabilitado(false); actualizarEstadoArea(areaAsignada, true); } 
       setRolGuardado(true);
       mostrarMensajeTemporal('success', 'Guardado exitoso. ' + (!esAdmin ? 'Rol bloqueado.' : ''), 6000); 
