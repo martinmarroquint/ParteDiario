@@ -717,6 +717,7 @@ const PanelOCRContent = () => {
           esJefe={isJefe}
           esUsuario={isUsuario}
           user={user}
+          medicos={medicosSistema}
         />
       ) : (
         <PanelTrabajo

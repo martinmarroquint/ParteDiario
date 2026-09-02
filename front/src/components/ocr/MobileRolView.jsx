@@ -16,6 +16,7 @@ import {
 import ModalCambioTurno from './ModalCambioTurno';
 import ModalHistorial from './ModalHistorial';
 import ModalSolicitudCambioTurno from './ModalSolicitudCambioTurno';
+import ModalDescansoMedico from './ModalDescansoMedico';
 import PanelControlAdmin from './PanelControlAdmin';
 import ModalFrancosInvalidos from './ModalFrancosInvalidos';
 import ImpresionRol from './ImpresionRol';
@@ -83,7 +84,8 @@ const MobileRolView = ({
   esAdmin,
   onSalir,
   onAbrirCambiosTurno,
-  todasLasAreas = []
+  todasLasAreas = [],
+  medicos = []
 }) => {
   const [config, setConfig] = useState(DEFAULT_GOOGLE_CONFIG);
   const [hojasDisponibles, setHojasDisponibles] = useState([]);
@@ -131,6 +133,9 @@ const MobileRolView = ({
 
   // Solicitud de cambio (nuevo)
   const [modalSolicitudAbierto, setModalSolicitudAbierto] = useState(false);
+
+  // Descanso médico
+  const [modalDescansoAbierto, setModalDescansoAbierto] = useState(false);
 
   // Historial de cambios
   const [modalHistorialAbierto, setModalHistorialAbierto] = useState(false);
@@ -685,6 +690,33 @@ const MobileRolView = ({
     mostrarToast(`${cambios.length} cambio(s) registrado(s)`, 'success');
   }, [mostrarToast]);
 
+  const guardarDescansoMedico = useCallback((descanso) => {
+    if (!config.appsScriptUrl) return;
+    fetch(config.appsScriptUrl, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: bodyAsciiJson({ accion: 'registrarDescansoMedico', datos: descanso })
+    }).catch(err => console.warn('Error guardando descanso:', err));
+
+    const emp = personal.find(p => p.dni === descanso.personal_dni);
+    if (!emp) return;
+
+    const inicio = new Date(descanso.fecha_inicio + 'T00:00:00');
+    const fin = new Date(descanso.fecha_fin + 'T00:00:00');
+    const ultimoDia = fin > inicio ? new Date(fin) : new Date(inicio);
+    if (fin > inicio) ultimoDia.setDate(ultimoDia.getDate() - 1);
+
+    let d = new Date(inicio);
+    while (d <= ultimoDia) {
+      const dia = d.getDate(), mes = d.getMonth() + 1, anio = d.getFullYear();
+      if (mes === mesSeleccionado && anio === anioSeleccionado) {
+        setTurnos(prev => ({ ...prev, [emp.id]: { ...prev[emp.id], [dia]: 'DM' } }));
+        guardarCeldaInmediato(emp.fila, dia, 'DM');
+      }
+      d.setDate(d.getDate() + 1);
+    }
+  }, [config.appsScriptUrl, personal, mesSeleccionado, anioSeleccionado, guardarCeldaInmediato]);
+
   const guardarCeldaConRegistro = useCallback(async (fila, dia, valor) => {
     if (!config.appsScriptUrl || !hojaSeleccionada) throw new Error('Configuracion incompleta');
     const key = `${fila}-${dia}-modal`;
@@ -1032,6 +1064,10 @@ const MobileRolView = ({
             })}
           </div>
           <div className="px-4 py-2.5 border-t flex gap-2">
+            <button onClick={() => setModalDescansoAbierto(true)}
+              className="flex-1 py-2.5 text-blue-600 bg-blue-50 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all">
+              <FileText className="w-4 h-4" /> Descanso
+            </button>
             <button onClick={() => setModalSolicitudAbierto(true)}
               className="flex-1 py-2.5 text-gray-600 bg-gray-100 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all">
               <FileText className="w-4 h-4" /> Solicitud
@@ -1108,6 +1144,16 @@ const MobileRolView = ({
         anio={anioSeleccionado}
         area={esAdmin ? (todasLasAreas[0] || areaAsignada) : areaAsignada}
         userName={responsable || 'ADMIN'}
+      />
+
+      <ModalDescansoMedico
+        isOpen={modalDescansoAbierto}
+        onClose={() => setModalDescansoAbierto(false)}
+        personal={personal}
+        medicos={medicos}
+        config={config}
+        onGuardarDescanso={guardarDescansoMedico}
+        onSuccess={mostrarToast}
       />
 
       <ModalFrancosInvalidos
