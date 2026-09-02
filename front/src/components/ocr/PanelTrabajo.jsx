@@ -483,7 +483,9 @@ const PanelTrabajo = ({
             const fila = parseInt(row[1]);
             const dia = parseInt(row[2]);
             if (!fila || !dia) continue;
-            mapaMod.set(`${fila}-${dia}`, {
+            // emp.id = i, emp.fila = i + 1, so emp.id = fila - 1
+            const empIdForMap = fila - 1;
+            mapaMod.set(`${empIdForMap}-${dia}`, {
               valorAnterior: String(row[3] || ''),
               valorNuevo: String(row[4] || ''),
               responsable: String(row[5] || ''),

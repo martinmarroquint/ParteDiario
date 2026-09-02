@@ -370,7 +370,9 @@ const MobileRolView = ({
             const fila = parseInt(row[1]);
             const dia = parseInt(row[2]);
             if (!fila || !dia) continue;
-            mapaMod.set(`${fila}-${dia}`, {
+            // emp.id = i, emp.fila = i + 1, so emp.id = fila - 1
+            const empIdForMap = fila - 1;
+            mapaMod.set(`${empIdForMap}-${dia}`, {
               valorAnterior: String(row[3] || ''),
               valorNuevo: String(row[4] || ''),
               responsable: String(row[5] || ''),
@@ -588,11 +590,6 @@ const MobileRolView = ({
     if (actual === nuevo) return;
     
     setTurnos(prev => ({ ...prev, [empId]: { ...prev[empId], [dia]: nuevo } }));
-    setCeldasModificadas(prev => {
-      const next = new Map(prev);
-      next.set(`${empId}-${dia}`, { turnoAnterior: actual, turnoNuevo: nuevo, tipo: 'directo' });
-      return next;
-    });
     
     const emp = personal.find(p => p.id === empId);
     if (emp) {
@@ -607,31 +604,22 @@ const MobileRolView = ({
   // ============================================
   // SOPORTE TECLADO (para tablets con teclado)
   // ============================================
-  const pendingChangeRef = useRef(null);
-
   const handleKeyDownCelda = useCallback((e, empId, dia) => {
     if (!rolHabilitado) return;
     const letra = e.key.toUpperCase();
     const teclaTurno = TURNO_MAP[letra];
     if (teclaTurno) {
       e.preventDefault(); e.stopPropagation();
-      pendingChangeRef.current = null;
       const actual = turnos[empId]?.[dia] || '';
       if (actual === letra) return;
-      pendingChangeRef.current = { empId, dia, turnoAnterior: actual, turnoNuevo: letra };
       setTurnos(prev => ({ ...prev, [empId]: { ...prev[empId], [dia]: letra } }));
-      setCeldasModificadas(prev => {
-        const next = new Map(prev);
-        next.set(`${empId}-${dia}`, { turnoAnterior: actual, turnoNuevo: letra, tipo: 'directo' });
-        return next;
-      });
       const emp = personal.find(p => p.id === empId);
       if (emp) guardarCeldaInmediato(emp.fila, dia, letra);
       mostrarToast(`${TURNO_MAP[letra]?.nombre || letra} aplicado`, 'success');
-      const idx = DIAS_SEMANA.findIndex(d => d === dia);
-      if (idx >= 0 && idx < DIAS_SEMANA.length - 1) {
+      const idx = diasSemana.findIndex(d => d.dia === dia);
+      if (idx >= 0 && idx < diasSemana.length - 1) {
         setTimeout(() => {
-          const nc = document.querySelector(`[data-celda="${empId}-${DIAS_SEMANA[idx + 1]}"]`);
+          const nc = document.querySelector(`[data-celda="${empId}-${diasSemana[idx + 1].dia}"]`);
           if (nc) nc.focus();
         }, 50);
       }
@@ -641,18 +629,12 @@ const MobileRolView = ({
       e.preventDefault(); e.stopPropagation();
       const actual = turnos[empId]?.[dia] || '';
       if (!actual) return;
-      pendingChangeRef.current = { empId, dia, turnoAnterior: actual, turnoNuevo: '' };
       setTurnos(prev => ({ ...prev, [empId]: { ...prev[empId], [dia]: '' } }));
-      setCeldasModificadas(prev => {
-        const next = new Map(prev);
-        next.set(`${empId}-${dia}`, { turnoAnterior: actual, turnoNuevo: '', tipo: 'directo' });
-        return next;
-      });
       const emp = personal.find(p => p.id === empId);
       if (emp) guardarCeldaInmediato(emp.fila, dia, '');
       mostrarToast('Turno removido', 'success');
     }
-  }, [rolHabilitado, turnos, personal, guardarCeldaInmediato, mostrarToast]);
+  }, [rolHabilitado, turnos, diasSemana, personal, guardarCeldaInmediato, mostrarToast]);
 
   // ============================================
   // SELECCIÓN MÚLTIPLE
@@ -672,12 +654,6 @@ const MobileRolView = ({
       const emp = personal.find(p => p.id === eid);
       if (emp) diasAfectados.forEach(d => {
         guardarCeldaInmediato(emp.fila, d, turnoActivo);
-        setCeldasModificadas(prev => {
-          const next = new Map(prev);
-          const actual = turnosBackup[eid]?.[d] || '';
-          next.set(`${eid}-${d}`, { turnoAnterior: actual, turnoNuevo: turnoActivo, tipo: 'directo' });
-          return next;
-        });
       });
     });
     mostrarToast(`${TURNO_MAP[turnoActivo]?.nombre || turnoActivo} aplicado a ${seleccionados.size} personal (${diasAfectados.length} dias)`, 'success');
@@ -693,12 +669,6 @@ const MobileRolView = ({
       const emp = personal.find(p => p.id === eid);
       if (emp) diasAfectados.forEach((d, idx) => {
         guardarCeldaInmediato(emp.fila, d, patron[idx % patron.length]);
-        setCeldasModificadas(prev => {
-          const next = new Map(prev);
-          const actual = turnosBackup[eid]?.[d] || '';
-          next.set(`${eid}-${d}`, { turnoAnterior: actual, turnoNuevo: patron[idx % patron.length], tipo: 'directo' });
-          return next;
-        });
       });
     });
     mostrarToast(`Patron rotativo aplicado a ${seleccionados.size} personal`, 'success');
@@ -710,7 +680,7 @@ const MobileRolView = ({
     if (!window.confirm(`Borrar TODOS los turnos de ${seleccionados.size} personal?`)) return;
     const todosDias = Array.from({ length: totalDiasMes }, (_, i) => i + 1);
     setTurnos(prev => { const n = { ...prev }; seleccionados.forEach(eid => { n[eid] = {}; }); return n; });
-    seleccionados.forEach(eid => { const emp = personal.find(p => p.id === eid); if (emp) todosDias.forEach(d => { if (turnos[eid]?.d) guardarCeldaInmediato(emp.fila, d, ''); }); });
+    seleccionados.forEach(eid => { const emp = personal.find(p => p.id === eid); if (emp) todosDias.forEach(d => { if (turnos[eid]?.[d]) guardarCeldaInmediato(emp.fila, d, ''); }); });
     mostrarToast(`Turnos borrados de ${seleccionados.size} personal`, 'success');
     limpiarSeleccion();
   }, [rolHabilitado, seleccionados, personal, turnos, totalDiasMes, guardarCeldaInmediato, mostrarToast]);
