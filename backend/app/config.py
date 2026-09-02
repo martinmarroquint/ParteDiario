@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
     
     # CORS
-    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000,https://rolesdeservicio.web.app"
     
     # Rate Limiting
     RATE_LIMIT_LOGIN: str = "10/minute"
