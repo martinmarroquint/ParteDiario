@@ -137,17 +137,38 @@ const MobileRolView = ({
     return new Map();
   });
 
-  // Persistir celdas modificadas en localStorage
+  // Persistir celdas modificadas: localStorage (fast) + Apps Script (cross-device)
+  const celdasPersistidasRef = useRef(new Set());
   useEffect(() => {
     try {
       const key = `ocr_celdas_modificadas_${hojaSeleccionada || hojaDelMesActual()}`;
       if (celdasModificadas.size > 0) {
         localStorage.setItem(key, JSON.stringify([...celdasModificadas]));
+        if (config.appsScriptUrl) {
+          celdasModificadas.forEach((info, k) => {
+            if (!celdasPersistidasRef.current.has(k)) {
+              celdasPersistidasRef.current.add(k);
+              const [fila, dia] = k.split('-').map(Number);
+              fetch(config.appsScriptUrl, {
+                method: 'POST', mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: bodyAsciiJson({
+                  accion: 'registrarCeldaModificada',
+                  hoja: hojaSeleccionada, fila, dia,
+                  valorAnterior: info.turnoAnterior || info.valorAnterior || '',
+                  valorNuevo: info.turnoNuevo || info.valorNuevo || '',
+                  responsable: responsable || 'ADMIN',
+                  tipo: info.tipo || 'directo'
+                })
+              }).catch(() => {});
+            }
+          });
+        }
       } else {
         localStorage.removeItem(key);
       }
     } catch { void 0; }
-  }, [celdasModificadas, hojaSeleccionada]);
+  }, [celdasModificadas, hojaSeleccionada, config.appsScriptUrl, responsable]);
 
   // Modal de cambio manual
   const [modalCambioAbierto, setModalCambioAbierto] = useState(false);
@@ -354,6 +375,33 @@ const MobileRolView = ({
         setTurnos(tObj);
         setTurnosBackup(JSON.parse(JSON.stringify(tObj)));
       }
+      
+      // Cargar celdas modificadas desde Google Sheets API (cross-device)
+      try {
+        const rMod = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/CELDA_MODIFICADA!A:H?key=${config.apiKey}`
+        );
+        if (rMod.ok) {
+          const dMod = await rMod.json();
+          const rowsMod = dMod.values || [];
+          const mapaMod = new Map();
+          for (let m = 1; m < rowsMod.length; m++) {
+            const row = rowsMod[m];
+            if (String(row[0] || '') !== hojaSeleccionada) continue;
+            const fila = parseInt(row[1]);
+            const dia = parseInt(row[2]);
+            if (!fila || !dia) continue;
+            mapaMod.set(`${fila}-${dia}`, {
+              valorAnterior: String(row[3] || ''),
+              valorNuevo: String(row[4] || ''),
+              responsable: String(row[5] || ''),
+              fecha: row[6] || '',
+              tipo: String(row[7] || 'directo')
+            });
+          }
+          if (mapaMod.size > 0) setCeldasModificadas(mapaMod);
+        }
+      } catch { void 0; }
       
       try {
         const controller2 = new AbortController();
@@ -739,6 +787,16 @@ const MobileRolView = ({
     }
   }, [config.appsScriptUrl, personal, mesSeleccionado, anioSeleccionado, guardarCeldaInmediato]);
 
+  // Limpiar celdas modificadas en Google Sheets después de guardar
+  const limpiarCeldasModificadasPersistidas = useCallback(() => {
+    if (!config.appsScriptUrl || !hojaSeleccionada) return;
+    fetch(config.appsScriptUrl, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: bodyAsciiJson({ accion: 'limpiarCeldasModificadas', hoja: hojaSeleccionada })
+    }).catch(() => {});
+  }, [config.appsScriptUrl, hojaSeleccionada]);
+
   const guardarCeldaConRegistro = useCallback(async (fila, dia, valor) => {
     if (!config.appsScriptUrl || !hojaSeleccionada) throw new Error('Configuracion incompleta');
     const key = `${fila}-${dia}-modal`;
@@ -816,7 +874,9 @@ const MobileRolView = ({
       });
       setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
       guardarRespaldoLocal();
-      setCeldasModificadas(new Map()); // Limpiar indicadores después de guardar
+      setCeldasModificadas(new Map());
+      celdasPersistidasRef.current = new Set();
+      limpiarCeldasModificadasPersistidas();
       await fetch(config.appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
