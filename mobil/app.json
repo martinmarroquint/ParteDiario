@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "HRPA - Rol de Servicio",
+    "slug": "horarios-hospiral-pnp",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "hrpa",
+    "jsEngine": "hermes",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/Escudo Sanidad.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F4C3A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hrpa.rolservicio"
+    },
+    "android": {
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0F4C3A"
+      },
+      "package": "com.hrpa.rolservicio",
+      "jsEngine": "hermes"
+    },
+    "web": {
+      "favicon": "./assets/Escudo Sanidad.png"
+    },
+    "plugins": [
+      "expo-router",
+      ["expo-build-properties", {
+        "android": {
+          "enableProguardInReleaseBuilds": true,
+          "enableShrinkResourcesInReleaseBuilds": true
+        }
+      }]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a04f380a-8867-46ef-ba68-f0094391f711"
+      }
+    },
+    "owner": "martinmarroquins-team"
+  }
+}
