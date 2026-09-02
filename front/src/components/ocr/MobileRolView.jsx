@@ -137,38 +137,17 @@ const MobileRolView = ({
     return new Map();
   });
 
-  // Persistir celdas modificadas: localStorage (fast) + Apps Script (cross-device)
-  const celdasPersistidasRef = useRef(new Set());
+  // Persistir celdas modificadas en localStorage (solo local, rápido)
   useEffect(() => {
     try {
       const key = `ocr_celdas_modificadas_${hojaSeleccionada || hojaDelMesActual()}`;
       if (celdasModificadas.size > 0) {
         localStorage.setItem(key, JSON.stringify([...celdasModificadas]));
-        if (config.appsScriptUrl) {
-          celdasModificadas.forEach((info, k) => {
-            if (!celdasPersistidasRef.current.has(k)) {
-              celdasPersistidasRef.current.add(k);
-              const [fila, dia] = k.split('-').map(Number);
-              fetch(config.appsScriptUrl, {
-                method: 'POST', mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: bodyAsciiJson({
-                  accion: 'registrarCeldaModificada',
-                  hoja: hojaSeleccionada, fila, dia,
-                  valorAnterior: info.turnoAnterior || info.valorAnterior || '',
-                  valorNuevo: info.turnoNuevo || info.valorNuevo || '',
-                  responsable: responsable || 'ADMIN',
-                  tipo: info.tipo || 'directo'
-                })
-              }).catch(() => {});
-            }
-          });
-        }
       } else {
         localStorage.removeItem(key);
       }
     } catch { void 0; }
-  }, [celdasModificadas, hojaSeleccionada, config.appsScriptUrl, responsable]);
+  }, [celdasModificadas, hojaSeleccionada]);
 
   // Modal de cambio manual
   const [modalCambioAbierto, setModalCambioAbierto] = useState(false);
@@ -757,8 +736,27 @@ const MobileRolView = ({
       cambios.forEach(c => next.set(`${empId}-${c.dia}`, { turnoAnterior: c.turnoAnterior || '', turnoNuevo: c.turnoNuevoCodigo || '', tipo: 'solicitud' }));
       return next;
     });
+    // Persistir SOLO cambios del panel admin en Google Sheets (cross-device)
+    if (config.appsScriptUrl) {
+      cambios.forEach(c => {
+        fetch(config.appsScriptUrl, {
+          method: 'POST', mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: bodyAsciiJson({
+            accion: 'registrarCeldaModificada',
+            hoja: hojaSeleccionada,
+            fila: (() => { const emp = personal.find(p => p.id === empId); return emp ? emp.fila : 0; })(),
+            dia: c.dia,
+            valorAnterior: c.turnoAnterior || '',
+            valorNuevo: c.turnoNuevoCodigo || '',
+            responsable: responsable || 'ADMIN',
+            tipo: 'solicitud'
+          })
+        }).catch(() => {});
+      });
+    }
     mostrarToast(`${cambios.length} cambio(s) registrado(s)`, 'success');
-  }, [mostrarToast]);
+  }, [mostrarToast, config.appsScriptUrl, hojaSeleccionada, personal, responsable]);
 
   const guardarDescansoMedico = useCallback((descanso) => {
     if (!config.appsScriptUrl) return;
@@ -875,7 +873,6 @@ const MobileRolView = ({
       setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
       guardarRespaldoLocal();
       setCeldasModificadas(new Map());
-      celdasPersistidasRef.current = new Set();
       limpiarCeldasModificadasPersistidas();
       await fetch(config.appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
