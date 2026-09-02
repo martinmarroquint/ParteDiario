@@ -35,6 +35,7 @@ const VistaUsuario = ({
   onMesChange,
   onAnioChange,
   cargando,
+  celdasModificadas = new Map(),
 }) => {
   const emp = personalFiltrado?.[0];
   if (!emp) return null;
@@ -197,7 +198,7 @@ const VistaUsuario = ({
 
         {/* ===== CALENDARIO CON SEPARACIÓN ===== */}
         <div className="flex-1 min-w-0">
-          <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-100 overflow-visible">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
@@ -257,13 +258,14 @@ const VistaUsuario = ({
                     );
 
                     const { dia, cod, turno, esFinDeSemana, esHoy } = cell;
+                    const infoMod = celdasModificadas.get(`${emp.id}-${dia}`);
 
                     return (
                       <div
                         key={cell.key}
                         onClick={() => onCeldaClick && onCeldaClick(emp.id, dia)}
                         className={`
-                          relative cursor-pointer transition-all rounded-lg
+                          relative cursor-pointer transition-all rounded-lg group/celda
                           hover:scale-[1.03] active:scale-[0.97]
                           ${esHoy ? 'ring-2 ring-emerald-500 ring-offset-1 z-10 shadow-sm' : ''}
                           ${esFinDeSemana && !turno ? 'bg-gray-50/50' : ''}
@@ -272,6 +274,7 @@ const VistaUsuario = ({
                           height: '60px',
                           backgroundColor: bgColor(turno, esFinDeSemana),
                           borderBottom: turno ? `3px solid ${borderColor(turno)}` : 'none',
+                          zIndex: infoMod ? 60 : 'auto'
                         }}
                       >
                         {/* Número */}
@@ -283,6 +286,25 @@ const VistaUsuario = ({
                         `}>
                           {dia}
                         </span>
+
+                        {/* Indicador de celda modificada */}
+                        {infoMod && (
+                          <>
+                            <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full z-[9999] shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+                                <span className="font-semibold">{infoMod.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-gray-300">
+                                <span className="line-through opacity-60">{infoMod.turnoAnterior || 'Sin turno'}</span>
+                                <span className="text-emerald-400 font-bold">→</span>
+                                <span className="font-medium text-white">{TURNO_MAP[infoMod.turnoNuevo]?.nombre || infoMod.turnoNuevo || 'Sin turno'}</span>
+                              </div>
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                            </div>
+                          </>
+                        )}
 
                         {/* Turno */}
                         {turno && (

@@ -1386,6 +1386,7 @@ const PanelTrabajo = ({
             onAnioChange={handleAnioChangeUsuario}
             cargando={cargando}
             rolHabilitado={rolHabilitado}
+            celdasModificadas={celdasModificadas}
           />
         ) : (
           <TablaRol 
