@@ -1065,83 +1065,26 @@ const PanelTrabajo = ({
     mostrarMensajeTemporal('success', `Turnos borrados de ${seleccionados.size} personal`, 3000); 
   }, [puedeEditar, seleccionados, personal, turnos, DIAS, guardarCeldaInmediato, mostrarMensajeTemporal]);
 
-  // Ref para comunicar cambios del updater a los side effects
-  const pendingChangeRef = useRef(null);
-
   const handleCeldaClick = useCallback((empId, dia) => { 
     if (!puedeEditar) return;
-    pendingChangeRef.current = null;
-    setTurnos(prev => { 
-      const turnoActual = prev[empId]?.[dia] || ''; 
-      const turnoNuevo = turnoActual === turnoActivo ? '' : turnoActivo; 
-      if (turnoActual === turnoNuevo) return prev;
-      pendingChangeRef.current = { empId, dia, turnoAnterior: turnoActual, turnoNuevo };
-      return { ...prev, [empId]: { ...prev[empId], [dia]: turnoNuevo } }; 
-    }); 
-    if (pendingChangeRef.current) {
-      const { empId: eId, dia: d, turnoAnterior, turnoNuevo: tn } = pendingChangeRef.current;
-      const emp = personal.find(p => p.id === eId);
-      if (emp) guardarCeldaInmediato(emp.fila, d, tn);
-      agregarAlHistorialDeshacer({ empId: eId, dia: d, turnoAnterior, turnoNuevo: tn, timestamp: Date.now() }); 
-      setCeldasModificadas(prev => {
-        const next = new Map(prev);
-        next.set(`${eId}-${d}`, { turnoAnterior, turnoNuevo: tn, tipo: 'directo' });
-        return next;
-      });
-      pendingChangeRef.current = null;
-    }
+    setTurnos(prev => { const turnoActual = prev[empId]?.[dia] || ''; const turnoNuevo = turnoActual === turnoActivo ? '' : turnoActivo; if (turnoActual === turnoNuevo) return prev;
+      const emp = personal.find(p => p.id === empId); if (emp) guardarCeldaInmediato(emp.fila, dia, turnoNuevo);
+      agregarAlHistorialDeshacer({ empId, dia, turnoAnterior: turnoActual, turnoNuevo, timestamp: Date.now() }); 
+      return { ...prev, [empId]: { ...prev[empId], [dia]: turnoNuevo } }; }); 
   }, [puedeEditar, turnoActivo, personal, guardarCeldaInmediato, agregarAlHistorialDeshacer]);
 
   const handleKeyDownCelda = useCallback((e, empId, dia) => {
     if (!puedeEditar) return;
     const letra = e.key.toUpperCase(); const teclaTurno = TURNO_MAP[letra];
     if (teclaTurno) { e.preventDefault(); e.stopPropagation(); 
-      pendingChangeRef.current = null;
-      setTurnos(prev => { 
-        const turnoActual = prev[empId]?.[dia] || ''; 
-        const turnoNuevo = turnoActual === letra ? '' : letra; 
-        if (turnoActual !== turnoNuevo) { 
-          pendingChangeRef.current = { empId, dia, turnoAnterior: turnoActual, turnoNuevo };
-          return { ...prev, [empId]: { ...prev[empId], [dia]: turnoNuevo } }; 
-        } 
-        return prev; 
-      }); 
-      if (pendingChangeRef.current) {
-        const { empId: eId, dia: d, turnoAnterior, turnoNuevo: tn } = pendingChangeRef.current;
-        const emp = personal.find(p => p.id === eId);
-        if (emp) guardarCeldaInmediato(emp.fila, d, tn);
-        agregarAlHistorialDeshacer({ empId: eId, dia: d, turnoAnterior, turnoNuevo: tn, timestamp: Date.now() }); 
-        setCeldasModificadas(prev => {
-          const next = new Map(prev);
-          next.set(`${eId}-${d}`, { turnoAnterior, turnoNuevo: tn, tipo: 'directo' });
-          return next;
-        });
-        pendingChangeRef.current = null;
-      }
+      setTurnos(prev => { const turnoActual = prev[empId]?.[dia] || ''; const turnoNuevo = turnoActual === letra ? '' : letra; 
+        if (turnoActual !== turnoNuevo) { const emp = personal.find(p => p.id === empId); if (emp) guardarCeldaInmediato(emp.fila, dia, turnoNuevo);
+          agregarAlHistorialDeshacer({ empId, dia, turnoAnterior: turnoActual, turnoNuevo, timestamp: Date.now() }); 
+          return { ...prev, [empId]: { ...prev[empId], [dia]: turnoNuevo } }; } return prev; }); 
       const idx = DIAS.indexOf(dia); if (idx < DIAS.length - 1) setTimeout(() => { const nc = document.querySelector(`[data-celda="${empId}-${DIAS[idx+1]}"]`); if (nc) nc.focus(); }, 50); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); e.stopPropagation(); 
-      pendingChangeRef.current = null;
-      setTurnos(prev => { 
-        const turnoActual = prev[empId]?.[dia] || ''; 
-        if (turnoActual) { 
-          pendingChangeRef.current = { empId, dia, turnoAnterior: turnoActual, turnoNuevo: '' };
-          return { ...prev, [empId]: { ...prev[empId], [dia]: '' } }; 
-        } 
-        return prev; 
-      }); 
-      if (pendingChangeRef.current) {
-        const { empId: eId, dia: d, turnoAnterior } = pendingChangeRef.current;
-        const emp = personal.find(p => p.id === eId);
-        if (emp) guardarCeldaInmediato(emp.fila, d, '');
-        agregarAlHistorialDeshacer({ empId: eId, dia: d, turnoAnterior, turnoNuevo: '', timestamp: Date.now() }); 
-        setCeldasModificadas(prev => {
-          const next = new Map(prev);
-          next.set(`${eId}-${d}`, { turnoAnterior, turnoNuevo: '', tipo: 'directo' });
-          return next;
-        });
-        pendingChangeRef.current = null;
-      }
-      return; }
+      setTurnos(prev => { const turnoActual = prev[empId]?.[dia] || ''; if (turnoActual) { const emp = personal.find(p => p.id === empId); if (emp) guardarCeldaInmediato(emp.fila, dia, '');
+          agregarAlHistorialDeshacer({ empId, dia, turnoAnterior: turnoActual, turnoNuevo: '', timestamp: Date.now() }); return { ...prev, [empId]: { ...prev[empId], [dia]: '' } }; } return prev; }); return; }
     if (['ArrowRight','ArrowLeft','ArrowUp','ArrowDown'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); 
       const ie = personalFiltrado.findIndex(p => p.id === empId); const id = DIAS.indexOf(dia); let ne = empId, nd = dia; 
       switch(e.key) { case 'ArrowRight': if(id < DIAS.length-1) nd = DIAS[id+1]; break; case 'ArrowLeft': if(id > 0) nd = DIAS[id-1]; break; case 'ArrowDown': if(ie < personalFiltrado.length-1) ne = personalFiltrado[ie+1].id; break; case 'ArrowUp': if(ie > 0) ne = personalFiltrado[ie-1].id; break; } 
