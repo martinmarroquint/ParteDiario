@@ -106,7 +106,29 @@ const PanelTrabajo = ({
   const [mensaje, setMensaje] = useState(null);
   const [cambiosArea, setCambiosArea] = useState({});
   const [historialDeshacer, setHistorialDeshacer] = useState([]);
-  const [celdasModificadas, setCeldasModificadas] = useState(new Map());
+  const [celdasModificadas, setCeldasModificadas] = useState(() => {
+    try {
+      const key = `ocr_celdas_modificadas_${hojaSeleccionada || hojaDelMesActual()}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        return new Map(arr);
+      }
+    } catch { void 0; }
+    return new Map();
+  });
+  // Persistir celdas modificadas en localStorage
+  useEffect(() => {
+    try {
+      const key = `ocr_celdas_modificadas_${hojaSeleccionada || hojaDelMesActual()}`;
+      if (celdasModificadas.size > 0) {
+        localStorage.setItem(key, JSON.stringify([...celdasModificadas]));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch { void 0; }
+  }, [celdasModificadas, hojaSeleccionada]);
+
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
   const [areaSeleccionadaJefe, setAreaSeleccionadaJefe] = useState(areaAsignada);
   const [areaSeleccionadaAdmin, setAreaSeleccionadaAdmin] = useState('TODAS');
@@ -848,6 +870,47 @@ const PanelTrabajo = ({
 
   }, [config.appsScriptUrl, hojaSeleccionada, areaAsignada, responsable]);
 
+  // Persistir celda modificada en Google Sheets (CELDA_MODIFICADA)
+  const persistirCeldaModificada = useCallback((fila, dia, valorAnterior, valorNuevo, tipo = 'directo') => {
+    if (!config.appsScriptUrl || !hojaSeleccionada) return;
+    fetch(config.appsScriptUrl, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: bodyAsciiJson({
+        accion: 'registrarCeldaModificada',
+        hoja: hojaSeleccionada,
+        fila, dia,
+        valorAnterior: valorAnterior || '',
+        valorNuevo: valorNuevo || '',
+        responsable: responsable || 'ADMIN',
+        tipo
+      })
+    }).catch(() => {});
+  }, [config.appsScriptUrl, hojaSeleccionada, responsable]);
+
+  // Cargar celdas modificadas persistidas al montar
+  const cargarCeldasModificadasPersistidas = useCallback(async () => {
+    if (!config.appsScriptUrl || !hojaSeleccionada) return;
+    try {
+      const r = await fetch(config.appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: bodyAsciiJson({ accion: 'cargarCeldasModificadas', hoja: hojaSeleccionada })
+      });
+      // no-cors no retorna body, usamos localStorage como fallback
+    } catch {}
+  }, [config.appsScriptUrl, hojaSeleccionada]);
+
+  // Limpiar celdas modificadas después de guardar
+  const limpiarCeldasModificadasPersistidas = useCallback(() => {
+    if (!config.appsScriptUrl || !hojaSeleccionada) return;
+    fetch(config.appsScriptUrl, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: bodyAsciiJson({ accion: 'limpiarCeldasModificadas', hoja: hojaSeleccionada })
+    }).catch(() => {});
+  }, [config.appsScriptUrl, hojaSeleccionada]);
+
   const guardarCeldaConRegistro = useCallback(async (fila, dia, valor) => {
     if (!config.appsScriptUrl || !hojaSeleccionada) throw new Error('Configuracion incompleta');
     
@@ -1133,6 +1196,7 @@ const PanelTrabajo = ({
       const filas = personal.map(emp => ({ fila: emp.fila, valores: DIAS.map(d => { const c = turnos[emp.id]?.[d]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }), area: cambiosArea[emp.id] && cambiosArea[emp.id] !== emp.areaOriginal ? cambiosArea[emp.id] : null })); 
       await fetch(config.appsScriptUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: bodyAsciiJson({ accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaAsignada, responsable: responsable || 'ADMIN', filas }) }); 
       setTurnosBackup(JSON.parse(JSON.stringify(turnos))); guardarRespaldoLocal(); await marcarAreaComoFinalizada(); 
+      setCeldasModificadas(new Map()); // Limpiar indicadores después de guardar exitosamente
       if (!esAdmin) { setRolHabilitado(false); actualizarEstadoArea(areaAsignada, true); } 
       setRolGuardado(true);
       mostrarMensajeTemporal('success', 'Guardado exitoso. ' + (!esAdmin ? 'Rol bloqueado.' : ''), 6000); 

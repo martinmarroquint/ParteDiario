@@ -21,7 +21,8 @@ const CONFIG = {
     CAMBIOS: 'CAMBIOS',
     ESTADOS: 'ESTADOS',
     DESCANSOS: 'DESCANSOS_MEDICOS',
-    VACACIONES: 'VACACIONES'
+    VACACIONES: 'VACACIONES',
+    CELDA_MODIFICADA: 'CELDA_MODIFICADA'
   },
   // Hojas de meses (para guardar turnos)
   MESES: ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
@@ -152,6 +153,14 @@ function doPost(e) {
         return crearRespuesta(registrarSolicitudCambio(data));
       case 'actualizarSolicitudCambio':
         return crearRespuesta(actualizarSolicitudCambio(data));
+
+      // ========== CELDAS MODIFICADAS (persistencia) ==========
+      case 'registrarCeldaModificada':
+        return crearRespuesta(registrarCeldaModificada(data));
+      case 'cargarCeldasModificadas':
+        return crearRespuesta(cargarCeldasModificadas(data));
+      case 'limpiarCeldasModificadas':
+        return crearRespuesta(limpiarCeldasModificadas(data));
 
       default:
         return crearRespuesta({ success: false, error: 'Accion no reconocida: ' + data.accion });
@@ -1166,4 +1175,124 @@ function indiceAColumna(indice) {
     n = Math.floor(n / 26) - 1;
   }
   return letra;
+}
+
+// ============================================
+// CELDAS MODIFICADAS — Persistencia en Sheet
+// ============================================
+
+function ensureCeldaModificadaSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.CELDA_MODIFICADA);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_NAMES.CELDA_MODIFICADA);
+    sheet.appendRow(['HOJA', 'FILA', 'DIA', 'VALOR_ANTERIOR', 'VALOR_NUEVO', 'RESPONSABLE', 'FECHA', 'TIPO']);
+    sheet.setFrozenRows(1);
+    var headerRange = sheet.getRange(1, 1, 1, 8);
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#188C5D');
+    headerRange.setFontColor('#FFFFFF');
+  }
+  return sheet;
+}
+
+function registrarCeldaModificada(data) {
+  var lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(1000)) return { success: false, error: 'Lock no disponible' };
+    var sheet = ensureCeldaModificadaSheet();
+    
+    var hoja = data.hoja || '';
+    var fila = parseInt(data.fila) || 0;
+    var dia = parseInt(data.dia) || 0;
+    var valorAnterior = data.valorAnterior || '';
+    var valorNuevo = data.valorNuevo || '';
+    var responsable = data.responsable || 'ADMIN';
+    var tipo = data.tipo || 'directo';
+    
+    if (!hoja || !fila || !dia) return { success: false, error: 'Faltan parametros: hoja, fila, dia' };
+    
+    // Buscar si ya existe un registro para esta celda
+    var datos = sheet.getDataRange().getValues();
+    var existente = -1;
+    for (var i = 1; i < datos.length; i++) {
+      if (String(datos[i][0]) === hoja && parseInt(datos[i][1]) === fila && parseInt(datos[i][2]) === dia) {
+        existente = i + 1; // 1-based row
+        break;
+      }
+    }
+    
+    var filaData = [hoja, fila, dia, valorAnterior, valorNuevo, responsable, new Date(), tipo];
+    
+    if (existente > 0) {
+      sheet.getRange(existente, 1, 1, 8).setValues([filaData]);
+    } else {
+      sheet.appendRow(filaData);
+    }
+    
+    return { success: true, hoja: hoja, fila: fila, dia: dia };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function cargarCeldasModificadas(data) {
+  try {
+    var sheet = ensureCeldaModificadaSheet();
+    var hoja = data.hoja || '';
+    if (!hoja) return { success: true, modificaciones: [] };
+    
+    var datos = sheet.getDataRange().getValues();
+    var modificaciones = [];
+    
+    for (var i = 1; i < datos.length; i++) {
+      if (String(datos[i][0]) === hoja) {
+        modificaciones.push({
+          fila: parseInt(datos[i][1]),
+          dia: parseInt(datos[i][2]),
+          valorAnterior: String(datos[i][3] || ''),
+          valorNuevo: String(datos[i][4] || ''),
+          responsable: String(datos[i][5] || ''),
+          fecha: datos[i][6] ? new Date(datos[i][6]).toISOString() : '',
+          tipo: String(datos[i][7] || 'directo')
+        });
+      }
+    }
+    
+    return { success: true, modificaciones: modificaciones };
+  } catch (error) {
+    return { success: false, error: error.toString(), modificaciones: [] };
+  }
+}
+
+function limpiarCeldasModificadas(data) {
+  var lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(1000)) return { success: false, error: 'Lock no disponible' };
+    var sheet = ensureCeldaModificadaSheet();
+    var hoja = data.hoja || '';
+    
+    if (!hoja) return { success: false, error: 'Falta parametro hoja' };
+    
+    var datos = sheet.getDataRange().getValues();
+    var filasEliminar = [];
+    
+    for (var i = datos.length - 1; i >= 1; i--) {
+      if (String(datos[i][0]) === hoja) {
+        filasEliminar.push(i + 1); // 1-based
+      }
+    }
+    
+    filasEliminar.forEach(function(fila) {
+      sheet.deleteRow(fila);
+    });
+    
+    return { success: true, eliminadas: filasEliminar.length };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  } finally {
+    lock.releaseLock();
+  }
 }

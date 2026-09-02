@@ -125,7 +125,29 @@ const MobileRolView = ({
   // ============================================
   // CELDAS MODIFICADAS (nuevo — paridad con PanelTrabajo)
   // ============================================
-  const [celdasModificadas, setCeldasModificadas] = useState(new Map());
+  const [celdasModificadas, setCeldasModificadas] = useState(() => {
+    try {
+      const key = `ocr_celdas_modificadas_${hojaSeleccionada || hojaDelMesActual()}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        return new Map(arr);
+      }
+    } catch { void 0; }
+    return new Map();
+  });
+
+  // Persistir celdas modificadas en localStorage
+  useEffect(() => {
+    try {
+      const key = `ocr_celdas_modificadas_${hojaSeleccionada || hojaDelMesActual()}`;
+      if (celdasModificadas.size > 0) {
+        localStorage.setItem(key, JSON.stringify([...celdasModificadas]));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch { void 0; }
+  }, [celdasModificadas, hojaSeleccionada]);
 
   // Modal de cambio manual
   const [modalCambioAbierto, setModalCambioAbierto] = useState(false);
@@ -794,6 +816,7 @@ const MobileRolView = ({
       });
       setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
       guardarRespaldoLocal();
+      setCeldasModificadas(new Map()); // Limpiar indicadores después de guardar
       await fetch(config.appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
