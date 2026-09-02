@@ -15,9 +15,11 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: GOOGLE_SHEETS_API_KEY
-        sync: false
+        value: "AIzaSyCrdStW9-jK7vz76EuB8KA7Ea_m9aVOoeI"
       - key: GOOGLE_SHEETS_ID
-        sync: false
+        value: "1elNfbmPM5KxW0jnttJc8kGGokPT8XUoda3iZ6qdZvZA"
+      - key: GOOGLE_APPS_SCRIPT_URL
+        value: "https://script.google.com/macros/s/AKfycbydeAColIxKHhX-lm5LMw5bd3ebYZ-YrRRZn-xnbQTRtYecG0hujpEqNfZ5107wedP9vA/exec"
       - key: ALLOWED_ORIGINS
-        sync: false
+        value: "http://localhost:5173"
     healthCheckPath: /health
