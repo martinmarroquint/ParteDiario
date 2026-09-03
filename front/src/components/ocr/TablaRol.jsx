@@ -30,7 +30,7 @@ const TablaRol = ({
         <p className="text-sm text-gray-500">Impreso: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden print:shadow-none print:border-none">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-clip print:shadow-none print:border-none">
         <div className="overflow-x-auto relative" style={{ maxHeight: 'calc(100vh - 180px)', maxWidth: '100%' }}>
           <table className="w-max border-collapse text-sm print:text-xs relative">
             <colgroup>
@@ -195,11 +195,10 @@ const TablaRol = ({
                       return (
                         <td 
                           key={dia} 
-                          className="p-0 border-r relative overflow-visible group/celda"
+                          className="p-0 border-r relative group/celda"
                           style={{ 
                             backgroundColor: esFinDeSemana ? '#F8FAFC' : '#FFFFFF', 
-                            borderColor: '#E5E7EB',
-                            zIndex: infoMod ? 60 : 'auto'
+                            borderColor: '#E5E7EB'
                           }}
                         >
                           {infoMod && (

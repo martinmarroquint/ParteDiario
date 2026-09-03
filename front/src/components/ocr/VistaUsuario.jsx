@@ -267,14 +267,13 @@ const VistaUsuario = ({
                         className={`
                           relative cursor-pointer transition-all rounded-lg group/celda
                           hover:scale-[1.03] active:scale-[0.97]
-                          ${esHoy ? 'ring-2 ring-emerald-500 ring-offset-1 z-10 shadow-sm' : ''}
+                          ${esHoy ? 'ring-2 ring-emerald-500 ring-offset-1 shadow-sm' : ''}
                           ${esFinDeSemana && !turno ? 'bg-gray-50/50' : ''}
                         `}
                         style={{ 
                           height: '60px',
                           backgroundColor: bgColor(turno, esFinDeSemana),
-                          borderBottom: turno ? `3px solid ${borderColor(turno)}` : 'none',
-                          zIndex: infoMod ? 60 : 'auto'
+                          borderBottom: turno ? `3px solid ${borderColor(turno)}` : 'none'
                         }}
                       >
                         {/* Número */}
