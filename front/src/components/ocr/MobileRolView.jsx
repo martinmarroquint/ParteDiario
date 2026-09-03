@@ -440,7 +440,8 @@ const MobileRolView = ({
               tipo: String(row[7] || 'directo')
             });
           }
-          if (mapaMod.size > 0) setCeldasModificadas(mapaMod);
+          // Siempre actualizar el mapa (aunque esté vacío) para limpiar datos del mes anterior
+          setCeldasModificadas(mapaMod);
         }
       } catch { void 0; }
       
