@@ -680,13 +680,35 @@ const PanelTrabajo = ({
   }, [config.appsScriptUrl, config.sheetId, responsable, areaAsignada]);
 
   useEffect(() => {
-    const handleRegistrarCambios = (e) => {
+    const handleRegistrarCambios = async (e) => {
       const { solicitud, participantes } = e.detail;
       
       if (!participantes || participantes.length === 0) return;
       
-      // ✅ El historial ya se registro en Apps Script via __aplicarDetalleMes_
-      // Solo mostrar confirmacion y recargar datos
+      // Persistir cambios aprobados en CELDA_MODIFICADA (para el indicador verde)
+      if (config.appsScriptUrl && hojaSeleccionada) {
+        for (const p of participantes) {
+          for (const c of (p.cambios || [])) {
+            try {
+              await fetch(config.appsScriptUrl, {
+                method: 'POST', mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: bodyAsciiJson({
+                  accion: 'registrarCeldaModificada',
+                  hoja: hojaSeleccionada,
+                  fila: p.fila || 0,
+                  dia: c.dia || c.numero_dia || 0,
+                  valorAnterior: c.actual || '',
+                  valorNuevo: c.nuevo || '',
+                  responsable: 'SOLICITUD APROBADA',
+                  tipo: 'solicitud'
+                })
+              });
+            } catch { /* no-cors */ }
+          }
+        }
+      }
+      
       const totalCambios = participantes.reduce((acc, p) => acc + (p.cambios?.length || 0), 0);
       if (totalCambios > 0) {
         mostrarMensajeTemporal('success', `${totalCambios} cambio(s) aplicados correctamente`, 3000);
@@ -695,7 +717,7 @@ const PanelTrabajo = ({
     
     window.addEventListener('registrar-cambios-aprobados', handleRegistrarCambios);
     return () => window.removeEventListener('registrar-cambios-aprobados', handleRegistrarCambios);
-  }, [mostrarMensajeTemporal]);
+  }, [mostrarMensajeTemporal, config.appsScriptUrl, hojaSeleccionada]);
 
   useEffect(() => {
     const handleDesbloqueo = (e) => { if (e.detail.area === areaAsignada) { setRolHabilitado(true); actualizarEstadoArea(areaAsignada, false); } };
@@ -1157,7 +1179,7 @@ const PanelTrabajo = ({
     cargandoRef.current = false;
   }, [mesSeleccionado]);
   
-  const registrarCambioTurno = useCallback((empId, cambios) => { 
+  const registrarCambioTurno = useCallback(async (empId, cambios) => { 
     setTurnos(prev => { 
       const n = { ...prev }; 
       if (!n[empId]) n[empId] = {}; 
@@ -1176,23 +1198,28 @@ const PanelTrabajo = ({
       return next;
     });
     // Persistir SOLO cambios del panel admin en Google Sheets (cross-device)
+    // Await cada fetch para evitar lock contention con guardarCelda
     if (config.appsScriptUrl) {
-      cambios.forEach(c => {
-        fetch(config.appsScriptUrl, {
-          method: 'POST', mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: bodyAsciiJson({
-            accion: 'registrarCeldaModificada',
-            hoja: hojaSeleccionada,
-            fila: (() => { const emp = personal.find(p => p.id === empId); return emp ? emp.fila : 0; })(),
-            dia: c.dia,
-            valorAnterior: c.turnoAnterior || '',
-            valorNuevo: c.turnoNuevoCodigo || '',
-            responsable: responsable || 'ADMIN',
-            tipo: 'solicitud'
-          })
-        }).catch(() => {});
-      });
+      const emp = personal.find(p => p.id === empId);
+      const filaEnvio = emp ? emp.fila : 0;
+      for (const c of cambios) {
+        try {
+          await fetch(config.appsScriptUrl, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: bodyAsciiJson({
+              accion: 'registrarCeldaModificada',
+              hoja: hojaSeleccionada,
+              fila: filaEnvio,
+              dia: c.dia,
+              valorAnterior: c.turnoAnterior || '',
+              valorNuevo: c.turnoNuevoCodigo || '',
+              responsable: responsable || 'ADMIN',
+              tipo: 'solicitud'
+            })
+          });
+        } catch { /* no-cors errors expected */ }
+      }
     }
     mostrarMensajeTemporal('success', `${cambios.length} cambio(s) registrado(s) en el panel`, 3000); 
   }, [mostrarMensajeTemporal, config.appsScriptUrl, hojaSeleccionada, personal, responsable]);

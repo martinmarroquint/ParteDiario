@@ -424,7 +424,6 @@ const MobileRolView = ({
         if (rMod.ok) {
           const dMod = await rMod.json();
           const rowsMod = dMod.values || [];
-          console.log(`📥 CELDA_MODIFICADA: ${rowsMod.length} filas totales, buscando hoja "${hojaSeleccionada}"`);
           const mapaMod = new Map();
           for (let m = 1; m < rowsMod.length; m++) {
             const row = rowsMod[m];
@@ -440,9 +439,7 @@ const MobileRolView = ({
               fecha: row[6] || '',
               tipo: String(row[7] || 'directo')
             });
-            console.log(`  🟢 Mod encontrada: empId=${empIdForMap}, dia=${dia}, tipo=${row[7] || 'directo'}`);
           }
-          console.log(`📥 CELDA_MODIFICADA mapaMod: ${mapaMod.size} entradas para "${hojaSeleccionada}"`);
           // Siempre actualizar el mapa (aunque esté vacío) para limpiar datos del mes anterior
           setCeldasModificadas(mapaMod);
         } else {
@@ -868,9 +865,10 @@ const MobileRolView = ({
   }, [diasSemana, getTurnoDisplay]);
 
   // ============================================
-  // REGISTRAR CAMBIO DE TURNO
+  // REGISTRAR CAMBIO DE TURNO (async para evitar lock contention con guardarCelda)
   // ============================================
-  const registrarCambioTurno = useCallback((empId, cambios) => {
+  const registrarCambioTurno = useCallback(async (empId, cambios) => {
+    // 1. Actualizar estado local inmediatamente
     setTurnos(prev => { const n = { ...prev }; if (!n[empId]) n[empId] = {}; cambios.forEach(c => { n[empId][c.dia] = c.turnoNuevoCodigo; }); return n; });
     setTurnosBackup(prev => { const n = { ...prev }; if (!n[empId]) n[empId] = {}; cambios.forEach(c => { n[empId][c.dia] = c.turnoNuevoCodigo; }); return n; });
     setCeldasModificadas(prev => {
@@ -878,29 +876,28 @@ const MobileRolView = ({
       cambios.forEach(c => next.set(`${empId}-${c.dia}`, { turnoAnterior: c.turnoAnterior || '', turnoNuevo: c.turnoNuevoCodigo || '', tipo: 'solicitud' }));
       return next;
     });
+    // 2. Persistir en CELDA_MODIFICADA (esperar cada fetch para liberar el lock antes de guardarCelda)
     if (config.appsScriptUrl) {
       const emp = personal.find(p => p.id === empId);
       const filaEnvio = emp ? emp.fila : 0;
-      console.log('📤 registrarCeldaModificada:', { hoja: hojaSeleccionada, fila: filaEnvio, cambios: cambios.map(c => ({ dia: c.dia, de: c.turnoAnterior, a: c.turnoNuevoCodigo })) });
-      cambios.forEach(c => {
-        fetch(config.appsScriptUrl, {
-          method: 'POST', mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: bodyAsciiJson({
-            accion: 'registrarCeldaModificada',
-            hoja: hojaSeleccionada,
-            fila: filaEnvio,
-            dia: c.dia,
-            valorAnterior: c.turnoAnterior || '',
-            valorNuevo: c.turnoNuevoCodigo || '',
-            responsable: responsable || 'ADMIN',
-            tipo: 'solicitud'
-          })
-        }).then(() => console.log('✅ registrarCeldaModificada enviado OK'))
-          .catch(err => console.error('❌ Error registrarCeldaModificada:', err));
-      });
-    } else {
-      console.warn('⚠️ No hay appsScriptUrl para registrarCeldaModificada');
+      for (const c of cambios) {
+        try {
+          await fetch(config.appsScriptUrl, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: bodyAsciiJson({
+              accion: 'registrarCeldaModificada',
+              hoja: hojaSeleccionada,
+              fila: filaEnvio,
+              dia: c.dia,
+              valorAnterior: c.turnoAnterior || '',
+              valorNuevo: c.turnoNuevoCodigo || '',
+              responsable: responsable || 'ADMIN',
+              tipo: 'solicitud'
+            })
+          });
+        } catch { /* no-cors errors are expected */ }
+      }
     }
     mostrarToast(`${cambios.length} cambio(s) registrado(s)`, 'success');
   }, [mostrarToast, config.appsScriptUrl, hojaSeleccionada, personal, responsable]);
@@ -1015,15 +1012,38 @@ const MobileRolView = ({
   }, [hojaSeleccionada, areaAsignada, esAdmin]);
 
   useEffect(() => {
-    const handleRegistrarCambios = (e) => {
+    const handleRegistrarCambios = async (e) => {
       const { participantes } = e.detail;
       if (!participantes || participantes.length === 0) return;
       const totalCambios = participantes.reduce((acc, p) => acc + (p.cambios?.length || 0), 0);
+      // Persistir cambios aprobados en CELDA_MODIFICADA (para el indicador verde)
+      if (config.appsScriptUrl && hojaSeleccionada) {
+        for (const p of participantes) {
+          for (const c of (p.cambios || [])) {
+            try {
+              await fetch(config.appsScriptUrl, {
+                method: 'POST', mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: bodyAsciiJson({
+                  accion: 'registrarCeldaModificada',
+                  hoja: hojaSeleccionada,
+                  fila: p.fila || 0,
+                  dia: c.dia || c.numero_dia || 0,
+                  valorAnterior: c.actual || '',
+                  valorNuevo: c.nuevo || '',
+                  responsable: 'SOLICITUD APROBADA',
+                  tipo: 'solicitud'
+                })
+              });
+            } catch { /* no-cors */ }
+          }
+        }
+      }
       if (totalCambios > 0) mostrarToast(`${totalCambios} cambio(s) aplicados correctamente`, 'success');
     };
     window.addEventListener('registrar-cambios-aprobados', handleRegistrarCambios);
     return () => window.removeEventListener('registrar-cambios-aprobados', handleRegistrarCambios);
-  }, [mostrarToast]);
+  }, [mostrarToast, config.appsScriptUrl, hojaSeleccionada]);
 
   // ============================================
   // GUARDAR FINAL
@@ -1184,9 +1204,11 @@ const MobileRolView = ({
                         <>
                           <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-emerald-500 rounded-full z-[9999] shadow-[0_0_4px_rgba(16,185,129,0.6)]" />
                           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-gray-900 text-white text-[9px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5">
                               <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
-                              <span className="font-semibold">{infoMod.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
+                              <span className="text-gray-400 line-through">{infoMod.turnoAnterior || infoMod.valorAnterior || '·'}</span>
+                              <span className="text-gray-500">→</span>
+                              <span className="font-semibold text-white">{infoMod.turnoNuevo || infoMod.valorNuevo || '·'}</span>
                             </div>
                           </div>
                         </>
@@ -1498,9 +1520,11 @@ const MobileRolView = ({
                             <>
                               <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full z-[9999] shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
                               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-gray-900 text-white text-[9px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1.5">
                                   <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
-                                  <span className="font-semibold">{infoMod.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
+                                  <span className="text-gray-400 line-through">{infoMod.turnoAnterior || infoMod.valorAnterior || '·'}</span>
+                                  <span className="text-gray-500">→</span>
+                                  <span className="font-semibold text-white">{infoMod.turnoNuevo || infoMod.valorNuevo || '·'}</span>
                                 </div>
                               </div>
                             </>

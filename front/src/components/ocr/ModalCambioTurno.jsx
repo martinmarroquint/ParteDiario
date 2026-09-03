@@ -55,8 +55,10 @@ const ModalCambioTurno = ({
     setGuardadoExitoso(false);
     
     try {
-      onRegistrarCambio(trabajador.id, cambiosPendientes);
+      // PRIMERO: Registrar en CELDA_MODIFICADA y esperar a que complete (libera el lock)
+      await onRegistrarCambio(trabajador.id, cambiosPendientes);
       
+      // DESPUÉS: Guardar el valor real de la celda en el Sheet (ya sin conflicto de lock)
       if (onGuardarCelda && trabajador.fila) {
         for (const cambio of cambiosPendientes) {
           try {

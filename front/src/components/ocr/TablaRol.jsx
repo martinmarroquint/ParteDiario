@@ -189,8 +189,8 @@ const TablaRol = ({
                       const fecha = new Date(anioSeleccionado, mesSeleccionado - 1, dia);
                       const esFinDeSemana = fecha.getDay() === 0 || fecha.getDay() === 6;
                       const infoMod = celdasModificadas.get(`${emp.id}-${dia}`);
-                      const nombreTurnoAnt = infoMod?.turnoAnterior || 'Sin turno';
-                      const nombreTurnoNue = TURNO_MAP[infoMod?.turnoNuevo]?.nombre || infoMod?.turnoNuevo || 'Sin turno';
+                      const nombreTurnoAnt = infoMod?.turnoAnterior || infoMod?.valorAnterior || 'Sin turno';
+                      const nombreTurnoNue = infoMod?.turnoNuevo || infoMod?.valorNuevo || 'Sin turno';
 
                       return (
                         <td 

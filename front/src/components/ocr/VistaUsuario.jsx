@@ -292,14 +292,10 @@ const VistaUsuario = ({
                           <>
                             <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full z-[9999] shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
-                                <span className="font-semibold">{infoMod.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
-                              </div>
                               <div className="flex items-center gap-1.5 text-gray-300">
-                                <span className="line-through opacity-60">{infoMod.turnoAnterior || 'Sin turno'}</span>
+                                <span className="line-through opacity-60">{infoMod.turnoAnterior || infoMod.valorAnterior || 'Sin turno'}</span>
                                 <span className="text-emerald-400 font-bold">→</span>
-                                <span className="font-medium text-white">{TURNO_MAP[infoMod.turnoNuevo]?.nombre || infoMod.turnoNuevo || 'Sin turno'}</span>
+                                <span className="font-medium text-white">{infoMod.turnoNuevo || infoMod.valorNuevo || 'Sin turno'}</span>
                               </div>
                               <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
                             </div>
