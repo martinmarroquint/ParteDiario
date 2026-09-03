@@ -424,6 +424,7 @@ const MobileRolView = ({
         if (rMod.ok) {
           const dMod = await rMod.json();
           const rowsMod = dMod.values || [];
+          console.log(`📥 CELDA_MODIFICADA: ${rowsMod.length} filas totales, buscando hoja "${hojaSeleccionada}"`);
           const mapaMod = new Map();
           for (let m = 1; m < rowsMod.length; m++) {
             const row = rowsMod[m];
@@ -439,11 +440,15 @@ const MobileRolView = ({
               fecha: row[6] || '',
               tipo: String(row[7] || 'directo')
             });
+            console.log(`  🟢 Mod encontrada: empId=${empIdForMap}, dia=${dia}, tipo=${row[7] || 'directo'}`);
           }
+          console.log(`📥 CELDA_MODIFICADA mapaMod: ${mapaMod.size} entradas para "${hojaSeleccionada}"`);
           // Siempre actualizar el mapa (aunque esté vacío) para limpiar datos del mes anterior
           setCeldasModificadas(mapaMod);
+        } else {
+          console.warn('⚠️ CELDA_MODIFICADA fetch falló:', rMod.status);
         }
-      } catch { void 0; }
+      } catch (e) { console.error('❌ Error cargando CELDA_MODIFICADA:', e); }
       
       cargadoRef.current = true;
       
@@ -874,6 +879,9 @@ const MobileRolView = ({
       return next;
     });
     if (config.appsScriptUrl) {
+      const emp = personal.find(p => p.id === empId);
+      const filaEnvio = emp ? emp.fila : 0;
+      console.log('📤 registrarCeldaModificada:', { hoja: hojaSeleccionada, fila: filaEnvio, cambios: cambios.map(c => ({ dia: c.dia, de: c.turnoAnterior, a: c.turnoNuevoCodigo })) });
       cambios.forEach(c => {
         fetch(config.appsScriptUrl, {
           method: 'POST', mode: 'no-cors',
@@ -881,15 +889,18 @@ const MobileRolView = ({
           body: bodyAsciiJson({
             accion: 'registrarCeldaModificada',
             hoja: hojaSeleccionada,
-            fila: (() => { const emp = personal.find(p => p.id === empId); return emp ? emp.fila : 0; })(),
+            fila: filaEnvio,
             dia: c.dia,
             valorAnterior: c.turnoAnterior || '',
             valorNuevo: c.turnoNuevoCodigo || '',
             responsable: responsable || 'ADMIN',
             tipo: 'solicitud'
           })
-        }).catch(() => {});
+        }).then(() => console.log('✅ registrarCeldaModificada enviado OK'))
+          .catch(err => console.error('❌ Error registrarCeldaModificada:', err));
       });
+    } else {
+      console.warn('⚠️ No hay appsScriptUrl para registrarCeldaModificada');
     }
     mostrarToast(`${cambios.length} cambio(s) registrado(s)`, 'success');
   }, [mostrarToast, config.appsScriptUrl, hojaSeleccionada, personal, responsable]);
