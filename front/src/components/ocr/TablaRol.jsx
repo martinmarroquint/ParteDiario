@@ -204,7 +204,7 @@ const TablaRol = ({
                         >
                           {infoMod && (
                             <>
-                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full z-[9999] shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
                               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
                                 <div className="flex items-center gap-1.5 mb-1">
                                   <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
