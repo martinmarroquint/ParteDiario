@@ -98,12 +98,33 @@ const MobileRolView = ({
   // ============================================
   // REFS PARA CONTROL DE CARGA
   // ============================================
+  // Inyectar estilos globales una sola vez
+  useEffect(() => {
+    if (document.getElementById('mobile-rol-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'mobile-rol-styles';
+    style.textContent = `
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+      @keyframes slide-down { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      .animate-slide-down { animation: slide-down 0.3s ease-out; }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      const el = document.getElementById('mobile-rol-styles');
+      if (el) el.remove();
+    };
+  }, []);
+
   const cargadoRef = useRef(false);
   const cargandoRef = useRef(false);
   const cargarDatosRef = useRef(null);
   const hojaActualRef = useRef('');
   const turnosRef = useRef({});
   const turnosBackupRef = useRef({});
+  const personalRef = useRef([]);
+  const totalDiasMesRef = useRef(0);
   const autoGuardarRef = useRef(null);
   const guardadosPendientesRef = useRef(new Set());
   const toastTimeoutRef = useRef(null);
@@ -205,6 +226,14 @@ const MobileRolView = ({
     turnosBackupRef.current = turnosBackup;
   }, [turnosBackup]);
 
+  useEffect(() => {
+    personalRef.current = personal;
+  }, [personal]);
+
+  useEffect(() => {
+    totalDiasMesRef.current = totalDiasMes;
+  }, [totalDiasMes]);
+
   // ============================================
   // PERSISTIR CELDAS MODIFICADAS
   // ============================================
@@ -222,9 +251,9 @@ const MobileRolView = ({
   // ============================================
   // NAVEGACIÓN MES/AÑO — HANDLERS
   // ============================================
-  const handleMesChangeUsuario = useCallback((nuevoMes) => {
-    if (nuevoMes === mesNavegacion && anioNavegacion === anioNavegacion) return;
+  const resetNavegacion = useCallback((nuevoMes, nuevoAnio) => {
     setMesNavegacion(nuevoMes);
+    setAnioNavegacion(nuevoAnio);
     setSemanaActual(0);
     setPersonal([]);
     setTurnos({});
@@ -234,37 +263,29 @@ const MobileRolView = ({
     setSeleccionados(new Set());
     turnosRef.current = {};
     turnosBackupRef.current = {};
-    guardarSesion(nuevoMes, anioNavegacion);
+    guardarSesion(nuevoMes, nuevoAnio);
     cargadoRef.current = false;
     cargandoRef.current = false;
   }, [mesNavegacion, anioNavegacion]);
 
+  const handleMesChangeUsuario = useCallback((nuevoMes) => {
+    if (nuevoMes === mesNavegacion) return;
+    resetNavegacion(nuevoMes, anioNavegacion);
+  }, [mesNavegacion, anioNavegacion, resetNavegacion]);
+
   const handleAnioChangeUsuario = useCallback((nuevoAnio) => {
     if (nuevoAnio === anioNavegacion) return;
-    setAnioNavegacion(nuevoAnio);
-    setMesNavegacion(mesActualNum);
-    setSemanaActual(0);
-    setPersonal([]);
-    setTurnos({});
-    setTurnosBackup({});
-    setCeldasModificadas(new Map());
-    setFrancosDescartados(false);
-    setSeleccionados(new Set());
-    turnosRef.current = {};
-    turnosBackupRef.current = {};
-    guardarSesion(mesActualNum, nuevoAnio);
-    cargadoRef.current = false;
-    cargandoRef.current = false;
-  }, [anioNavegacion, mesActualNum]);
+    resetNavegacion(mesActualNum, nuevoAnio);
+  }, [anioNavegacion, mesActualNum, resetNavegacion]);
 
   const navigateMonth = useCallback((direction) => {
     let nuevoMes = mesNavegacion + direction;
     let nuevoAnio = anioNavegacion;
     if (nuevoMes < 1) { nuevoMes = 12; nuevoAnio--; }
     if (nuevoMes > 12) { nuevoMes = 1; nuevoAnio++; }
-    handleMesChangeUsuario(nuevoMes);
-    if (nuevoAnio !== anioNavegacion) setAnioNavegacion(nuevoAnio);
-  }, [mesNavegacion, anioNavegacion, handleMesChangeUsuario]);
+    if (nuevoMes === mesNavegacion && nuevoAnio === anioNavegacion) return;
+    resetNavegacion(nuevoMes, nuevoAnio);
+  }, [mesNavegacion, anioNavegacion, resetNavegacion]);
 
   // ============================================
   // CARGA DE HOJAS
@@ -597,13 +618,14 @@ const MobileRolView = ({
   // ============================================
   const autoGuardarFn = useCallback(async () => {
     if (!config.appsScriptUrl || !rolHabilitado || guardando) return;
-    if (personal.length === 0) return;
+    const personalActual = personalRef.current;
+    if (personalActual.length === 0) return;
     
     const celdas = [];
-    for (const emp of personal) {
-      const antes = turnosBackup[emp.id] || {};
-      const ahora = turnos[emp.id] || {};
-      for (let d = 1; d <= totalDiasMes; d++) {
+    for (const emp of personalActual) {
+      const antes = (turnosBackupRef.current || {})[emp.id] || {};
+      const ahora = (turnosRef.current || {})[emp.id] || {};
+      for (let d = 1; d <= totalDiasMesRef.current; d++) {
         if ((antes[d] || '') !== (ahora[d] || '')) {
           celdas.push({ fila: emp.fila, dia: d, valor: ahora[d] || '' });
         }
@@ -613,22 +635,20 @@ const MobileRolView = ({
     if (celdas.length === 0) return;
     
     try {
-      // Guardar en paralelo pero manejar cada uno independientemente
       const resultados = await Promise.allSettled(
         celdas.map(c => guardarCeldaInmediato(c.fila, c.dia, c.valor))
       );
       
-      // Si al menos un guardado fue exitoso, actualizar backup
       const algunExitoso = resultados.some(r => r.status === 'fulfilled' && r.value === true);
       if (algunExitoso) {
-        setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
+        setTurnosBackup(JSON.parse(JSON.stringify(turnosRef.current)));
         guardarRespaldoLocal();
       }
     } catch (e) { 
       console.error('Auto-guardado:', e); 
       guardarRespaldoLocal(); 
     }
-  }, [config.appsScriptUrl, rolHabilitado, guardando, personal, turnos, turnosBackup, totalDiasMes, guardarCeldaInmediato, guardarRespaldoLocal]);
+  }, [config.appsScriptUrl, rolHabilitado, guardando, guardarCeldaInmediato, guardarRespaldoLocal]);
 
   // Actualizar referencia de autoGuardar
   useEffect(() => {
@@ -1672,14 +1692,6 @@ const MobileRolView = ({
         responsable={responsable}
         totalDiasMes={totalDiasMes}
       />
-
-      <style>{`
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
-        @keyframes slide-down { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .animate-slide-down { animation: slide-down 0.3s ease-out; }
-      `}</style>
     </div>
   );
 };

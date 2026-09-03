@@ -2,7 +2,7 @@
 // TABLA DE ROL - DISEÑO LIMPIO CON SELECT ESTILIZADO COMPACTO
 // v2.1 - Z-INDEX CORREGIDO: no interfiere con dropdowns del Encabezado
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Square, CheckSquare, Clock } from 'lucide-react';
 import { DIAS_SEMANA, TURNO_MAP, MESES } from './constantes';
 
@@ -19,6 +19,31 @@ const TablaRol = ({
   const [hoveredCell, setHoveredCell] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const cellRefs = useRef({});
+
+  const updateTooltipPos = useCallback((cellKey) => {
+    const el = cellRefs.current[cellKey];
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setTooltipPos({ x: r.left + r.width / 2, y: r.top - 8 });
+    }
+  }, []);
+
+  const handleCellEnter = useCallback((cellKey) => {
+    updateTooltipPos(cellKey);
+    setHoveredCell(cellKey);
+  }, [updateTooltipPos]);
+
+  const handleCellLeave = useCallback(() => {
+    setHoveredCell(null);
+  }, []);
+
+  // Re-posicionar tooltip al hacer scroll
+  useEffect(() => {
+    if (!hoveredCell) return;
+    const onScroll = () => updateTooltipPos(hoveredCell);
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => window.removeEventListener('scroll', onScroll, { capture: true });
+  }, [hoveredCell, updateTooltipPos]);
 
   // Calcular filas vacías para completar la tabla en impresión cuando hay más de 15 personas
   const filasVacias = personalFiltrado.length > 15 && personalFiltrado.length < FILAS_POR_PAGINA
@@ -205,16 +230,10 @@ const TablaRol = ({
                             backgroundColor: esFinDeSemana ? '#F8FAFC' : '#FFFFFF', 
                             borderColor: '#E5E7EB'
                           }}
-                          onMouseEnter={() => {
-                            if (!infoMod) return;
-                            const el = cellRefs.current[`${emp.id}-${dia}`];
-                            if (el) {
-                              const r = el.getBoundingClientRect();
-                              setTooltipPos({ x: r.left + r.width / 2, y: r.top - 8 });
-                            }
-                            setHoveredCell(`${emp.id}-${dia}`);
-                          }}
-                          onMouseLeave={() => setHoveredCell(null)}
+                          onMouseEnter={() => infoMod && handleCellEnter(`${emp.id}-${dia}`)}
+                          onMouseLeave={handleCellLeave}
+                          onTouchStart={() => infoMod && handleCellEnter(`${emp.id}-${dia}`)}
+                          onTouchEnd={handleCellLeave}
                         >
                           {infoMod && (
                             <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_3px_rgba(16,185,129,0.6)]" />

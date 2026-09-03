@@ -41,6 +41,31 @@ const VistaUsuario = ({
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const cellRefs = useRef({});
 
+  const updateTooltipPos = useCallback((cellKey) => {
+    const el = cellRefs.current[cellKey];
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setTooltipPos({ x: r.left + r.width / 2, y: r.top - 8 });
+    }
+  }, []);
+
+  const handleCellEnter = useCallback((cellKey) => {
+    updateTooltipPos(cellKey);
+    setHoveredCell(cellKey);
+  }, [updateTooltipPos]);
+
+  const handleCellLeave = useCallback(() => {
+    setHoveredCell(null);
+  }, []);
+
+  // Re-posicionar tooltip al hacer scroll
+  useEffect(() => {
+    if (!hoveredCell) return;
+    const onScroll = () => updateTooltipPos(hoveredCell);
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => window.removeEventListener('scroll', onScroll, { capture: true });
+  }, [hoveredCell, updateTooltipPos]);
+
   const emp = personalFiltrado?.[0];
   if (!emp) return null;
 
@@ -269,16 +294,10 @@ const VistaUsuario = ({
                         key={cell.key}
                         ref={el => { cellRefs.current[`${emp.id}-${dia}`] = el; }}
                         onClick={() => onCeldaClick && onCeldaClick(emp.id, dia)}
-                        onMouseEnter={() => {
-                          if (!infoMod) return;
-                          const el = cellRefs.current[`${emp.id}-${dia}`];
-                          if (el) {
-                            const r = el.getBoundingClientRect();
-                            setTooltipPos({ x: r.left + r.width / 2, y: r.top - 8 });
-                          }
-                          setHoveredCell(`${emp.id}-${dia}`);
-                        }}
-                        onMouseLeave={() => setHoveredCell(null)}
+                        onMouseEnter={() => handleCellEnter(`${emp.id}-${dia}`)}
+                        onMouseLeave={handleCellLeave}
+                        onTouchStart={() => infoMod && handleCellEnter(`${emp.id}-${dia}`)}
+                        onTouchEnd={handleCellLeave}
                         className={`
                           relative cursor-pointer transition-all rounded-lg
                           hover:scale-[1.03] active:scale-[0.97]
