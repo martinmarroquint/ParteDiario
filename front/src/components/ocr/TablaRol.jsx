@@ -2,7 +2,7 @@
 // TABLA DE ROL - DISEÑO LIMPIO CON SELECT ESTILIZADO COMPACTO
 // v2.1 - Z-INDEX CORREGIDO: no interfiere con dropdowns del Encabezado
 
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { Square, CheckSquare, Clock } from 'lucide-react';
 import { DIAS_SEMANA, TURNO_MAP, MESES } from './constantes';
 
@@ -16,6 +16,10 @@ const TablaRol = ({
   mesSeleccionado, anioSeleccionado, areaAsignada, responsable,
   celdasModificadas = new Set()
 }) => {
+  const [hoveredCell, setHoveredCell] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const cellRefs = useRef({});
+
   // Calcular filas vacías para completar la tabla en impresión cuando hay más de 15 personas
   const filasVacias = personalFiltrado.length > 15 && personalFiltrado.length < FILAS_POR_PAGINA
     ? FILAS_POR_PAGINA - personalFiltrado.length
@@ -195,28 +199,25 @@ const TablaRol = ({
                       return (
                         <td 
                           key={dia} 
-                          className="p-0 border-r relative group/celda"
+                          ref={el => { cellRefs.current[`${emp.id}-${dia}`] = el; }}
+                          className="p-0 border-r relative"
                           style={{ 
                             backgroundColor: esFinDeSemana ? '#F8FAFC' : '#FFFFFF', 
                             borderColor: '#E5E7EB'
                           }}
+                          onMouseEnter={() => {
+                            if (!infoMod) return;
+                            const el = cellRefs.current[`${emp.id}-${dia}`];
+                            if (el) {
+                              const r = el.getBoundingClientRect();
+                              setTooltipPos({ x: r.left + r.width / 2, y: r.top - 8 });
+                            }
+                            setHoveredCell(`${emp.id}-${dia}`);
+                          }}
+                          onMouseLeave={() => setHoveredCell(null)}
                         >
                           {infoMod && (
-                            <>
-                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
-                                  <span className="font-semibold">{infoMod.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 text-gray-300">
-                                  <span className="line-through opacity-60">{nombreTurnoAnt}</span>
-                                  <span className="text-emerald-400 font-bold">→</span>
-                                  <span className="font-medium text-white">{nombreTurnoNue}</span>
-                                </div>
-                                <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
-                              </div>
-                            </>
+                            <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
                           )}
                           <button 
                             data-celda={`${emp.id}-${dia}`}
@@ -316,6 +317,28 @@ const TablaRol = ({
           </div>
         </div>
       </div>
+      {/* Tooltip fixed - escapa de cualquier overflow */}
+      {hoveredCell && (() => {
+        const info = celdasModificadas instanceof Map ? celdasModificadas.get(hoveredCell) : null;
+        if (!info) return null;
+        return (
+          <div
+            className="fixed px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl pointer-events-none z-[9999] whitespace-nowrap border border-gray-700"
+            style={{ left: tooltipPos.x, top: tooltipPos.y, transform: 'translate(-50%, -100%)' }}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${info.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+              <span className="font-semibold">{info.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-gray-300">
+              <span className="line-through opacity-60">{info.turnoAnterior || info.valorAnterior || 'Sin turno'}</span>
+              <span className="text-emerald-400 font-bold">→</span>
+              <span className="font-medium text-white">{info.turnoNuevo || info.valorNuevo || 'Sin turno'}</span>
+            </div>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+          </div>
+        );
+      })()}
     </div>
   );
 };

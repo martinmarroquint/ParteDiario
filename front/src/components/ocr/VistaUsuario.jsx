@@ -1,7 +1,7 @@
 // src/components/ocr/VistaUsuario.jsx
 // VISTA PARA USUARIO BASE — Con separación entre celdas
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState, useRef } from 'react';
 import { User, ChevronLeft, ChevronRight, Calendar, Clock } from 'lucide-react';
 import { TURNO_MAP, MESES, DIAS_SEMANA } from './constantes';
 
@@ -37,6 +37,10 @@ const VistaUsuario = ({
   cargando,
   celdasModificadas = new Map(),
 }) => {
+  const [hoveredCell, setHoveredCell] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const cellRefs = useRef({});
+
   const emp = personalFiltrado?.[0];
   if (!emp) return null;
 
@@ -263,9 +267,20 @@ const VistaUsuario = ({
                     return (
                       <div
                         key={cell.key}
+                        ref={el => { cellRefs.current[`${emp.id}-${dia}`] = el; }}
                         onClick={() => onCeldaClick && onCeldaClick(emp.id, dia)}
+                        onMouseEnter={() => {
+                          if (!infoMod) return;
+                          const el = cellRefs.current[`${emp.id}-${dia}`];
+                          if (el) {
+                            const r = el.getBoundingClientRect();
+                            setTooltipPos({ x: r.left + r.width / 2, y: r.top - 8 });
+                          }
+                          setHoveredCell(`${emp.id}-${dia}`);
+                        }}
+                        onMouseLeave={() => setHoveredCell(null)}
                         className={`
-                          relative cursor-pointer transition-all rounded-lg group/celda
+                          relative cursor-pointer transition-all rounded-lg
                           hover:scale-[1.03] active:scale-[0.97]
                           ${esHoy ? 'ring-2 ring-emerald-500 ring-offset-1 shadow-sm' : ''}
                           ${esFinDeSemana && !turno ? 'bg-gray-50/50' : ''}
@@ -290,14 +305,6 @@ const VistaUsuario = ({
                         {infoMod && (
                           <>
                             <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
-                              <div className="flex items-center gap-1.5 text-gray-300">
-                                <span className="line-through opacity-60">{infoMod.turnoAnterior || infoMod.valorAnterior || 'Sin turno'}</span>
-                                <span className="text-emerald-400 font-bold">→</span>
-                                <span className="font-medium text-white">{infoMod.turnoNuevo || infoMod.valorNuevo || 'Sin turno'}</span>
-                              </div>
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
-                            </div>
                           </>
                         )}
 
@@ -331,6 +338,24 @@ const VistaUsuario = ({
           </div>
         </div>
       )}
+      {/* Tooltip fixed - escapa de cualquier overflow */}
+      {hoveredCell && (() => {
+        const info = celdasModificadas.get(hoveredCell);
+        if (!info) return null;
+        return (
+          <div
+            className="fixed px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl pointer-events-none z-[9999] whitespace-nowrap border border-gray-700"
+            style={{ left: tooltipPos.x, top: tooltipPos.y, transform: 'translate(-50%, -100%)' }}
+          >
+            <div className="flex items-center gap-1.5 text-gray-300">
+              <span className="line-through opacity-60">{info.turnoAnterior || info.valorAnterior || 'Sin turno'}</span>
+              <span className="text-emerald-400 font-bold">→</span>
+              <span className="font-medium text-white">{info.turnoNuevo || info.valorNuevo || 'Sin turno'}</span>
+            </div>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+          </div>
+        );
+      })()}
     </div>
   );
 };
