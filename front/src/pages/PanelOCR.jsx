@@ -1,9 +1,9 @@
 // src/pages/PanelOCR.jsx
-// VERSION COMPLETA - FLUJO LOGIN → PANEL DE TRABAJO
+// VERSION COMPLETA - CORREGIDO PARA EVITAR REMONTES DE MobileRolView
 // CON BACKEND FASTAPI Y MODO PRUEBA COMO FALLBACK
 // SOPORTE COMPLETO PARA TODOS LOS ROLES (Admin, Jefe Área, Jefe Departamento, Jefe División, Usuario)
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Login from '../components/ocr/auth/Login';
 import PanelTrabajo from '../components/ocr/PanelTrabajo';
 import MobileRolView from '../components/ocr/MobileRolView';
@@ -178,7 +178,6 @@ const PanelOCRContent = () => {
   // ============================================================
   // MODO PRUEBA - Selector de rol (solo visible en modo prueba)
   // ============================================================
-  const [modoPruebaSelector, setModoPruebaSelector] = useState(!BACKEND_DISPONIBLE);
   const [rolSeleccionado, setRolSeleccionado] = useState(initialSession?.user?.rol || 'admin');
   // ============================================================
 
@@ -238,7 +237,7 @@ const PanelOCRContent = () => {
   // ============================================================
   // FUNCIÓN: Login (backend real o modo prueba)
   // ============================================================
-  const handleLogin = async (usuario, password) => {
+  const handleLogin = useCallback(async (usuario, password) => {
     setLoading(true);
 
     try {
@@ -336,13 +335,12 @@ const PanelOCRContent = () => {
       setLoading(false);
       return false;
     }
-  };
-  // ============================================================
+  }, []);
 
   // ============================================================
   // FUNCIÓN: Cambiar rol en modo prueba
   // ============================================================
-  const cambiarRolPrueba = (rolKey) => {
+  const cambiarRolPrueba = useCallback((rolKey) => {
     const userData = USUARIOS_PRUEBA[rolKey];
     if (!userData) return;
 
@@ -365,10 +363,12 @@ const PanelOCRContent = () => {
     
     // Actualizar localStorage para persistir en recarga
     localStorage.setItem('ocr_user_data', JSON.stringify(userData));
-  };
-  // ============================================================
+  }, []);
 
-  const handleLogout = async () => {
+  // ============================================================
+  // FUNCIÓN: Logout - MEMOIZADA
+  // ============================================================
+  const handleLogout = useCallback(async () => {
     // Cerrar sesión en el backend si está disponible
     if (BACKEND_DISPONIBLE) {
       try {
@@ -393,8 +393,11 @@ const PanelOCRContent = () => {
     setEsAdmin(false);
     setPantalla('seleccion');
     setMostrarAdminUsuarios(false);
-  };
+  }, []);
 
+  // ============================================================
+  // DETECTAR MÓVIL - MEMOIZADO
+  // ============================================================
   useEffect(() => {
     const checkMobile = () => {
       const ua = navigator.userAgent || '';
@@ -407,6 +410,9 @@ const PanelOCRContent = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // ============================================================
+  // GUARDAR SESIÓN
+  // ============================================================
   useEffect(() => {
     if (pantalla === 'panel' && areaSeleccionada) {
       sessionStorage.setItem(STORAGE_SESION, JSON.stringify({
@@ -418,6 +424,9 @@ const PanelOCRContent = () => {
     }
   }, [pantalla, areaSeleccionada, responsable, esAdmin]);
 
+  // ============================================================
+  // CARGAR DATOS INICIALES
+  // ============================================================
   useEffect(() => {
     const cargar = async () => {
       if (!config.sheetId || !config.apiKey) return;
@@ -467,7 +476,10 @@ const PanelOCRContent = () => {
     cargar();
   }, []);
 
-  const handleIngresar = (area, nombreResponsable, admin) => {
+  // ============================================================
+  // HANDLERS MEMOIZADOS
+  // ============================================================
+  const handleIngresar = useCallback((area, nombreResponsable, admin) => {
     setAreaSeleccionada(area);
     setResponsable(nombreResponsable);
     setEsAdmin(admin);
@@ -478,13 +490,13 @@ const PanelOCRContent = () => {
       esAdmin: admin,
       timestamp: Date.now()
     }));
-  };
+  }, []);
 
-  const handleSalir = () => {
+  const handleSalir = useCallback(() => {
     handleLogout();
-  };
+  }, [handleLogout]);
 
-  const handleGuardarDescanso = async (descanso) => {
+  const handleGuardarDescanso = useCallback(async (descanso) => {
     if (guardandoDescanso.current) return { success: false, error: 'Ya hay un registro en proceso' };
     guardandoDescanso.current = true;
 
@@ -566,9 +578,9 @@ const PanelOCRContent = () => {
     } finally {
       setTimeout(() => { guardandoDescanso.current = false; }, 3000);
     }
-  };
+  }, [config, hojasDisponibles, user]);
 
-  const handleGuardarVacaciones = async (vacaciones) => {
+  const handleGuardarVacaciones = useCallback(async (vacaciones) => {
     if (guardandoVacaciones.current) return;
     guardandoVacaciones.current = true;
 
@@ -639,7 +651,69 @@ const PanelOCRContent = () => {
     } finally {
       setTimeout(() => { guardandoVacaciones.current = false; }, 3000);
     }
-  };
+  }, [config, hojasDisponibles, user]);
+
+  // ============================================================
+  // MEMOIZAR CALLBACKS PARA ABRIR MODALES
+  // ============================================================
+  const abrirCambiosTurno = useCallback(() => setMostrarCambiosTurno(true), []);
+  const abrirAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(true), []);
+  const cerrarAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(false), []);
+  const abrirDescansoMedico = useCallback(() => setMostrarDescansoMedico(true), []);
+  const cerrarDescansoMedico = useCallback(() => setMostrarDescansoMedico(false), []);
+  const abrirVacaciones = useCallback(() => setMostrarVacaciones(true), []);
+  const cerrarVacaciones = useCallback(() => setMostrarVacaciones(false), []);
+  const abrirParteDiario = useCallback(() => setMostrarParteDiario(true), []);
+  const cerrarParteDiario = useCallback(() => setMostrarParteDiario(false), []);
+  const cerrarCambiosTurno = useCallback(() => setMostrarCambiosTurno(false), []);
+
+  // ============================================================
+  // RENDERIZADO CONDICIONAL CON useMemo PARA EVITAR REMONTES
+  // ============================================================
+  const panelContent = useMemo(() => {
+    if (isMobile) {
+      return (
+        <MobileRolView
+          areaAsignada={areaSeleccionada}
+          responsable={responsable}
+          esAdmin={esAdmin}
+          onSalir={handleSalir}
+          onAbrirCambiosTurno={abrirCambiosTurno}
+          todasLasAreas={areas.filter(a => a !== 'TODAS')}
+          esJefe={isJefe}
+          esUsuario={isUsuario}
+          user={user}
+          medicos={medicosSistema}
+        />
+      );
+    }
+    return (
+      <PanelTrabajo
+        areaAsignada={areaSeleccionada}
+        responsable={responsable}
+        esAdmin={esAdmin}
+        onSalir={handleSalir}
+        todasLasAreas={areas.filter(a => a !== 'TODAS')}
+        medicos={medicosSistema}
+        onAbrirCambiosTurno={abrirCambiosTurno}
+        esJefe={isJefe}
+        esUsuario={isUsuario}
+        user={user}
+      />
+    );
+  }, [
+    isMobile, 
+    areaSeleccionada, 
+    responsable, 
+    esAdmin, 
+    handleSalir, 
+    abrirCambiosTurno, 
+    areas, 
+    isJefe, 
+    isUsuario, 
+    user, 
+    medicosSistema
+  ]);
 
   // ============================================================
   // RENDER: Login o Panel según estado de autenticación
@@ -679,7 +753,6 @@ const PanelOCRContent = () => {
           <div className="flex flex-wrap gap-1.5">
             {ROLES_PRUEBA.map(rol => {
               const activo = rolSeleccionado === rol.value;
-              const userData = USUARIOS_PRUEBA[rol.value];
               return (
                 <button
                   key={rol.value}
@@ -703,41 +776,16 @@ const PanelOCRContent = () => {
       )}
 
       {/* ============================================================
-          PANEL PRINCIPAL
+          PANEL PRINCIPAL - OPTIMIZADO CON useMemo
           ============================================================ */}
-      {isMobile ? (
-        <MobileRolView
-          areaAsignada={areaSeleccionada}
-          responsable={responsable}
-          esAdmin={esAdmin}
-          onSalir={handleSalir}
-          onAbrirCambiosTurno={() => setMostrarCambiosTurno(true)}
-          todasLasAreas={areas.filter(a => a !== 'TODAS')}
-          onAbrirAdminUsuarios={isAdmin ? () => setMostrarAdminUsuarios(true) : null}
-          esJefe={isJefe}
-          esUsuario={isUsuario}
-          user={user}
-          medicos={medicosSistema}
-        />
-      ) : (
-        <PanelTrabajo
-          areaAsignada={areaSeleccionada}
-          responsable={responsable}
-          esAdmin={esAdmin}
-          onSalir={handleSalir}
-          todasLasAreas={areas.filter(a => a !== 'TODAS')}
-          medicos={medicosSistema}
-          onAbrirCambiosTurno={() => setMostrarCambiosTurno(true)}
-          onAbrirAdminUsuarios={isAdmin ? () => setMostrarAdminUsuarios(true) : null}
-          esJefe={isJefe}
-          esUsuario={isUsuario}
-          user={user}
-        />
-      )}
+      {panelContent}
 
+      {/* ============================================================
+          MODALES
+          ============================================================ */}
       <ModalDescansoMedico
         isOpen={mostrarDescansoMedico}
-        onClose={() => setMostrarDescansoMedico(false)}
+        onClose={cerrarDescansoMedico}
         personal={todoElPersonal}
         medicos={medicosSistema}
         config={config}
@@ -746,7 +794,7 @@ const PanelOCRContent = () => {
 
       <ModalRegistroVacaciones
         isOpen={mostrarVacaciones}
-        onClose={() => setMostrarVacaciones(false)}
+        onClose={cerrarVacaciones}
         personal={todoElPersonal}
         config={config}
         onGuardarVacaciones={handleGuardarVacaciones}
@@ -754,14 +802,14 @@ const PanelOCRContent = () => {
 
       <ParteDiario
         isOpen={mostrarParteDiario}
-        onClose={() => setMostrarParteDiario(false)}
+        onClose={cerrarParteDiario}
         areaAsignada={areaSeleccionada}
         todasLasAreas={areas.filter(a => a !== 'TODAS')}
       />
 
       <ModalSolicitudCambioTurno
         isOpen={mostrarCambiosTurno}
-        onClose={() => setMostrarCambiosTurno(false)}
+        onClose={cerrarCambiosTurno}
         config={config}
         hoja={hojaActiva}
         mes={mesActivo}
@@ -773,7 +821,7 @@ const PanelOCRContent = () => {
       {isAdmin && (
         <PanelAdminUsuariosOCR
           isOpen={mostrarAdminUsuarios}
-          onClose={() => setMostrarAdminUsuarios(false)}
+          onClose={cerrarAdminUsuarios}
         />
       )}
     </>
@@ -781,10 +829,10 @@ const PanelOCRContent = () => {
 };
 
 // ============================================================
-// Componente principal
+// Componente principal - MEMOIZADO PARA EVITAR RE-RENDER
 // ============================================================
-const PanelOCR = () => {
+const PanelOCR = React.memo(() => {
   return <PanelOCRContent />;
-};
+});
 
 export default PanelOCR;

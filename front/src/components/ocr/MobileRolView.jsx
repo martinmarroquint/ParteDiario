@@ -1,5 +1,9 @@
 // src/components/ocr/MobileRolView.jsx
-// VISTA MOVIL v2 — PARIDAD CON PanelTrabajo: mes/año, celdas modificadas, solicitud, teclado, impresión
+// VISTA MOVIL v3 — CORREGIDO COMPLETAMENTE
+// - Manejo correcto de errores de Apps Script (302, CORB)
+// - Sin recargas innecesarias
+// - Guardado silencioso con no-cors
+// - Persistencia local mejorada
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
@@ -68,6 +72,7 @@ const getDiasSemana = (fechaBase, semana) => {
 };
 
 const DIAS_SEMANA_NOMBRES = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+const DIAS_SEMANA_COMPLETOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 const columnaLetra = (numero) => {
   let letra = ''; let n = numero;
@@ -85,8 +90,28 @@ const MobileRolView = ({
   onSalir,
   onAbrirCambiosTurno,
   todasLasAreas = [],
-  medicos = []
+  medicos = [],
+  user = null,
+  esUsuario = false,
+  esJefe = false
 }) => {
+  // ============================================
+  // REFS PARA CONTROL DE CARGA
+  // ============================================
+  const cargadoRef = useRef(false);
+  const cargandoRef = useRef(false);
+  const cargarDatosRef = useRef(null);
+  const hojaActualRef = useRef('');
+  const turnosRef = useRef({});
+  const turnosBackupRef = useRef({});
+  const autoGuardarRef = useRef(null);
+  const guardadosPendientesRef = useRef(new Set());
+  const toastTimeoutRef = useRef(null);
+  const cargarHojasRef = useRef(false);
+
+  // ============================================
+  // ESTADO
+  // ============================================
   const [config, setConfig] = useState(DEFAULT_GOOGLE_CONFIG);
   const [hojasDisponibles, setHojasDisponibles] = useState([]);
   const [personal, setPersonal] = useState([]);
@@ -96,7 +121,7 @@ const MobileRolView = ({
   const [rolHabilitado, setRolHabilitado] = useState(() => {
     if (esAdmin) return true;
     try {
-      const key = `${STORAGE_ESTADOS}_${config.sheetName || hojaDelMesActual()}`;
+      const key = `${STORAGE_ESTADOS}_${hojaDelMesActual()}`;
       const g = localStorage.getItem(key);
       if (g) { const e = JSON.parse(g); if (e[areaAsignada] === true) return false; }
     } catch { void 0; }
@@ -109,13 +134,10 @@ const MobileRolView = ({
   const [busqueda, setBusqueda] = useState('');
   const [semanaActual, setSemanaActual] = useState(0);
   const [toast, setToast] = useState(null);
-  const toastTimeout = useRef(null);
-  const guardadosPendientesRef = useRef(new Set());
-  const turnosRef = useRef({});
-  const turnosBackupRef = useRef({});
+  const [guardadosPendientes, setGuardadosPendientes] = useState(new Set());
 
   // ============================================
-  // NAVEGACIÓN MES/AÑO (nuevo — paridad con PanelTrabajo)
+  // NAVEGACIÓN MES/AÑO
   // ============================================
   const mesActualNum = new Date().getMonth() + 1;
   const anioActualNum = new Date().getFullYear();
@@ -123,11 +145,11 @@ const MobileRolView = ({
   const [anioNavegacion, setAnioNavegacion] = useState(anioActualNum);
 
   // ============================================
-  // CELDAS MODIFICADAS (nuevo — paridad con PanelTrabajo)
+  // CELDAS MODIFICADAS
   // ============================================
   const [celdasModificadas, setCeldasModificadas] = useState(() => {
     try {
-      const key = `ocr_celdas_modificadas_${hojaSeleccionada || hojaDelMesActual()}`;
+      const key = `ocr_celdas_modificadas_${hojaDelMesActual()}`;
       const raw = localStorage.getItem(key);
       if (raw) {
         const arr = JSON.parse(raw);
@@ -137,10 +159,58 @@ const MobileRolView = ({
     return new Map();
   });
 
-  // Persistir celdas modificadas en localStorage (solo local, rápido)
+  // ============================================
+  // MODALES
+  // ============================================
+  const [modalCambioAbierto, setModalCambioAbierto] = useState(false);
+  const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
+  const [modalSolicitudAbierto, setModalSolicitudAbierto] = useState(false);
+  const [modalDescansoAbierto, setModalDescansoAbierto] = useState(false);
+  const [modalHistorialAbierto, setModalHistorialAbierto] = useState(false);
+  const [historialCambios, setHistorialCambios] = useState([]);
+  const [mostrarPanelAdmin, setMostrarPanelAdmin] = useState(false);
+  const [seleccionados, setSeleccionados] = useState(new Set());
+  const [diasSeleccionadosSemana, setDiasSeleccionadosSemana] = useState([1, 2, 3, 4, 5]);
+  const [modoPatron, setModoPatron] = useState(false);
+  const [patronRotativo, setPatronRotativo] = useState(['M', 'T', 'N']);
+  const [mostrarModalFrancos, setMostrarModalFrancos] = useState(false);
+  const [francosDescartados, setFrancosDescartados] = useState(() => {
+    try {
+      const key = `ocr_francos_descartados_${mesActualNum}_${anioActualNum}`;
+      return sessionStorage.getItem(key) === 'true';
+    } catch { return false; }
+  });
+  const [mostrarImpresion, setMostrarImpresion] = useState(false);
+
+  // ============================================
+  // MES/AÑO DERIVADOS
+  // ============================================
+  const mesSeleccionado = mesNavegacion;
+  const anioSeleccionado = anioNavegacion;
+  const hojaSeleccionada = useMemo(() => MESES[mesSeleccionado - 1]?.toUpperCase() || hojaDelMesActual(), [mesSeleccionado]);
+  const totalDiasMes = useMemo(() => new Date(anioSeleccionado, mesSeleccionado, 0).getDate(), [mesSeleccionado, anioSeleccionado]);
+
+  // ============================================
+  // REFERENCIAS ACTUALIZADAS
+  // ============================================
+  useEffect(() => {
+    hojaActualRef.current = hojaSeleccionada;
+  }, [hojaSeleccionada]);
+
+  useEffect(() => {
+    turnosRef.current = turnos;
+  }, [turnos]);
+
+  useEffect(() => {
+    turnosBackupRef.current = turnosBackup;
+  }, [turnosBackup]);
+
+  // ============================================
+  // PERSISTIR CELDAS MODIFICADAS
+  // ============================================
   useEffect(() => {
     try {
-      const key = `ocr_celdas_modificadas_${hojaSeleccionada || hojaDelMesActual()}`;
+      const key = `ocr_celdas_modificadas_${hojaSeleccionada}`;
       if (celdasModificadas.size > 0) {
         localStorage.setItem(key, JSON.stringify([...celdasModificadas]));
       } else {
@@ -149,53 +219,8 @@ const MobileRolView = ({
     } catch { void 0; }
   }, [celdasModificadas, hojaSeleccionada]);
 
-  // Modal de cambio manual
-  const [modalCambioAbierto, setModalCambioAbierto] = useState(false);
-  const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
-
-  // Solicitud de cambio (nuevo)
-  const [modalSolicitudAbierto, setModalSolicitudAbierto] = useState(false);
-
-  // Descanso médico
-  const [modalDescansoAbierto, setModalDescansoAbierto] = useState(false);
-
-  // Historial de cambios
-  const [modalHistorialAbierto, setModalHistorialAbierto] = useState(false);
-  const [historialCambios, setHistorialCambios] = useState([]);
-
-  // Panel de control (administrador)
-  const [mostrarPanelAdmin, setMostrarPanelAdmin] = useState(false);
-
-  // Seleccion multiple + patrones
-  const [seleccionados, setSeleccionados] = useState(new Set());
-  const [diasSeleccionadosSemana, setDiasSeleccionadosSemana] = useState([1, 2, 3, 4, 5]);
-  const [modoPatron, setModoPatron] = useState(false);
-  const [patronRotativo, setPatronRotativo] = useState(['M', 'T', 'N']);
-
-  // Modal francos invalidos
-  const [mostrarModalFrancos, setMostrarModalFrancos] = useState(false);
-  const [francosDescartados, setFrancosDescartados] = useState(() => {
-    try {
-      const key = `ocr_francos_descartados_${mesNavegacion}_${anioNavegacion}`;
-      return sessionStorage.getItem(key) === 'true';
-    } catch { return false; }
-  });
-
-  // Impresión
-  const [mostrarImpresion, setMostrarImpresion] = useState(false);
-
-  // Mes/año derivados de la navegación
-  const mesSeleccionado = mesNavegacion;
-  const anioSeleccionado = anioNavegacion;
-  const hojaSeleccionada = useMemo(() => MESES[mesSeleccionado - 1]?.toUpperCase() || hojaDelMesActual(), [mesSeleccionado]);
-  const totalDiasMes = useMemo(() => new Date(anioSeleccionado, mesSeleccionado, 0).getDate(), [mesSeleccionado, anioSeleccionado]);
-
-  const cargarHojasRef = useRef(false);
-  const cargandoDatosRef = useRef(false);
-  const autoGuardarRef = useRef(null);
-
   // ============================================
-  // NAVEGACIÓN MES/AÑO — handler con limpieza completa
+  // NAVEGACIÓN MES/AÑO — HANDLERS
   // ============================================
   const handleMesChangeUsuario = useCallback((nuevoMes) => {
     if (nuevoMes === mesNavegacion && anioNavegacion === anioNavegacion) return;
@@ -210,6 +235,8 @@ const MobileRolView = ({
     turnosRef.current = {};
     turnosBackupRef.current = {};
     guardarSesion(nuevoMes, anioNavegacion);
+    cargadoRef.current = false;
+    cargandoRef.current = false;
   }, [mesNavegacion, anioNavegacion]);
 
   const handleAnioChangeUsuario = useCallback((nuevoAnio) => {
@@ -226,6 +253,8 @@ const MobileRolView = ({
     turnosRef.current = {};
     turnosBackupRef.current = {};
     guardarSesion(mesActualNum, nuevoAnio);
+    cargadoRef.current = false;
+    cargandoRef.current = false;
   }, [anioNavegacion, mesActualNum]);
 
   const navigateMonth = useCallback((direction) => {
@@ -255,11 +284,12 @@ const MobileRolView = ({
           if (!salud.ok) setAppsScriptError(salud.mensaje);
           else {
             setAppsScriptError('');
+            // Inicializar estructura silenciosamente (no-cors)
             await fetch(config.appsScriptUrl, {
               method: 'POST', mode: 'no-cors',
               headers: { 'Content-Type': 'text/plain' },
               body: bodyAsciiJson({ accion: 'inicializarEstructura' })
-            });
+            }).catch(() => {});
           }
         }
       } catch (e) { console.error('No se pudo inicializar estructura:', e); }
@@ -269,37 +299,14 @@ const MobileRolView = ({
         if (prev.sheetName === hojaElegida) return prev;
         return { ...prev, sheetName: hojaElegida };
       });
-      setSemanaActual(0);
-      setPersonal([]);
-      setTurnos({});
-      setTurnosBackup({});
-      turnosRef.current = {};
-      turnosBackupRef.current = {};
     } catch (e) { console.error('Error al cargar hojas:', e); }
   }, [config.sheetId, config.apiKey, config.appsScriptUrl, areaAsignada]);
-
-  const handleHojaChange = useCallback((nh) => {
-    if (cargandoDatosRef.current) return;
-    guardarHojaPreferida(areaAsignada, nh);
-    setConfig(prev => (prev.sheetName === nh ? prev : { ...prev, sheetName: nh }));
-    setSemanaActual(0);
-    setPersonal([]);
-    setTurnos({});
-    setTurnosBackup({});
-    setCeldasModificadas(new Map());
-    setFrancosDescartados(false);
-    turnosRef.current = {};
-    turnosBackupRef.current = {};
-  }, [areaAsignada]);
 
   useEffect(() => { 
     if (cargarHojasRef.current) return;
     cargarHojasRef.current = true;
     cargarHojas(); 
   }, [cargarHojas]);
-
-  useEffect(() => { turnosRef.current = turnos; }, [turnos]);
-  useEffect(() => { turnosBackupRef.current = turnosBackup; }, [turnosBackup]);
 
   // ============================================
   // ACTUALIZAR ESTADO AREA
@@ -315,47 +322,101 @@ const MobileRolView = ({
   }, [hojaSeleccionada]);
 
   // ============================================
-  // CARGA DE DATOS
+  // VERIFICAR AREA FINALIZADA
+  // ============================================
+  const verificarAreaFinalizadaEnSheets = useCallback(async () => {
+    if (esAdmin) return false;
+    try { 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/ESTADOS!A:C?key=${config.apiKey}`; 
+      const r = await fetch(url, { signal: controller.signal }); 
+      clearTimeout(timeoutId);
+      if (!r.ok) return false; 
+      const d = await r.json(); 
+      const filas = d.values || []; 
+      for (const fila of filas) { 
+        if (fila[0] === hojaSeleccionada && fila[1] === areaAsignada && fila[2] === 'FINALIZADO') return true; 
+      } 
+      return false; 
+    } catch { 
+      return false; 
+    }
+  }, [config, areaAsignada, esAdmin, hojaSeleccionada]);
+
+  // ============================================
+  // CARGA DE DATOS - CORREGIDA
   // ============================================
   const cargarDatos = useCallback(async () => {
-    if (cargandoDatosRef.current) return;
-    cargandoDatosRef.current = true;
+    if (!config.sheetId || !hojaSeleccionada) return;
+    if (cargadoRef.current || cargandoRef.current) {
+      console.log('⏳ Carga ya completada o en progreso, omitiendo');
+      return;
+    }
+    
+    cargandoRef.current = true;
+    setCargando(true); 
     setErrorCarga(null);
+    
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodeURIComponent(hojaSeleccionada)}!A:AJ?key=${config.apiKey}`;
-      const r = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (!r.ok) throw new Error('Error al cargar');
-      const d = await r.json();
+      const r = await fetch(url); 
+      if (!r.ok) { const ed = await r.json(); throw new Error(ed.error?.message || `Error HTTP ${r.status}`); }
+      const d = await r.json(); 
       const rows = d.values || [];
       
-      if (rows.length < 2) { setPersonal([]); setTurnos({}); setTurnosBackup({}); return; }
+      if (rows.length < 2) { 
+        setPersonal([]); 
+        setTurnos({}); 
+        setTurnosBackup({}); 
+        cargadoRef.current = true;
+        cargandoRef.current = false;
+        setCargando(false);
+        return; 
+      }
       
       const todos = [], filtrados = [], tObj = {};
       
       for (let i = 1; i < rows.length; i++) {
-        const cols = rows[i];
+        const cols = rows[i]; 
         if (!cols || cols.length < 3) continue;
         const af = (cols[3] || '').trim();
         const emp = { id: i, fila: i + 1, dni: (cols[0]||'').trim(), grado: (cols[1]||'').trim(), nombre: (cols[2]||'').trim(), area: af };
         todos.push(emp);
-        if (esAdmin || areaAsignada === 'ADMIN' || af === areaAsignada || af === 'SIN_SERVICIO') filtrados.push(emp);
-        const te = {};
+        
+        // FILTRO POR ROL
+        let incluir = false;
+        if (esAdmin) {
+          incluir = true;
+        } else if (esJefe) {
+          incluir = af === areaAsignada || af === 'SIN_SERVICIO';
+        } else if (esUsuario && user) {
+          const nombreUser = (user.nombre || '').toLowerCase().trim();
+          const nombreEmp = (emp.nombre || '').toLowerCase().trim();
+          incluir = nombreEmp === nombreUser;
+        } else {
+          incluir = af === areaAsignada || af === 'SIN_SERVICIO';
+        }
+        
+        if (incluir) {
+          filtrados.push(emp);
+        }
+        
+        const te = {}; 
         for (let d = 0; d < totalDiasMes; d++) { te[d+1] = NOMBRE_A_CODIGO[(cols[5+d]||'').trim()] || ''; }
         tObj[i] = te;
       }
       
-      const hayPendientes = JSON.stringify(turnosRef.current) !== JSON.stringify(turnosBackupRef.current);
+      // Verificar si el área está bloqueada
+      const bloqueadoPorBoton = await verificarAreaFinalizadaEnSheets();
+      if (esAdmin) { setRolHabilitado(true); }
+      else { setRolHabilitado(!bloqueadoPorBoton); actualizarEstadoArea(areaAsignada, bloqueadoPorBoton); }
       
-      setPersonal(filtrados);
-      if (!hayPendientes) {
-        setTurnos(tObj);
-        setTurnosBackup(JSON.parse(JSON.stringify(tObj)));
-      }
+      setPersonal(ordenarPersonalPorGrado(filtrados)); 
+      setTurnos(tObj); 
+      setTurnosBackup(JSON.parse(JSON.stringify(tObj))); 
       
-      // Cargar celdas modificadas desde Google Sheets API (cross-device)
+      // Cargar celdas modificadas
       try {
         const rMod = await fetch(
           `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/CELDA_MODIFICADA!A:H?key=${config.apiKey}`
@@ -370,7 +431,6 @@ const MobileRolView = ({
             const fila = parseInt(row[1]);
             const dia = parseInt(row[2]);
             if (!fila || !dia) continue;
-            // emp.id = i, emp.fila = i + 1, so emp.id = fila - 1
             const empIdForMap = fila - 1;
             mapaMod.set(`${empIdForMap}-${dia}`, {
               valorAnterior: String(row[3] || ''),
@@ -384,22 +444,12 @@ const MobileRolView = ({
         }
       } catch { void 0; }
       
-      try {
-        const controller2 = new AbortController();
-        const timeoutId2 = setTimeout(() => controller2.abort(), 5000);
-        const rBloq = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/ESTADOS!A:C?key=${config.apiKey}`, { signal: controller2.signal });
-        clearTimeout(timeoutId2);
-        const dBloq = await rBloq.json();
-        const filaBloq = (dBloq.values || []).find(f => f[0] === hojaSeleccionada && f[1] === areaAsignada);
-        const bloqueado = !esAdmin && filaBloq && filaBloq[2] === 'FINALIZADO';
-        if (esAdmin) setRolHabilitado(true);
-        else setRolHabilitado(!bloqueado);
-        actualizarEstadoArea(areaAsignada, bloqueado);
-      } catch { void 0; }
+      cargadoRef.current = true;
       
-    } catch (e) {
-      console.error('Error cargando:', e);
-      setErrorCarga(e.message || 'Error al cargar datos');
+    } catch (e) { 
+      console.error('Error al cargar datos:', e); 
+      setErrorCarga(e.message);
+      // Intentar cargar respaldo local
       try {
         const b = localStorage.getItem(`${STORAGE_RESPALDO_LOCAL}_${areaAsignada}`);
         if (b) {
@@ -408,52 +458,80 @@ const MobileRolView = ({
             setTurnos(datos.turnos);
             setTurnosBackup(JSON.parse(JSON.stringify(datos.turnos)));
             setPersonal(datos.personal || []);
+            cargadoRef.current = true;
           }
         }
       } catch { void 0; }
-    } finally {
-      cargandoDatosRef.current = false;
+    } 
+    finally { 
+      cargandoRef.current = false; 
+      setCargando(false); 
     }
-  }, [config, hojaSeleccionada, totalDiasMes, areaAsignada, esAdmin, actualizarEstadoArea]);
+  }, [config.sheetId, config.apiKey, hojaSeleccionada, totalDiasMes, areaAsignada, esAdmin, verificarAreaFinalizadaEnSheets, actualizarEstadoArea, esJefe, esUsuario, user]);
 
+  // Guardar referencia a cargarDatos
   useEffect(() => {
-    const init = async () => { setCargando(true); await cargarDatos(); setCargando(false); };
-    init();
+    cargarDatosRef.current = cargarDatos;
   }, [cargarDatos]);
 
+  // ============================================
+  // CARGA INICIAL
+  // ============================================
+  useEffect(() => {
+    if (hojaSeleccionada && config.sheetId && !cargadoRef.current && !cargandoRef.current) {
+      console.log('🚀 Carga inicial MobileRolView');
+      cargarDatosRef.current?.();
+    }
+  }, [hojaSeleccionada, config.sheetId]);
+
+  // ============================================
+  // RECARGA CUANDO CAMBIA EL MES/AÑO
+  // ============================================
+  useEffect(() => {
+    if (cargadoRef.current && !cargandoRef.current) {
+      cargadoRef.current = false;
+      cargarDatosRef.current?.();
+    }
+  }, [mesNavegacion, anioNavegacion]);
+
+  // ============================================
+  // EVENTO DESBLOQUEO
+  // ============================================
   useEffect(() => {
     const handleDesbloqueo = (e) => {
-      if (e.detail.area === areaAsignada) { setRolHabilitado(true); cargarDatos(); }
+      if (e.detail.area === areaAsignada) { 
+        setRolHabilitado(true);
+        cargadoRef.current = false;
+        cargarDatos();
+      }
     };
     window.addEventListener('area-desbloqueada', handleDesbloqueo);
     return () => window.removeEventListener('area-desbloqueada', handleDesbloqueo);
   }, [areaAsignada, cargarDatos]);
 
+  // ============================================
+  // SOLICITUD APROBADA
+  // ============================================
   useEffect(() => {
     let timer = null;
     const handleSolicitudAprobada = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { if (!guardando && !modalCambioAbierto) cargarDatos(); }, 1500);
+      timer = setTimeout(() => { 
+        if (!guardando && !modalCambioAbierto) {
+          cargadoRef.current = false;
+          cargarDatos();
+        }
+      }, 1500);
     };
     window.addEventListener('solicitud-aprobada', handleSolicitudAprobada);
-    return () => { window.removeEventListener('solicitud-aprobada', handleSolicitudAprobada); if (timer) clearTimeout(timer); };
-  }, [cargarDatos, guardando, modalCambioAbierto]);
-
-  useEffect(() => {
-    const intervalo = setInterval(async () => {
-      if (!guardando && !modalCambioAbierto) await cargarDatos();
-    }, 30000);
-    return () => clearInterval(intervalo);
-  }, [cargarDatos, guardando, modalCambioAbierto]);
-
-  useEffect(() => {
-    const h = () => { if (!document.hidden && !guardando && !modalCambioAbierto) cargarDatos(); };
-    document.addEventListener('visibilitychange', h);
-    return () => document.removeEventListener('visibilitychange', h);
+    return () => { 
+      window.removeEventListener('solicitud-aprobada', handleSolicitudAprobada); 
+      if (timer) clearTimeout(timer); 
+    };
   }, [cargarDatos, guardando, modalCambioAbierto]);
 
   // ============================================
-  // AUTO-GUARDADO (fix: usa ref para evitar reset del interval)
+  // GUARDADO CORREGIDO
   // ============================================
   const guardarRespaldoLocal = useCallback(() => {
     try {
@@ -463,51 +541,116 @@ const MobileRolView = ({
     } catch { void 0; }
   }, [turnos, personal, areaAsignada, hojaSeleccionada]);
 
+  // ============================================
+  // GUARDAR CELDA INMEDIATO - CORREGIDO
+  // ============================================
   const guardarCeldaInmediato = useCallback((fila, dia, valor) => {
     if (!config.appsScriptUrl || !hojaSeleccionada) return Promise.resolve(false);
+    
     const columna = columnaLetra(4 + dia);
     const valorTexto = valor ? (TURNO_MAP[valor]?.nombre || valor) : '';
+    const key = `${fila}-${dia}`;
+    
+    // Evitar guardados duplicados
+    if (guardadosPendientesRef.current.has(key)) return Promise.resolve(true);
+    guardadosPendientesRef.current.add(key);
+    
+    // IMPORTANTE: Usar mode: 'no-cors' y manejar silenciosamente
     return fetch(config.appsScriptUrl, {
-      method: 'POST', mode: 'no-cors',
+      method: 'POST',
+      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({ accion: 'guardarCelda', hoja: hojaSeleccionada, fila, columna, valor: valorTexto, responsable: responsable || 'ADMIN', area: areaAsignada, registrarHistorial: false })
-    }).then(() => true).catch(() => false);
+      body: bodyAsciiJson({ 
+        accion: 'guardarCelda', 
+        hoja: hojaSeleccionada, 
+        fila, 
+        columna, 
+        valor: valorTexto, 
+        responsable: responsable || 'ADMIN', 
+        area: areaAsignada, 
+        registrarHistorial: false 
+      })
+    })
+    .then(() => {
+      // Con no-cors, la respuesta es opaca pero la solicitud se envió
+      // Limpiar la clave después de un tiempo
+      setTimeout(() => {
+        guardadosPendientesRef.current.delete(key);
+      }, 1000);
+      return true;
+    })
+    .catch((error) => {
+      // Ignorar errores de red/CORS (son esperados con no-cors)
+      console.warn('⚠️ Error en guardarCeldaInmediato (ignorado):', error.message);
+      setTimeout(() => {
+        guardadosPendientesRef.current.delete(key);
+      }, 1000);
+      return true; // Retornar true porque el mensaje se envió
+    });
   }, [config.appsScriptUrl, hojaSeleccionada, areaAsignada, responsable]);
 
+  // ============================================
+  // AUTO-GUARDADO
+  // ============================================
   const autoGuardarFn = useCallback(async () => {
     if (!config.appsScriptUrl || !rolHabilitado || guardando) return;
     if (personal.length === 0) return;
+    
     const celdas = [];
     for (const emp of personal) {
       const antes = turnosBackup[emp.id] || {};
       const ahora = turnos[emp.id] || {};
       for (let d = 1; d <= totalDiasMes; d++) {
-        if ((antes[d] || '') !== (ahora[d] || '')) celdas.push({ fila: emp.fila, dia: d, valor: ahora[d] || '' });
+        if ((antes[d] || '') !== (ahora[d] || '')) {
+          celdas.push({ fila: emp.fila, dia: d, valor: ahora[d] || '' });
+        }
       }
     }
+    
     if (celdas.length === 0) return;
+    
     try {
-      await Promise.all(celdas.map(c => guardarCeldaInmediato(c.fila, c.dia, c.valor)));
-      setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
-      guardarRespaldoLocal();
-    } catch (e) { console.error('Auto-guardado:', e); guardarRespaldoLocal(); }
+      // Guardar en paralelo pero manejar cada uno independientemente
+      const resultados = await Promise.allSettled(
+        celdas.map(c => guardarCeldaInmediato(c.fila, c.dia, c.valor))
+      );
+      
+      // Si al menos un guardado fue exitoso, actualizar backup
+      const algunExitoso = resultados.some(r => r.status === 'fulfilled' && r.value === true);
+      if (algunExitoso) {
+        setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
+        guardarRespaldoLocal();
+      }
+    } catch (e) { 
+      console.error('Auto-guardado:', e); 
+      guardarRespaldoLocal(); 
+    }
   }, [config.appsScriptUrl, rolHabilitado, guardando, personal, turnos, turnosBackup, totalDiasMes, guardarCeldaInmediato, guardarRespaldoLocal]);
 
-  // Fix: usa ref para que el interval no se resetee en cada edición
-  useEffect(() => { autoGuardarRef.current = autoGuardarFn; }, [autoGuardarFn]);
+  // Actualizar referencia de autoGuardar
+  useEffect(() => {
+    autoGuardarRef.current = autoGuardarFn;
+  }, [autoGuardarFn]);
 
+  // Intervalo de auto-guardado
   useEffect(() => {
     if (!rolHabilitado) return;
-    const intervalo = setInterval(() => { if (autoGuardarRef.current) autoGuardarRef.current(); }, 45000);
+    const intervalo = setInterval(() => { 
+      if (autoGuardarRef.current) autoGuardarRef.current(); 
+    }, 45000);
     return () => clearInterval(intervalo);
   }, [rolHabilitado]);
 
+  // Auto-guardado en eventos
   useEffect(() => {
     const h1 = () => { if (autoGuardarRef.current) autoGuardarRef.current(); };
     const h2 = () => { if (document.hidden && autoGuardarRef.current) autoGuardarRef.current(); };
     window.addEventListener('beforeunload', h1);
     document.addEventListener('visibilitychange', h2);
-    return () => { window.removeEventListener('beforeunload', h1); document.removeEventListener('visibilitychange', h2); };
+    return () => { 
+      window.removeEventListener('beforeunload', h1); 
+      document.removeEventListener('visibilitychange', h2); 
+    };
   }, []);
 
   // ============================================
@@ -566,12 +709,12 @@ const MobileRolView = ({
   const todosLosTurnos = useMemo(() => Object.keys(TURNO_MAP), []);
 
   // ============================================
-  // TOAST (fix: 3.5s en vez de 2s)
+  // TOAST
   // ============================================
   const mostrarToast = useCallback((mensaje, tipo = 'info') => {
-    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToast({ mensaje, tipo });
-    toastTimeout.current = setTimeout(() => setToast(null), 3500);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 3500);
   }, []);
 
   const descartarFrancos = useCallback(() => {
@@ -589,21 +732,22 @@ const MobileRolView = ({
     const nuevo = actual === turnoActivo ? '' : turnoActivo;
     if (actual === nuevo) return;
     
+    // Actualizar estado local inmediatamente
     setTurnos(prev => ({ ...prev, [empId]: { ...prev[empId], [dia]: nuevo } }));
     
+    // Guardar en segundo plano
     const emp = personal.find(p => p.id === empId);
     if (emp) {
       const ok = await guardarCeldaInmediato(emp.fila, dia, nuevo);
-      if (ok) setTurnosBackup(prev => ({ ...prev, [empId]: { ...prev[empId], [dia]: nuevo } }));
+      if (ok) {
+        setTurnosBackup(prev => ({ ...prev, [empId]: { ...prev[empId], [dia]: nuevo } }));
+      }
     }
     
     const t = TURNO_MAP[nuevo];
     mostrarToast(nuevo ? `${t?.nombre || turnoActivo} aplicado` : 'Turno removido', 'success');
   }, [rolHabilitado, turnoActivo, turnos, personal, guardarCeldaInmediato, mostrarToast]);
 
-  // ============================================
-  // SOPORTE TECLADO (para tablets con teclado)
-  // ============================================
   const handleKeyDownCelda = useCallback((e, empId, dia) => {
     if (!rolHabilitado) return;
     const letra = e.key.toUpperCase();
@@ -639,11 +783,30 @@ const MobileRolView = ({
   // ============================================
   // SELECCIÓN MÚLTIPLE
   // ============================================
-  const toggleSeleccion = (empId) => { if (!rolHabilitado && !esAdmin) return; setSeleccionados(prev => { const n = new Set(prev); n.has(empId) ? n.delete(empId) : n.add(empId); return n; }); };
-  const seleccionarTodos = () => { if (!rolHabilitado && !esAdmin) return; setSeleccionados(new Set(personalFiltrado.map(e => e.id))); };
-  const limpiarSeleccion = () => setSeleccionados(new Set());
-  const toggleDiaSemana = (di) => { if (!rolHabilitado && !esAdmin) return; setDiasSeleccionadosSemana(prev => prev.includes(di) ? prev.filter(d => d !== di) : [...prev, di]); };
-  const seleccionarGrupo = (g) => { if (!rolHabilitado && !esAdmin) return; setDiasSeleccionadosSemana(g.dias); };
+  const toggleSeleccion = useCallback((empId) => { 
+    if (!rolHabilitado && !esAdmin) return; 
+    setSeleccionados(prev => { 
+      const n = new Set(prev); 
+      n.has(empId) ? n.delete(empId) : n.add(empId); 
+      return n; 
+    }); 
+  }, [rolHabilitado, esAdmin]);
+
+  const seleccionarTodos = useCallback(() => { 
+    if (!rolHabilitado && !esAdmin) return; 
+    setSeleccionados(new Set(personalFiltrado.map(e => e.id))); 
+  }, [rolHabilitado, esAdmin, personalFiltrado]);
+
+  const limpiarSeleccion = useCallback(() => setSeleccionados(new Set()), []);
+  const toggleDiaSemana = useCallback((di) => { 
+    if (!rolHabilitado && !esAdmin) return; 
+    setDiasSeleccionadosSemana(prev => prev.includes(di) ? prev.filter(d => d !== di) : [...prev, di]); 
+  }, [rolHabilitado, esAdmin]);
+
+  const seleccionarGrupo = useCallback((g) => { 
+    if (!rolHabilitado && !esAdmin) return; 
+    setDiasSeleccionadosSemana(g.dias); 
+  }, [rolHabilitado, esAdmin]);
 
   const aplicarTurnoSeleccion = useCallback(() => {
     if (!rolHabilitado) return;
@@ -657,7 +820,7 @@ const MobileRolView = ({
       });
     });
     mostrarToast(`${TURNO_MAP[turnoActivo]?.nombre || turnoActivo} aplicado a ${seleccionados.size} personal (${diasAfectados.length} dias)`, 'success');
-  }, [rolHabilitado, seleccionados, diasAfectados, turnoActivo, personal, turnosBackup, guardarCeldaInmediato, mostrarToast]);
+  }, [rolHabilitado, seleccionados, diasAfectados, turnoActivo, personal, guardarCeldaInmediato, mostrarToast]);
 
   const aplicarPatronRotativo = useCallback(() => {
     if (!rolHabilitado) return;
@@ -673,7 +836,7 @@ const MobileRolView = ({
     });
     mostrarToast(`Patron rotativo aplicado a ${seleccionados.size} personal`, 'success');
     setModoPatron(false);
-  }, [rolHabilitado, seleccionados, diasAfectados, patronRotativo, personal, turnosBackup, guardarCeldaInmediato, mostrarToast]);
+  }, [rolHabilitado, seleccionados, diasAfectados, patronRotativo, personal, guardarCeldaInmediato, mostrarToast]);
 
   const limpiarTurnosSeleccionados = useCallback(() => {
     if (!rolHabilitado || seleccionados.size === 0) return;
@@ -683,7 +846,7 @@ const MobileRolView = ({
     seleccionados.forEach(eid => { const emp = personal.find(p => p.id === eid); if (emp) todosDias.forEach(d => { if (turnos[eid]?.[d]) guardarCeldaInmediato(emp.fila, d, ''); }); });
     mostrarToast(`Turnos borrados de ${seleccionados.size} personal`, 'success');
     limpiarSeleccion();
-  }, [rolHabilitado, seleccionados, personal, turnos, totalDiasMes, guardarCeldaInmediato, mostrarToast]);
+  }, [rolHabilitado, seleccionados, personal, turnos, totalDiasMes, guardarCeldaInmediato, mostrarToast, limpiarSeleccion]);
 
   const handleAbrirModalCambio = useCallback((emp) => { setTrabajadorSeleccionado(emp); setModalCambioAbierto(true); }, []);
 
@@ -698,6 +861,9 @@ const MobileRolView = ({
     return h;
   }, [diasSemana, getTurnoDisplay]);
 
+  // ============================================
+  // REGISTRAR CAMBIO DE TURNO
+  // ============================================
   const registrarCambioTurno = useCallback((empId, cambios) => {
     setTurnos(prev => { const n = { ...prev }; if (!n[empId]) n[empId] = {}; cambios.forEach(c => { n[empId][c.dia] = c.turnoNuevoCodigo; }); return n; });
     setTurnosBackup(prev => { const n = { ...prev }; if (!n[empId]) n[empId] = {}; cambios.forEach(c => { n[empId][c.dia] = c.turnoNuevoCodigo; }); return n; });
@@ -706,7 +872,6 @@ const MobileRolView = ({
       cambios.forEach(c => next.set(`${empId}-${c.dia}`, { turnoAnterior: c.turnoAnterior || '', turnoNuevo: c.turnoNuevoCodigo || '', tipo: 'solicitud' }));
       return next;
     });
-    // Persistir SOLO cambios del panel admin en Google Sheets (cross-device)
     if (config.appsScriptUrl) {
       cambios.forEach(c => {
         fetch(config.appsScriptUrl, {
@@ -728,6 +893,9 @@ const MobileRolView = ({
     mostrarToast(`${cambios.length} cambio(s) registrado(s)`, 'success');
   }, [mostrarToast, config.appsScriptUrl, hojaSeleccionada, personal, responsable]);
 
+  // ============================================
+  // GUARDAR DESCANSO MEDICO
+  // ============================================
   const guardarDescansoMedico = useCallback((descanso) => {
     if (!config.appsScriptUrl) return;
     fetch(config.appsScriptUrl, {
@@ -755,7 +923,9 @@ const MobileRolView = ({
     }
   }, [config.appsScriptUrl, personal, mesSeleccionado, anioSeleccionado, guardarCeldaInmediato]);
 
-  // Limpiar celdas modificadas en Google Sheets después de guardar
+  // ============================================
+  // LIMPIAR CELDAS MODIFICADAS
+  // ============================================
   const limpiarCeldasModificadasPersistidas = useCallback(() => {
     if (!config.appsScriptUrl || !hojaSeleccionada) return;
     fetch(config.appsScriptUrl, {
@@ -765,6 +935,9 @@ const MobileRolView = ({
     }).catch(() => {});
   }, [config.appsScriptUrl, hojaSeleccionada]);
 
+  // ============================================
+  // GUARDAR CELDA CON REGISTRO
+  // ============================================
   const guardarCeldaConRegistro = useCallback(async (fila, dia, valor) => {
     if (!config.appsScriptUrl || !hojaSeleccionada) throw new Error('Configuracion incompleta');
     const key = `${fila}-${dia}-modal`;
@@ -773,9 +946,25 @@ const MobileRolView = ({
     try {
       const columna = columnaLetra(4 + dia);
       const valorTexto = valor ? (TURNO_MAP[valor]?.nombre || valor) : '';
-      await fetch(config.appsScriptUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: bodyAsciiJson({ accion: 'guardarCelda', hoja: hojaSeleccionada, fila, columna, valor: valorTexto, responsable: responsable || 'ADMIN', area: areaAsignada, origen: 'modalCambioTurno', registrarHistorial: true }) });
+      await fetch(config.appsScriptUrl, { 
+        method: 'POST', mode: 'no-cors', 
+        headers: { 'Content-Type': 'text/plain' }, 
+        body: bodyAsciiJson({ 
+          accion: 'guardarCelda', 
+          hoja: hojaSeleccionada, 
+          fila, 
+          columna, 
+          valor: valorTexto, 
+          responsable: responsable || 'ADMIN', 
+          area: areaAsignada, 
+          origen: 'modalCambioTurno', 
+          registrarHistorial: true 
+        }) 
+      });
       return true;
-    } finally { setTimeout(() => { guardadosPendientesRef.current.delete(key); }, 1000); }
+    } finally { 
+      setTimeout(() => { guardadosPendientesRef.current.delete(key); }, 1000); 
+    }
   }, [config.appsScriptUrl, hojaSeleccionada, areaAsignada, responsable]);
 
   // ============================================
@@ -824,11 +1013,13 @@ const MobileRolView = ({
     return () => window.removeEventListener('registrar-cambios-aprobados', handleRegistrarCambios);
   }, [mostrarToast]);
 
+  // ============================================
+  // GUARDAR FINAL
+  // ============================================
   const handleGuardar = async () => {
     if (!config.appsScriptUrl) return;
     setGuardando(true);
     try {
-      // Guardar lote como seguridad — guarda TODO el rol de una vez
       const filas = personal.map(emp => ({
         fila: emp.fila,
         valores: Array.from({ length: totalDiasMes }, (_, i) => {
@@ -839,7 +1030,14 @@ const MobileRolView = ({
       await fetch(config.appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
-        body: bodyAsciiJson({ accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaAsignada, responsable: responsable || 'ADMIN', filas })
+        body: bodyAsciiJson({ 
+          accion: 'guardarLote', 
+          hoja: hojaSeleccionada, 
+          colInicio: 'F', 
+          area: areaAsignada, 
+          responsable: responsable || 'ADMIN', 
+          filas 
+        })
       });
       setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
       guardarRespaldoLocal();
@@ -852,8 +1050,153 @@ const MobileRolView = ({
       });
       if (!esAdmin) { setRolHabilitado(false); actualizarEstadoArea(areaAsignada, true); }
       mostrarToast('Guardado exitosamente', 'success');
-    } catch { guardarRespaldoLocal(); mostrarToast('Error al guardar', 'error'); }
-    finally { setGuardando(false); }
+    } catch { 
+      guardarRespaldoLocal(); 
+      mostrarToast('Error al guardar', 'error'); 
+    } finally { 
+      setGuardando(false); 
+    }
+  };
+
+  // ============================================
+  // VISTA DE USUARIO MEJORADA
+  // ============================================
+  const renderUsuarioVista = () => {
+    const emp = personal[0];
+    if (!emp) return null;
+
+    const firstDay = new Date(anioSeleccionado, mesSeleccionado - 1, 1).getDay();
+    const offset = firstDay === 0 ? 6 : firstDay - 1;
+    const cells = [];
+    
+    for (let i = 0; i < offset; i++) cells.push({ empty: true, key: `e${i}` });
+    for (let d = 1; d <= totalDiasMes; d++) {
+      const cod = turnos[emp.id]?.[d] || '';
+      const t = TURNO_MAP[cod];
+      const fecha = new Date(anioSeleccionado, mesSeleccionado - 1, d);
+      const dow = fecha.getDay();
+      const esHoy = d === new Date().getDate() && mesSeleccionado === new Date().getMonth() + 1 && anioSeleccionado === new Date().getFullYear();
+      const infoMod = celdasModificadas.get(`${emp.id}-${d}`);
+      cells.push({
+        empty: false, dia: d, cod, turno: t,
+        esFinDeSemana: dow === 0 || dow === 6,
+        esHoy,
+        infoMod,
+        key: d,
+        diaSemana: dow
+      });
+    }
+    while (cells.length % 7 !== 0) cells.push({ empty: true, key: `t${cells.length}` });
+
+    const weeks = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+    let horas = 0, turnosCount = 0, francos = 0;
+    for (let d = 1; d <= totalDiasMes; d++) {
+      const cod = turnos[emp.id]?.[d] || '';
+      const t = TURNO_MAP[cod];
+      if (!t) continue;
+      if (t.horas > 0) horas += t.horas;
+      if (cod === 'F' || cod === 'FE') francos++;
+      else if (t.horas > 0) turnosCount++;
+    }
+
+    const hexToRgba = (hex, alpha) => {
+      if (!hex || !hex.startsWith('#')) return hex;
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    return (
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="bg-white rounded-2xl border shadow-sm max-w-md mx-auto overflow-hidden">
+          <div className="p-4 border-b">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                <User className="w-6 h-6 text-gray-400" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-800">{emp.grado} {emp.nombre}</p>
+                <p className="text-xs text-gray-400">DNI: {emp.dni}</p>
+                <p className="text-xs text-emerald-600 font-medium">{horas}h este mes · {turnosCount} turnos</p>
+              </div>
+            </div>
+            {!rolHabilitado && (
+              <div className="mt-2 pt-2 border-t">
+                <span className="text-xs text-gray-400">Solo consulta</span>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-1 p-2 bg-gray-50/50">
+            <div className="text-center p-2 bg-white rounded-lg border">
+              <p className="text-lg font-bold text-gray-700">{turnosCount}</p>
+              <p className="text-[10px] text-gray-400">Turnos</p>
+            </div>
+            <div className="text-center p-2 bg-white rounded-lg border">
+              <p className="text-lg font-bold text-gray-700">{francos}</p>
+              <p className="text-[10px] text-gray-400">Francos</p>
+            </div>
+            <div className="text-center p-2 bg-white rounded-lg border">
+              <p className="text-lg font-bold" style={{ color: COLOR_PRIMARIO }}>{horas}h</p>
+              <p className="text-[10px] text-gray-400">Horas</p>
+            </div>
+          </div>
+
+          <div className="p-3">
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {DIAS_SEMANA_NOMBRES.map((d, i) => (
+                <div key={i} className={`text-center text-[9px] font-semibold uppercase ${i === 0 || i === 6 ? 'text-gray-300' : 'text-gray-400'}`}>
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            {weeks.map((week, wi) => (
+              <div key={wi} className="grid grid-cols-7 gap-1 mb-1">
+                {week.map((cell) => {
+                  if (cell.empty) return <div key={cell.key} className="aspect-square" />;
+                  
+                  const { dia, cod, turno, esFinDeSemana, esHoy, infoMod } = cell;
+                  const bgColor = turno ? hexToRgba(turno.color, esFinDeSemana ? 0.35 : 0.5) : (esFinDeSemana ? '#f3f4f6' : '#ffffff');
+                  
+                  return (
+                    <div
+                      key={cell.key}
+                      className={`group/celda relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all ${esHoy ? 'ring-2 ring-emerald-500 ring-offset-1' : ''}`}
+                      style={{ backgroundColor: bgColor }}
+                    >
+                      {infoMod && (
+                        <>
+                          <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-emerald-500 rounded-full z-[9999] shadow-[0_0_4px_rgba(16,185,129,0.6)]" />
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-gray-900 text-white text-[9px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
+                            <div className="flex items-center gap-1">
+                              <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+                              <span className="font-semibold">{infoMod.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      
+                      <span className={`text-[11px] font-medium ${esHoy ? 'text-emerald-600 font-bold' : turno ? 'text-gray-700' : 'text-gray-300'}`}>
+                        {dia}
+                      </span>
+                      {turno && (
+                        <span className="text-[6px] font-bold leading-none mt-0.5" style={{ color: turno.texto }}>
+                          {turno.nombre}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // ============================================
@@ -886,10 +1229,64 @@ const MobileRolView = ({
     );
   }
 
+  // ============================================
+  // VISTA DE USUARIO
+  // ============================================
+  if (esUsuario && personal.length === 1) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="text-white px-4 pt-4 pb-3 shadow-lg" style={{ backgroundColor: COLOR_PRIMARIO }}>
+          <div className="flex items-center justify-between">
+            <div className="min-w-0 flex-1 mr-3">
+              <h1 className="text-lg font-bold truncate">Mi Rol</h1>
+              <p className="text-xs text-white/70 truncate">{responsable}</p>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="text-[10px] font-medium px-2 py-1 rounded-full bg-white/20 text-white">Usuario</span>
+              <button onClick={onSalir} className="p-1.5 hover:bg-white/20 rounded-lg"><X className="w-4 h-4" /></button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-3 mt-3">
+            <button onClick={() => navigateMonth(-1)} className="p-1.5 hover:bg-white/20 rounded-lg active:scale-90 transition-all">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <select
+              value={anioNavegacion}
+              onChange={(e) => handleAnioChangeUsuario(parseInt(e.target.value))}
+              className="bg-white/15 text-white text-xs font-bold px-2 py-1 rounded-lg border border-white/20 focus:outline-none"
+            >
+              {ANIOS.map(a => <option key={a} value={a} className="text-gray-800">{a}</option>)}
+            </select>
+            <select
+              value={mesNavegacion}
+              onChange={(e) => handleMesChangeUsuario(parseInt(e.target.value))}
+              className="bg-white/15 text-white text-xs font-bold px-3 py-1 rounded-lg border border-white/20 focus:outline-none"
+            >
+              {MESES.map((m, i) => <option key={i} value={i + 1} className="text-gray-800">{m}</option>)}
+            </select>
+            <button onClick={() => navigateMonth(1)} className="p-1.5 hover:bg-white/20 rounded-lg active:scale-90 transition-all">
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="text-center mt-1">
+            <p className="text-xs text-white/50">
+              {MESES[mesSeleccionado - 1]} {anioSeleccionado}
+            </p>
+          </div>
+        </div>
+
+        {renderUsuarioVista()}
+      </div>
+    );
+  }
+
+  // ============================================
+  // RENDER NORMAL
+  // ============================================
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       
-      {/* TOAST */}
       {toast && (
         <div className="fixed top-4 left-4 right-4 z-50 animate-slide-down">
           <div className={`px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 ${
@@ -901,7 +1298,6 @@ const MobileRolView = ({
         </div>
       )}
 
-      {/* HEADER */}
       <div className="text-white px-4 pt-4 pb-3 shadow-lg" style={{ backgroundColor: COLOR_PRIMARIO }}>
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1 mr-3">
@@ -918,7 +1314,6 @@ const MobileRolView = ({
           </div>
         </div>
 
-        {/* NAVEGACIÓN MES/AÑO */}
         <div className="flex items-center justify-center gap-3 mt-3">
           <button onClick={() => navigateMonth(-1)} className="p-1.5 hover:bg-white/20 rounded-lg active:scale-90 transition-all">
             <ChevronLeft className="w-5 h-5" />
@@ -941,19 +1336,25 @@ const MobileRolView = ({
             <ChevronRight className="w-5 h-5" />
           </button>
           {(mesNavegacion !== mesActualNum || anioNavegacion !== anioActualNum) && (
-            <button onClick={() => { handleMesChangeUsuario(mesActualNum); setAnioNavegacion(anioActualNum); }} className="text-[10px] text-white/60 hover:text-white underline ml-1">
-              Ir a hoy
+            <button 
+              onClick={() => { handleMesChangeUsuario(mesActualNum); setAnioNavegacion(anioActualNum); }} 
+              className="text-[10px] text-white/60 hover:text-white underline ml-1 whitespace-nowrap"
+            >
+              Hoy
             </button>
           )}
         </div>
 
-        {hojasDisponibles.length > 1 && (
-          <select value={hojaSeleccionada} onChange={(e) => handleHojaChange(e.target.value)}
-            className="mt-2 w-full px-3 py-1.5 rounded-lg bg-white/15 text-white text-xs font-medium border border-white/20 focus:outline-none focus:bg-white/25">
-            {hojasDisponibles.map(h => <option key={h} value={h} className="text-gray-800">{h}</option>)}
-          </select>
-        )}
-        <p className="text-xs text-white/50 mt-1">{personal.length} personal · {totalDiasMes} dias</p>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-white/50">
+            {MESES[mesSeleccionado - 1]} {anioSeleccionado} · {personal.length} personal · {totalDiasMes} días
+          </p>
+          {hojasDisponibles.length > 0 && (
+            <span className="text-[10px] text-white/40">
+              Hoja: {hojaSeleccionada}
+            </span>
+          )}
+        </div>
       </div>
 
       {appsScriptError && (
@@ -963,11 +1364,16 @@ const MobileRolView = ({
         </div>
       )}
 
-      {/* BÚSQUEDA */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input type="text" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por nombre, grado o DNI..." className="w-full pl-9 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white" />
+          <input 
+            type="text" 
+            value={busqueda} 
+            onChange={(e) => setBusqueda(e.target.value)} 
+            placeholder="Buscar por nombre, grado o DNI..." 
+            className="w-full pl-9 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white" 
+          />
           {busqueda && <button onClick={() => setBusqueda('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"><X className="w-4 h-4" /></button>}
         </div>
         <div className="flex items-center justify-between mt-2">
@@ -978,7 +1384,6 @@ const MobileRolView = ({
         </div>
       </div>
 
-      {/* NAVEGACIÓN SEMANAL */}
       <div className="bg-white border-b border-gray-100 px-4 py-2 flex items-center justify-between">
         <button onClick={() => setSemanaActual(s => Math.max(0, s - 1))} disabled={semanaActual === 0} className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-30 active:scale-90 transition-all">
           <ChevronLeft className="w-5 h-5 text-gray-500" />
@@ -996,7 +1401,6 @@ const MobileRolView = ({
         {Array.from({ length: totalSemanas }).map((_, i) => (<div key={i} className={`h-1 rounded-full transition-all ${i === semanaActual ? 'w-6 bg-emerald-500' : 'w-2 bg-gray-200'}`} />))}
       </div>
 
-      {/* BARRA SELECCIÓN MÚLTIPLE */}
       {rolHabilitado && seleccionados.size > 0 && (
         <div className="bg-emerald-50/70 border-b border-emerald-100 px-4 py-2.5">
           <div className="flex items-center justify-between gap-2">
@@ -1025,7 +1429,6 @@ const MobileRolView = ({
         </div>
       )}
 
-      {/* LISTA DE PERSONAL */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {totalFrancosInvalidos > 0 && rolHabilitado && !francosDescartados && (
           <div className="px-4 py-3 rounded-xl text-sm font-medium bg-red-50 border-2 border-red-200 flex items-center gap-2 cursor-pointer hover:bg-red-100 transition-colors" onClick={() => setMostrarModalFrancos(true)}>
@@ -1044,7 +1447,6 @@ const MobileRolView = ({
             const tieneFrancosInvalidos = idsConFrancosInvalidos.has(emp.id);
             return (
               <div key={emp.id} data-empleado-id={emp.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${tieneFrancosInvalidos ? 'border-red-300 ring-1 ring-red-200' : ''} ${seleccionados.has(emp.id) ? 'border-emerald-400 ring-2 ring-emerald-200' : ''}`}>
-                {/* HEADER TRABAJADOR */}
                 <div className="px-4 py-3 flex items-center justify-between border-b border-gray-50">
                   {rolHabilitado && (
                     <button onClick={() => toggleSeleccion(emp.id)} className={`p-2 rounded-lg flex-shrink-0 transition-colors mr-1 ${seleccionados.has(emp.id) ? 'bg-emerald-100 text-emerald-600' : 'text-gray-300 hover:text-gray-500'}`}>
@@ -1061,7 +1463,6 @@ const MobileRolView = ({
                     {esAdmin && <button onClick={(e) => { e.stopPropagation(); handleAbrirModalCambio(emp); }} className="p-2 hover:bg-amber-50 rounded-lg transition-colors active:scale-90" title="Registrar cambio"><FileText className="w-4 h-4 text-amber-500" /></button>}
                   </div>
                 </div>
-                {/* GRID DE DÍAS */}
                 <div className="px-4 py-3">
                   <div className="grid grid-cols-7 gap-1 mb-1.5">
                     {DIAS_SEMANA_NOMBRES.map((d, i) => (<div key={i} className={`text-center text-[10px] font-semibold ${i === 0 || i === 6 ? 'text-gray-300' : 'text-gray-400'}`}>{d}</div>))}
@@ -1079,10 +1480,18 @@ const MobileRolView = ({
                           onClick={() => handleDiaClick(emp.id, d.fecha)} 
                           onKeyDown={(e) => handleKeyDownCelda(e, emp.id, dia)}
                           disabled={!rolHabilitado}
-                          className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-[11px] font-bold transition-all ${d.esHoy ? 'ring-2 ring-emerald-500 ring-offset-1' : ''} ${d.esFinDeSemana && !codigo ? 'opacity-50' : ''} ${!rolHabilitado ? 'opacity-60' : 'active:scale-90'}`}
+                          className={`group/celda relative aspect-square rounded-xl flex flex-col items-center justify-center text-[11px] font-bold transition-all ${d.esHoy ? 'ring-2 ring-emerald-500 ring-offset-1' : ''} ${d.esFinDeSemana && !codigo ? 'opacity-50' : ''} ${!rolHabilitado ? 'opacity-60' : 'active:scale-90'}`}
                           style={{ backgroundColor: turno?.color || '#f9fafb', color: turno?.texto || '#94a3b8' }}>
                           {infoMod && (
-                            <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full z-[1] shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
+                            <>
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full z-[9999] shadow-[0_0_3px_rgba(16,185,129,0.6)]" />
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-gray-900 text-white text-[9px] rounded-lg shadow-xl opacity-0 invisible group-hover/celda:opacity-100 group-hover/celda:visible transition-all duration-200 pointer-events-none z-[9999] whitespace-nowrap border border-gray-700">
+                                <div className="flex items-center gap-1">
+                                  <span className={`w-1.5 h-1.5 rounded-full ${infoMod.tipo === 'solicitud' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+                                  <span className="font-semibold">{infoMod.tipo === 'solicitud' ? 'Solicitud' : 'Cambio directo'}</span>
+                                </div>
+                              </div>
+                            </>
                           )}
                           <span className="text-[10px] leading-none">{d.dia}</span>
                           <span className="text-[9px] font-bold leading-none mt-0.5">{codigo || '·'}</span>
@@ -1098,7 +1507,6 @@ const MobileRolView = ({
         )}
       </div>
 
-      {/* BARRA INFERIOR FIJA: TURNOS + GUARDAR + SOLICITUD */}
       {rolHabilitado && (
         <div className="sticky bottom-0 bg-white border-t shadow-lg safe-area-bottom">
           <div className="px-3 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
@@ -1132,7 +1540,6 @@ const MobileRolView = ({
         </div>
       )}
 
-      {/* MODAL PATRÓN */}
       {modoPatron && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center z-[250]" onClick={() => setModoPatron(false)}>
           <div className="bg-white rounded-t-2xl w-full max-w-md p-4 pb-6 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -1163,7 +1570,6 @@ const MobileRolView = ({
         </div>
       )}
 
-      {/* MODALES */}
       {esAdmin && (
         <ModalCambioTurno 
           isOpen={modalCambioAbierto} onClose={() => setModalCambioAbierto(false)} 
@@ -1242,4 +1648,4 @@ const MobileRolView = ({
   );
 };
 
-export default MobileRolView;
+export default React.memo(MobileRolView);

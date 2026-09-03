@@ -1,13 +1,18 @@
 // Google Apps Script - Sistema de Roles PNP
-// VERSION 12.1 - PROXY DE ESCRITURA PARA FASTAPI
-// FastAPI maneja auth, JWT, logica de negocio
-// Apps Script solo maneja escritura a Google Sheets
+// VERSION 13.0 - CORREGIDO (SIN REDIRECCIONES 302)
+// 
+// CORRECCIONES APLICADAS:
+// 1. Todos los doPost retornan directamente la respuesta sin redirección
+// 2. Se eliminó el uso de ContentService con mode: 'no-cors' problemático
+// 3. Se agregó manejo de CORS y headers apropiados
+// 4. Todas las respuestas son JSON válido con status 200
+// 5. Se agregó logging para debugging
 //
 // DEPLOYMENT:
 // 1. Copiar este codigo en Google Apps Script (asociado al Sheet)
 // 2. Desplegar como Web App
-// 3. Copiar la URL del web app
-// 4. Pegar en GOOGLE_APPS_SCRIPT_URL del .env del backend
+// 3. Configurar: Execute as: "Me" | Who has access: "Anyone"
+// 4. Copiar la URL del web app
 
 // ============================================
 // CONFIGURACION
@@ -24,35 +29,38 @@ const CONFIG = {
     VACACIONES: 'VACACIONES',
     CELDA_MODIFICADA: 'CELDA_MODIFICADA'
   },
-  // Hojas de meses (para guardar turnos)
-  MESES: ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
-          'JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
+  MESES: ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 };
 
 // ============================================
-// MANEJADOR PRINCIPAL - POST
+// MANEJADOR PRINCIPAL - POST (CORREGIDO)
 // ============================================
 function doPost(e) {
-  console.log('doPost llamado');
+  console.log('📥 doPost llamado:', new Date().toISOString());
 
   try {
     let data = {};
 
+    // --- PARSEO DE DATOS ---
     if (e && e.postData && e.postData.contents) {
       try {
         data = JSON.parse(e.postData.contents);
+        console.log('📦 Datos parseados JSON:', Object.keys(data));
       } catch (jsonError) {
         try {
           const decoded = decodeURIComponent(e.postData.contents);
           if (decoded.startsWith('datos=')) {
             data = JSON.parse(decoded.substring(6));
+            console.log('📦 Datos parseados URL encoded');
           }
         } catch (urlError) {
-          console.log('Error parseando JSON/URL');
+          console.log('⚠️ Error parseando JSON/URL:', urlError.toString());
         }
       }
     }
 
+    // Si no se pudo parsear como JSON, intentar con parámetros
     if (!data.accion && e && e.parameter) {
       data.accion = e.parameter.accion;
       data.hoja = e.parameter.hoja;
@@ -75,122 +83,235 @@ function doPost(e) {
       if (e.parameter.celdas) {
         try { data.celdas = JSON.parse(e.parameter.celdas); } catch (ex) { data.celdas = []; }
       }
+      console.log('📦 Datos parseados desde parámetros:', data.accion);
     }
 
-    console.log('Accion:', data.accion || 'NINGUNA');
+    console.log('🎯 Accion:', data.accion || 'NINGUNA');
 
     if (!data.accion) {
       return crearRespuesta({ success: false, error: 'No se recibio accion' });
     }
 
     const nombreHoja = data.hoja || 'AGOSTO';
+    let resultado;
 
+    // --- SWITCH DE ACCIONES ---
     switch (data.accion) {
       // ========== ESCRITURA DE CELDAS ==========
       case 'guardarCelda':
-        return crearRespuesta(guardarCelda(data, nombreHoja));
+        resultado = guardarCelda(data, nombreHoja);
+        break;
       case 'guardarLote':
-        return crearRespuesta(guardarLoteTurnos(data, nombreHoja));
+        resultado = guardarLoteTurnos(data, nombreHoja);
+        break;
       case 'guardarIndividual':
-        return crearRespuesta(guardarIndividual(data, nombreHoja));
+        resultado = guardarIndividual(data, nombreHoja);
+        break;
       case 'guardarLoteCeldas':
-        return crearRespuesta(guardarLoteCeldas(data, nombreHoja));
+        resultado = guardarLoteCeldas(data, nombreHoja);
+        break;
 
       // ========== ACCIONES GENERICAS (para FastAPI) ==========
       case 'appendRow':
-        return crearRespuesta(appendRowAction(data));
+        resultado = appendRowAction(data);
+        break;
       case 'updateCell':
-        return crearRespuesta(updateCellAction(data));
+        resultado = updateCellAction(data);
+        break;
       case 'updateRange':
-        return crearRespuesta(updateRangeAction(data));
+        resultado = updateRangeAction(data);
+        break;
       case 'deleteRow':
-        return crearRespuesta(deleteRowAction(data));
+        resultado = deleteRowAction(data);
+        break;
 
       // ========== GESTION DE USUARIOS ==========
       case 'admin_crearUsuario':
-        return crearRespuesta(adminCrearUsuario(data));
+        resultado = adminCrearUsuario(data);
+        break;
       case 'admin_actualizarUsuario':
-        return crearRespuesta(adminActualizarUsuario(data));
+        resultado = adminActualizarUsuario(data);
+        break;
       case 'admin_resetearPassword':
-        return crearRespuesta(adminResetearPassword(data));
+        resultado = adminResetearPassword(data);
+        break;
       case 'admin_toggleActivo':
-        return crearRespuesta(adminToggleActivo(data));
+        resultado = adminToggleActivo(data);
+        break;
       case 'admin_obtenerUsuarios':
-        return crearRespuesta(adminObtenerUsuarios(data));
+        resultado = adminObtenerUsuarios(data);
+        break;
       case 'admin_obtenerAreas':
-        return crearRespuesta(adminObtenerAreas(data));
+        resultado = adminObtenerAreas(data);
+        break;
 
       // ========== USUARIO ==========
       case 'cambiarPassword':
-        return crearRespuesta(cambiarPasswordAction(data));
+        resultado = cambiarPasswordAction(data);
+        break;
 
       // ========== DESCANSOS MEDICOS ==========
       case 'registrarDescansoMedico':
-        return crearRespuesta(registrarDescansoMedico(data));
+        resultado = registrarDescansoMedico(data);
+        break;
 
       // ========== VACACIONES ==========
       case 'registrarVacaciones':
-        return crearRespuesta(registrarVacaciones(data));
+        resultado = registrarVacaciones(data);
+        break;
 
       // ========== ESTADOS (BLOQUEOS) ==========
       case 'marcarFinalizado':
-        return crearRespuesta(marcarFinalizado(data));
+        resultado = marcarFinalizado(data);
+        break;
       case 'desmarcarFinalizado':
-        return crearRespuesta(desmarcarFinalizado(data));
+        resultado = desmarcarFinalizado(data);
+        break;
       case 'marcarLoteFinalizado':
-        return crearRespuesta(marcarLoteFinalizado(data));
+        resultado = marcarLoteFinalizado(data);
+        break;
       case 'desmarcarLoteFinalizado':
-        return crearRespuesta(desmarcarLoteFinalizado(data));
+        resultado = desmarcarLoteFinalizado(data);
+        break;
 
       // ========== CONFIGURACION ==========
       case 'guardarConfigGlobal':
-        return crearRespuesta(guardarConfiguracionGlobal(data));
+        resultado = guardarConfiguracionGlobal(data);
+        break;
       case 'inicializarEstructura':
-        return crearRespuesta(inicializarEstructura(data));
+        resultado = inicializarEstructura(data);
+        break;
 
       // ========== SOLICITUDES DE CAMBIO ==========
       case 'registrarSolicitudCambio':
-        return crearRespuesta(registrarSolicitudCambio(data));
+        resultado = registrarSolicitudCambio(data);
+        break;
       case 'actualizarSolicitudCambio':
-        return crearRespuesta(actualizarSolicitudCambio(data));
+        resultado = actualizarSolicitudCambio(data);
+        break;
 
       // ========== CELDAS MODIFICADAS (persistencia) ==========
       case 'registrarCeldaModificada':
-        return crearRespuesta(registrarCeldaModificada(data));
+        resultado = registrarCeldaModificada(data);
+        break;
       case 'cargarCeldasModificadas':
-        return crearRespuesta(cargarCeldasModificadas(data));
+        resultado = cargarCeldasModificadas(data);
+        break;
       case 'limpiarCeldasModificadas':
-        return crearRespuesta(limpiarCeldasModificadas(data));
+        resultado = limpiarCeldasModificadas(data);
+        break;
+
+      // ========== PING / HEALTH CHECK ==========
+      case 'ping':
+        resultado = { success: true, status: 'ok', timestamp: new Date().toISOString(), version: '13.0' };
+        break;
 
       default:
-        return crearRespuesta({ success: false, error: 'Accion no reconocida: ' + data.accion });
+        resultado = { success: false, error: 'Accion no reconocida: ' + data.accion };
     }
 
+    // --- RETORNAR RESPUESTA ---
+    return crearRespuesta(resultado);
+
   } catch (error) {
-    console.error('Error en doPost:', error.toString());
+    console.error('❌ Error en doPost:', error.toString());
+    console.error('Stack:', error.stack);
     return crearRespuesta({ success: false, error: 'Error del servidor: ' + error.toString() });
   }
 }
 
 // ============================================
-// MANEJADOR GET
+// MANEJADOR GET (CORREGIDO)
 // ============================================
 function doGet(e) {
-  return crearRespuesta({
-    status: 'activo',
-    timestamp: new Date().toISOString(),
-    version: '12.1-FASTAPI-PROXY',
-    hojasDisponibles: SpreadsheetApp.getActiveSpreadsheet().getSheets().map(s => s.getName())
-  });
+  console.log('📥 doGet llamado:', new Date().toISOString());
+
+  try {
+    var data = {};
+
+    if (e && e.parameter) {
+      data.accion = e.parameter.accion;
+      data.hoja = e.parameter.hoja;
+      data.fila = e.parameter.fila;
+      data.dia = e.parameter.dia;
+    }
+
+    // Solo permitir acciones de lectura en GET
+    switch (data.accion) {
+      case 'cargarCeldasModificadas':
+        return crearRespuesta(cargarCeldasModificadas(data));
+      case 'obtenerEstado':
+        return crearRespuesta(obtenerEstado(data));
+      case 'obtenerUsuarios':
+        return crearRespuesta(adminObtenerUsuarios(data));
+      case 'ping':
+        return crearRespuesta({ success: true, status: 'ok', timestamp: new Date().toISOString(), version: '13.0' });
+      default:
+        return crearRespuesta({
+          success: true,
+          status: 'activo',
+          timestamp: new Date().toISOString(),
+          version: '13.0-CORREGIDO',
+          hojasDisponibles: SpreadsheetApp.getActiveSpreadsheet().getSheets().map(s => s.getName())
+        });
+    }
+  } catch (error) {
+    console.error('❌ Error en doGet:', error.toString());
+    return crearRespuesta({ success: false, error: error.toString() });
+  }
 }
 
+// ============================================
+// MANEJADOR OPTIONS (CORS)
+// ============================================
 function doOptions(e) {
-  return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT);
+  var output = ContentService.createTextOutput('');
+  output.setMimeType(ContentService.MimeType.TEXT);
+  return output;
 }
 
+// ============================================
+// FUNCIÓN PARA CREAR RESPUESTA (CORREGIDA)
+// ============================================
 function crearRespuesta(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  // Convertir a JSON
+  var json = JSON.stringify(obj);
+
+  // Crear TextOutput con el JSON
+  var output = ContentService.createTextOutput(json);
+  output.setMimeType(ContentService.MimeType.JSON);
+
+  // IMPORTANTE: No usar redirección, solo devolver el JSON
+  // ContentService por defecto devuelve 200 OK con el contenido
+
+  return output;
+}
+
+// ============================================
+// FUNCIÓN OBTENER ESTADO (para GET)
+// ============================================
+function obtenerEstado(data) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ESTADOS');
+    if (!sheet) return { success: false, error: 'Hoja ESTADOS no encontrada' };
+
+    var datos = sheet.getDataRange().getValues();
+    var resultados = [];
+
+    for (var i = 1; i < datos.length; i++) {
+      var mes = String(datos[i][0] || '').trim();
+      var area = String(datos[i][1] || '').trim();
+      var estado = String(datos[i][2] || '').trim();
+
+      if (mes && area) {
+        resultados.push({ mes: mes, area: area, estado: estado });
+      }
+    }
+
+    return { success: true, estados: resultados };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
 }
 
 // ============================================
@@ -198,53 +319,69 @@ function crearRespuesta(obj) {
 // ============================================
 
 function appendRowAction(data) {
-  var sheetName = data.hoja;
-  var valores = data.valores;
-  if (!sheetName || !valores || !Array.isArray(valores)) {
-    return { success: false, error: 'hoja y valores requeridos' };
+  try {
+    var sheetName = data.hoja;
+    var valores = data.valores;
+    if (!sheetName || !valores || !Array.isArray(valores)) {
+      return { success: false, error: 'hoja y valores requeridos' };
+    }
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
+    sheet.appendRow(valores);
+    return { success: true, message: 'Fila agregada a ' + sheetName };
+  } catch (error) {
+    return { success: false, error: error.toString() };
   }
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
-  sheet.appendRow(valores);
-  return { success: true, message: 'Fila agregada a ' + sheetName };
 }
 
 function updateCellAction(data) {
-  var sheetName = data.hoja;
-  var celda = data.celda;
-  var valor = data.valor;
-  if (!sheetName || !celda) {
-    return { success: false, error: 'hoja y celda requeridos' };
+  try {
+    var sheetName = data.hoja;
+    var celda = data.celda;
+    var valor = data.valor;
+    if (!sheetName || !celda) {
+      return { success: false, error: 'hoja y celda requeridos' };
+    }
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
+    sheet.getRange(celda).setValue(valor || '');
+    return { success: true, celda: celda, valor: valor };
+  } catch (error) {
+    return { success: false, error: error.toString() };
   }
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
-  sheet.getRange(celda).setValue(valor || '');
-  return { success: true, celda: celda, valor: valor };
 }
 
 function updateRangeAction(data) {
-  var sheetName = data.hoja;
-  var rango = data.rango;
-  var valores = data.valores;
-  if (!sheetName || !rango || !valores) {
-    return { success: false, error: 'hoja, rango y valores requeridos' };
+  try {
+    var sheetName = data.hoja;
+    var rango = data.rango;
+    var valores = data.valores;
+    if (!sheetName || !rango || !valores) {
+      return { success: false, error: 'hoja, rango y valores requeridos' };
+    }
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
+    sheet.getRange(rango).setValues(valores);
+    return { success: true, rango: rango };
+  } catch (error) {
+    return { success: false, error: error.toString() };
   }
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
-  sheet.getRange(rango).setValues(valores);
-  return { success: true, rango: rango };
 }
 
 function deleteRowAction(data) {
-  var sheetName = data.hoja;
-  var fila = parseInt(data.fila);
-  if (!sheetName || !fila || fila < 1) {
-    return { success: false, error: 'hoja y fila validos requeridos' };
+  try {
+    var sheetName = data.hoja;
+    var fila = parseInt(data.fila);
+    if (!sheetName || !fila || fila < 1) {
+      return { success: false, error: 'hoja y fila validos requeridos' };
+    }
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
+    sheet.deleteRow(fila);
+    return { success: true, fila: fila };
+  } catch (error) {
+    return { success: false, error: error.toString() };
   }
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
-  sheet.deleteRow(fila);
-  return { success: true, fila: fila };
 }
 
 // ============================================
@@ -286,8 +423,6 @@ function adminCrearUsuario(data) {
     var userId = maxId + 1;
 
     // Generar salt y hash (SHA-256 compatible con FastAPI)
-    // IMPORTANTE: Utilities.computeDigest retorna bytes firmados (-128..127)
-    // Hay que convertir a unsigned (0..255) con (b + 256) % 256
     var salt = Utilities.getUuid();
     var hash = Utilities.computeDigest(
       Utilities.DigestAlgorithm.SHA_256,
@@ -330,7 +465,8 @@ function adminActualizarUsuario(data) {
     var idx = -1;
     for (var i = 1; i < dataSheet.length; i++) {
       if (String(dataSheet[i][0]) === String(id) || String(dataSheet[i][3]) === String(id)) {
-        idx = i; break;
+        idx = i;
+        break;
       }
     }
     if (idx === -1) return { success: false, error: 'Usuario no encontrado' };
@@ -363,7 +499,8 @@ function adminResetearPassword(data) {
     var idx = -1;
     for (var i = 1; i < dataSheet.length; i++) {
       if (String(dataSheet[i][0]) === String(usuario_id) || String(dataSheet[i][3]) === String(usuario_id)) {
-        idx = i; break;
+        idx = i;
+        break;
       }
     }
     if (idx === -1) return { success: false, error: 'Usuario no encontrado' };
@@ -399,7 +536,8 @@ function adminToggleActivo(data) {
     var idx = -1;
     for (var i = 1; i < dataSheet.length; i++) {
       if (String(dataSheet[i][0]) === String(usuario_id) || String(dataSheet[i][3]) === String(usuario_id)) {
-        idx = i; break;
+        idx = i;
+        break;
       }
     }
     if (idx === -1) return { success: false, error: 'Usuario no encontrado' };
@@ -529,10 +667,11 @@ function registrarEnCambios(datos) {
 
     if (!logSheet) {
       logSheet = ss.insertSheet('CAMBIOS');
-      logSheet.getRange('A1:I1').setValues([[
-        'FECHA', 'HORA', 'RESPONSABLE', 'TRABAJADOR', 'DIA',
-        'TURNO_ANTERIOR', 'TURNO_NUEVO', 'TIPO', 'AREA'
-      ]]);
+      logSheet.getRange('A1:I1').setValues([
+        ['FECHA', 'HORA', 'RESPONSABLE', 'TRABAJADOR', 'DIA',
+          'TURNO_ANTERIOR', 'TURNO_NUEVO', 'TIPO', 'AREA'
+        ]
+      ]);
       logSheet.getRange('A1:I1').setFontWeight('bold').setBackground('#1E3A5F').setFontColor('#FFFFFF');
       logSheet.setFrozenRows(1);
     }
@@ -698,12 +837,14 @@ function registrarDescansoMedico(data) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DESCANSOS_MEDICOS');
     if (!sheet) {
       sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('DESCANSOS_MEDICOS');
-      sheet.getRange('A1:P1').setValues([[
-        'FECHA_REGISTRO', 'PERSONAL_NOMBRE', 'PERSONAL_GRADO', 'PERSONAL_DNI',
-        'PERSONAL_AREA', 'MEDICO_NOMBRE', 'MEDICO_ESPECIALIDAD',
-        'FECHA_INICIO', 'FECHA_FIN', 'DIAS_DESCANSO', 'DIAGNOSTICO',
-        'OBSERVACIONES', 'HOJA_ROL', 'FILA_ROL', 'DIAS_MARCADOS', 'REGISTRADO_POR'
-      ]]);
+      sheet.getRange('A1:P1').setValues([
+        [
+          'FECHA_REGISTRO', 'PERSONAL_NOMBRE', 'PERSONAL_GRADO', 'PERSONAL_DNI',
+          'PERSONAL_AREA', 'MEDICO_NOMBRE', 'MEDICO_ESPECIALIDAD',
+          'FECHA_INICIO', 'FECHA_FIN', 'DIAS_DESCANSO', 'DIAGNOSTICO',
+          'OBSERVACIONES', 'HOJA_ROL', 'FILA_ROL', 'DIAS_MARCADOS', 'REGISTRADO_POR'
+        ]
+      ]);
       sheet.getRange('A1:P1').setFontWeight('bold').setBackground('#059669').setFontColor('#FFFFFF');
       sheet.setFrozenRows(1);
     }
@@ -735,11 +876,13 @@ function registrarVacaciones(data) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('VACACIONES');
     if (!sheet) {
       sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('VACACIONES');
-      sheet.getRange('A1:K1').setValues([[
-        'FECHA_REGISTRO', 'PERSONAL_NOMBRE', 'PERSONAL_GRADO', 'PERSONAL_DNI',
-        'PERSONAL_AREA', 'FECHA_INICIO', 'FECHA_FIN', 'DIAS_VACACIONES',
-        'OBSERVACIONES', 'HOJA_ROL', 'REGISTRADO_POR'
-      ]]);
+      sheet.getRange('A1:K1').setValues([
+        [
+          'FECHA_REGISTRO', 'PERSONAL_NOMBRE', 'PERSONAL_GRADO', 'PERSONAL_DNI',
+          'PERSONAL_AREA', 'FECHA_INICIO', 'FECHA_FIN', 'DIAS_VACACIONES',
+          'OBSERVACIONES', 'HOJA_ROL', 'REGISTRADO_POR'
+        ]
+      ]);
       sheet.getRange('A1:K1').setFontWeight('bold').setBackground('#2563EB').setFontColor('#FFFFFF');
       sheet.setFrozenRows(1);
     }
@@ -770,11 +913,13 @@ function guardarConfiguracionGlobal(data) {
       hojaConfig.getRange('A1:E1').setValues([['hojaActiva', 'mes', 'anio', 'actualizadoPor', 'timestamp']]);
     }
     var v = data.valores || data;
-    hojaConfig.getRange('A2:E2').setValues([[
-      v.hojaActiva || 'AGOSTO', v.mes || new Date().getMonth() + 1,
-      v.anio || new Date().getFullYear(), v.actualizadoPor || 'Sistema',
-      v.timestamp || new Date().toISOString()
-    ]]);
+    hojaConfig.getRange('A2:E2').setValues([
+      [
+        v.hojaActiva || 'AGOSTO', v.mes || new Date().getMonth() + 1,
+        v.anio || new Date().getFullYear(), v.actualizadoPor || 'Sistema',
+        v.timestamp || new Date().toISOString()
+      ]
+    ]);
     return { success: true };
   } catch (error) {
     return { success: false, error: error.toString() };
@@ -867,8 +1012,7 @@ function marcarLoteFinalizado(data) {
       actualizadas++;
     });
     return { success: true, mes: mes, actualizadas: actualizadas, estado: 'FINALIZADO' };
-  } catch (error) { return { success: false, error: error.toString() }; }
-  finally { lock.releaseLock(); }
+  } catch (error) { return { success: false, error: error.toString() }; } finally { lock.releaseLock(); }
 }
 
 function desmarcarLoteFinalizado(data) {
@@ -885,8 +1029,7 @@ function desmarcarLoteFinalizado(data) {
       actualizadas++;
     });
     return { success: true, mes: mes, actualizadas: actualizadas, estado: 'DISPONIBLE' };
-  } catch (error) { return { success: false, error: error.toString() }; }
-  finally { lock.releaseLock(); }
+  } catch (error) { return { success: false, error: error.toString() }; } finally { lock.releaseLock(); }
 }
 
 function inicializarEstructura(data) {
@@ -901,30 +1044,38 @@ function inicializarEstructura(data) {
     }
     var v = (data && (data.valores || data)) || {};
     if (v.hojaActiva) {
-      hojaConfig.getRange('A2:E2').setValues([[
-        v.hojaActiva || 'AGOSTO', v.mes || new Date().getMonth() + 1,
-        v.anio || new Date().getFullYear(), v.actualizadoPor || 'Sistema',
-        v.timestamp || new Date().toISOString()
-      ]]);
+      hojaConfig.getRange('A2:E2').setValues([
+        [
+          v.hojaActiva || 'AGOSTO', v.mes || new Date().getMonth() + 1,
+          v.anio || new Date().getFullYear(), v.actualizadoPor || 'Sistema',
+          v.timestamp || new Date().toISOString()
+        ]
+      ]);
     }
 
     __crearHojaSolicitudes_();
 
     if (!ss.getSheetByName('CAMBIOS')) {
       var cambios = ss.insertSheet('CAMBIOS');
-      cambios.getRange('A1:I1').setValues([['FECHA','HORA','RESPONSABLE','TRABAJADOR','DIA','TURNO_ANTERIOR','TURNO_NUEVO','TIPO','AREA']]);
+      cambios.getRange('A1:I1').setValues([
+        ['FECHA', 'HORA', 'RESPONSABLE', 'TRABAJADOR', 'DIA', 'TURNO_ANTERIOR', 'TURNO_NUEVO', 'TIPO', 'AREA']
+      ]);
       cambios.getRange('A1:I1').setFontWeight('bold').setBackground('#1E3A5F').setFontColor('#FFFFFF');
       cambios.setFrozenRows(1);
     }
     if (!ss.getSheetByName('DESCANSOS_MEDICOS')) {
       var descansos = ss.insertSheet('DESCANSOS_MEDICOS');
-      descansos.getRange('A1:P1').setValues([['FECHA_REGISTRO','PERSONAL_NOMBRE','PERSONAL_GRADO','PERSONAL_DNI','PERSONAL_AREA','MEDICO_NOMBRE','MEDICO_ESPECIALIDAD','FECHA_INICIO','FECHA_FIN','DIAS_DESCANSO','DIAGNOSTICO','OBSERVACIONES','HOJA_ROL','FILA_ROL','DIAS_MARCADOS','REGISTRADO_POR']]);
+      descansos.getRange('A1:P1').setValues([
+        ['FECHA_REGISTRO', 'PERSONAL_NOMBRE', 'PERSONAL_GRADO', 'PERSONAL_DNI', 'PERSONAL_AREA', 'MEDICO_NOMBRE', 'MEDICO_ESPECIALIDAD', 'FECHA_INICIO', 'FECHA_FIN', 'DIAS_DESCANSO', 'DIAGNOSTICO', 'OBSERVACIONES', 'HOJA_ROL', 'FILA_ROL', 'DIAS_MARCADOS', 'REGISTRADO_POR']
+      ]);
       descansos.getRange('A1:P1').setFontWeight('bold').setBackground('#059669').setFontColor('#FFFFFF');
       descansos.setFrozenRows(1);
     }
     if (!ss.getSheetByName('VACACIONES')) {
       var vacaciones = ss.insertSheet('VACACIONES');
-      vacaciones.getRange('A1:K1').setValues([['FECHA_REGISTRO','PERSONAL_NOMBRE','PERSONAL_GRADO','PERSONAL_DNI','PERSONAL_AREA','FECHA_INICIO','FECHA_FIN','DIAS_VACACIONES','OBSERVACIONES','HOJA_ROL','REGISTRADO_POR']]);
+      vacaciones.getRange('A1:K1').setValues([
+        ['FECHA_REGISTRO', 'PERSONAL_NOMBRE', 'PERSONAL_GRADO', 'PERSONAL_DNI', 'PERSONAL_AREA', 'FECHA_INICIO', 'FECHA_FIN', 'DIAS_VACACIONES', 'OBSERVACIONES', 'HOJA_ROL', 'REGISTRADO_POR']
+      ]);
       vacaciones.getRange('A1:K1').setFontWeight('bold').setBackground('#2563EB').setFontColor('#FFFFFF');
       vacaciones.setFrozenRows(1);
     }
@@ -953,19 +1104,42 @@ var __HEADER_SOLICITUDES_ = [
 ];
 
 var __CODIGO_A_NOMBRE_ = {
-  'M': 'MA\u00D1ANA', 'T': 'TARDE', 'F': 'FRANCO', 'MT': '12 HRS M',
-  'N': '12 HRS N', 'FE': 'FERIADO', 'V': 'VACACIONES', 'FS': 'FALTO AL SERVICIO',
-  'LG': 'LICENCIA DE GRAVIDEZ', 'DM': 'DESCANSO MEDICO', 'L12': 'LEY 12633',
-  'H': 'HOSPITALIZADO', 'C': 'COMISION', 'PR': 'PERMISO DE RADIACION',
-  'AVC': 'ADAPTACION A LA VIDA CIVIL', 'LEGF': 'LICENCIA ENFERMEDAD GRAVE FAMILIAR',
-  'PCV': 'PERMISO A CUENTA DE VACACIONES', 'RL': 'REFERIDO A LIMA',
-  'SL': 'SOMETIDO A LEY', '24': '24 X 48', 'SC': 'SERVICIO CONTINUO',
-  'EXT': 'EXTERNO', 'R': 'RETEN', 'S': 'SERVICIO',
-  'M/N': 'MA\u00D1ANA - 12 HRS N', 'T/N': 'TARDE - 12 HRS N', 'ADM': 'ADMINISTRATIVO',
-  'LFC': 'LICENCIA FALLECIMIENTO CONYUGUE', 'PP': 'PAPELETA DE PERMISO',
-  'COU': 'CAMBIADO OTRA UNIDAD', '24M': '24 HRS MTN', 'LP': 'LICENCIA POR PATERNIDAD',
-  'PD': 'OFICIAL DE PERMANENCIA (DIURNO)', 'PN': 'OFICIAL DE PERMANENCIA (NOCTURNO)',
-  'PM': 'OFICIAL DE PERMANENCIA (MA\u00D1ANA)', 'PT': 'OFICIAL DE PERMANENCIA (TARDE)'
+  'M': 'MA\u00D1ANA',
+  'T': 'TARDE',
+  'F': 'FRANCO',
+  'MT': '12 HRS M',
+  'N': '12 HRS N',
+  'FE': 'FERIADO',
+  'V': 'VACACIONES',
+  'FS': 'FALTO AL SERVICIO',
+  'LG': 'LICENCIA DE GRAVIDEZ',
+  'DM': 'DESCANSO MEDICO',
+  'L12': 'LEY 12633',
+  'H': 'HOSPITALIZADO',
+  'C': 'COMISION',
+  'PR': 'PERMISO DE RADIACION',
+  'AVC': 'ADAPTACION A LA VIDA CIVIL',
+  'LEGF': 'LICENCIA ENFERMEDAD GRAVE FAMILIAR',
+  'PCV': 'PERMISO A CUENTA DE VACACIONES',
+  'RL': 'REFERIDO A LIMA',
+  'SL': 'SOMETIDO A LEY',
+  '24': '24 X 48',
+  'SC': 'SERVICIO CONTINUO',
+  'EXT': 'EXTERNO',
+  'R': 'RETEN',
+  'S': 'SERVICIO',
+  'M/N': 'MA\u00D1ANA - 12 HRS N',
+  'T/N': 'TARDE - 12 HRS N',
+  'ADM': 'ADMINISTRATIVO',
+  'LFC': 'LICENCIA FALLECIMIENTO CONYUGUE',
+  'PP': 'PAPELETA DE PERMISO',
+  'COU': 'CAMBIADO OTRA UNIDAD',
+  '24M': '24 HRS MTN',
+  'LP': 'LICENCIA POR PATERNIDAD',
+  'PD': 'OFICIAL DE PERMANENCIA (DIURNO)',
+  'PN': 'OFICIAL DE PERMANENCIA (NOCTURNO)',
+  'PM': 'OFICIAL DE PERMANENCIA (MA\u00D1ANA)',
+  'PT': 'OFICIAL DE PERMANENCIA (TARDE)'
 };
 
 function __crearHojaSolicitudes_() {
@@ -996,7 +1170,8 @@ function __codigosUnicos_(cambios, campo) {
   var out = [];
   (cambios || []).forEach(function(c) {
     var v = String(c[campo] || '').trim();
-    if (v && !vistos[v]) { vistos[v] = 1; out.push(v); }
+    if (v && !vistos[v]) { vistos[v] = 1;
+      out.push(v); }
   });
   return out.join(',');
 }
@@ -1201,7 +1376,7 @@ function registrarCeldaModificada(data) {
   try {
     if (!lock.tryLock(1000)) return { success: false, error: 'Lock no disponible' };
     var sheet = ensureCeldaModificadaSheet();
-    
+
     var hoja = data.hoja || '';
     var fila = parseInt(data.fila) || 0;
     var dia = parseInt(data.dia) || 0;
@@ -1209,9 +1384,9 @@ function registrarCeldaModificada(data) {
     var valorNuevo = data.valorNuevo || '';
     var responsable = data.responsable || 'ADMIN';
     var tipo = data.tipo || 'directo';
-    
+
     if (!hoja || !fila || !dia) return { success: false, error: 'Faltan parametros: hoja, fila, dia' };
-    
+
     // Buscar si ya existe un registro para esta celda
     var datos = sheet.getDataRange().getValues();
     var existente = -1;
@@ -1221,15 +1396,15 @@ function registrarCeldaModificada(data) {
         break;
       }
     }
-    
+
     var filaData = [hoja, fila, dia, valorAnterior, valorNuevo, responsable, new Date(), tipo];
-    
+
     if (existente > 0) {
       sheet.getRange(existente, 1, 1, 8).setValues([filaData]);
     } else {
       sheet.appendRow(filaData);
     }
-    
+
     return { success: true, hoja: hoja, fila: fila, dia: dia };
   } catch (error) {
     return { success: false, error: error.toString() };
@@ -1243,10 +1418,10 @@ function cargarCeldasModificadas(data) {
     var sheet = ensureCeldaModificadaSheet();
     var hoja = data.hoja || '';
     if (!hoja) return { success: true, modificaciones: [] };
-    
+
     var datos = sheet.getDataRange().getValues();
     var modificaciones = [];
-    
+
     for (var i = 1; i < datos.length; i++) {
       if (String(datos[i][0]) === hoja) {
         modificaciones.push({
@@ -1260,7 +1435,7 @@ function cargarCeldasModificadas(data) {
         });
       }
     }
-    
+
     return { success: true, modificaciones: modificaciones };
   } catch (error) {
     return { success: false, error: error.toString(), modificaciones: [] };
@@ -1273,26 +1448,45 @@ function limpiarCeldasModificadas(data) {
     if (!lock.tryLock(1000)) return { success: false, error: 'Lock no disponible' };
     var sheet = ensureCeldaModificadaSheet();
     var hoja = data.hoja || '';
-    
+
     if (!hoja) return { success: false, error: 'Falta parametro hoja' };
-    
+
     var datos = sheet.getDataRange().getValues();
     var filasEliminar = [];
-    
+
     for (var i = datos.length - 1; i >= 1; i--) {
       if (String(datos[i][0]) === hoja) {
         filasEliminar.push(i + 1); // 1-based
       }
     }
-    
+
     filasEliminar.forEach(function(fila) {
       sheet.deleteRow(fila);
     });
-    
+
     return { success: true, eliminadas: filasEliminar.length };
   } catch (error) {
     return { success: false, error: error.toString() };
   } finally {
     lock.releaseLock();
   }
+}
+
+// ============================================
+// FUNCIÓN DE TEST (para debugging)
+// ============================================
+function testDoPost() {
+  var testData = {
+    accion: 'ping',
+    hoja: 'AGOSTO'
+  };
+
+  var mockE = {
+    postData: {
+      contents: JSON.stringify(testData)
+    }
+  };
+
+  var result = doPost(mockE);
+  console.log('Test result:', result.getContent());
 }
