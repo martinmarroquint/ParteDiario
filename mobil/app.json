@@ -4,10 +4,8 @@
     "slug": "horarios-hospiral-pnp",
     "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "hrpa",
-    "jsEngine": "hermes",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/Escudo Sanidad.png",
@@ -20,12 +18,7 @@
     },
     "android": {
       "softwareKeyboardLayoutMode": "pan",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#0F4C3A"
-      },
-      "package": "com.hrpa.rolservicio",
-      "jsEngine": "hermes"
+      "package": "com.hrpa.rolservicio"
     },
     "web": {
       "favicon": "./assets/Escudo Sanidad.png"
