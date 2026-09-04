@@ -1,23 +1,17 @@
 // mobil/src/services/sheets.js
-// Servicio de Google Sheets - Comunica con Apps Script Web App y Google Sheets API
+// Servicio de datos - Comunica con FastAPI Backend + Apps Script (fallback)
+import { apiClient } from './apiClient';
 import { DEFAULT_GOOGLE_CONFIG } from '../constants/config';
 
 // ============================================
 // UTILIDADES
 // ============================================
 
-/**
- * Obtiene el nombre canonico de una hoja (sin anio ni espacios extra)
- * "AGOSTO 2025" -> "AGOSTO"
- */
 export const mesCanonico = (hoja) => {
   if (!hoja) return '';
   return String(hoja).trim().replace(/\s+\d{4}$/, '').toUpperCase();
 };
 
-/**
- * Compara si dos valores pertenecen al mismo mes
- */
 export const mismoMes = (valor, nombreMes) => {
   if (!valor || !nombreMes) return false;
   const v = String(valor).trim().toUpperCase();
@@ -25,95 +19,62 @@ export const mismoMes = (valor, nombreMes) => {
   return v.includes(m) || mesCanonico(v) === m;
 };
 
+const MAPA_MES = { ENERO:1, FEBRERO:2, MARZO:3, ABRIL:4, MAYO:5, JUNIO:6, JULIO:7, AGOSTO:8, SEPTIEMBRE:9, OCTUBRE:10, NOVIEMBRE:11, DICIEMBRE:12 };
+
 // ============================================
-// SERVICIO PRINCIPAL DE GOOGLE SHEETS
+// POST a Apps Script (solo para funciones sin backend)
+// ============================================
+async function postAppsScript(accion, datos = {}) {
+  const url = DEFAULT_GOOGLE_CONFIG.appsScriptUrl;
+  if (!url) throw new Error('No hay URL de Apps Script configurada');
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ accion, ...datos }),
+  });
+  if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
+  const text = await response.text();
+  try { return JSON.parse(text); } catch { return { success: true, data: text }; }
+}
+
+// ============================================
+// SERVICIO PRINCIPAL
 // ============================================
 export const sheetsService = {
   /**
-   * Configuracion actual de Google Sheets
-   */
-  config: { ...DEFAULT_GOOGLE_CONFIG },
-
-  /**
-   * URL base de Apps Script Web App
-   */
-  get appsScriptUrl() {
-    return this.config.appsScriptUrl;
-  },
-
-  /**
-   * Ejecuta una accion en Apps Script via POST
-   */
-  async _postAppsScript(accion, datos = {}) {
-    const url = this.appsScriptUrl;
-    if (!url) throw new Error('No hay URL de Apps Script configurada');
-
-    const body = { accion, ...datos };
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const text = await response.text();
-      try {
-        return JSON.parse(text);
-      } catch {
-        return { success: true, data: text };
-      }
-    } catch (error) {
-      console.error(`Error en Apps Script (${accion}):`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Obtiene el mes activo actual
+   * Obtiene el mes activo ( Apps Script - no hay backend endpoint)
    */
   async obtenerMesActivo() {
     try {
-      const result = await this._postAppsScript('obtenerMesActivo');
+      const result = await postAppsScript('obtenerMesActivo');
       return result.mes || result.data || null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   },
 
   /**
-   * Obtiene la lista de hojas disponibles
+   * Obtiene la lista de hojas ( Apps Script - no hay backend endpoint)
    */
   async obtenerHojas() {
     try {
-      const result = await this._postAppsScript('obtenerHojas');
+      const result = await postAppsScript('obtenerHojas');
       return result.hojas || result.data || [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   },
 
   /**
-   * Carga el personal de una hoja/mes/año especifico
-   * @param {string} hoja - Nombre de la hoja (ej: "AGOSTO")
+   * Carga el personal y sus turnos - USA BACKEND
+   * @param {string} hoja - Nombre de la hoja
    * @param {number} mes - Numero de mes (1-12)
    * @param {number} anio - Anio
-   * @returns {Array} Lista de personal con sus turnos
+   * @param {string} area - Nombre del area (opcional)
    */
-  async cargarPersonal(hoja, mes, anio) {
+  async cargarPersonal(hoja, mes, anio, area = '') {
     try {
-      const result = await this._postAppsScript('cargarPersonal', {
-        hoja,
-        mes,
-        anio,
-      });
-      return result.personal || result.data || [];
-    } catch {
-      return [];
+      const resultado = await apiClient.getRoles(mes, anio, area);
+      return resultado.personal || resultado.data || [];
+    } catch (error) {
+      console.error('Error cargando personal desde backend:', error);
+      throw error;
     }
   },
 
@@ -121,28 +82,21 @@ export const sheetsService = {
    * Carga personal con datos completos (para Parte Diario)
    */
   async cargarPersonalConDatos(hoja, mes, anio) {
-    try {
-      const result = await this._postAppsScript('cargarPersonalConDatos', {
-        hoja,
-        mes,
-        anio,
-      });
-      return result.personal || result.data || [];
-    } catch {
-      return [];
-    }
+    return this.cargarPersonal(hoja, mes, anio);
   },
 
   /**
-   * Guarda un lote de celdas modificadas
-   * @param {Array} cambios - Lista de cambios [{fila, dia, turno, area, responsable}]
+   * Guarda un lote de celdas - USA BACKEND
    */
-  async guardarLote(cambios) {
+  async guardarLote(hoja, area, responsable, filas) {
     try {
-      const result = await this._postAppsScript('guardarLoteCeldas', {
-        cambios,
-      });
-      return result;
+      const mes = MAPA_MES[mesCanonico(hoja)] || new Date().getMonth() + 1;
+      const anio = new Date().getFullYear();
+      const datos = filas.map(f => ({
+        fila: f.fila,
+        valores: f.valores,
+      }));
+      return await apiClient.syncRoles({ mes, anio, area, datos });
     } catch (error) {
       console.error('Error guardando lote:', error);
       throw error;
@@ -150,13 +104,19 @@ export const sheetsService = {
   },
 
   /**
-   * Guarda una sola celda
-   * @param {Object} cambio - {fila, dia, turno, area, responsable, hoja}
+   * Guarda una sola celda - USA BACKEND
    */
-  async guardarCelda(cambio) {
+  async guardarCelda(hoja, fila, dia, turno, metadata = {}) {
     try {
-      const result = await this._postAppsScript('guardarCelda', cambio);
-      return result;
+      const mes = MAPA_MES[mesCanonico(hoja)] || new Date().getMonth() + 1;
+      const anio = new Date().getFullYear();
+      return await apiClient.updateCelda({
+        mes, anio,
+        area: metadata.area || '',
+        persona: metadata.persona || '',
+        dia,
+        turno,
+      });
     } catch (error) {
       console.error('Error guardando celda:', error);
       throw error;
@@ -164,35 +124,31 @@ export const sheetsService = {
   },
 
   /**
-   * Verifica si un area esta bloqueada (finalizada)
-   * @param {string} area - Nombre del area
-   * @param {string} mes - Nombre del mes
-   * @returns {boolean} true si esta bloqueada
+   * Verifica si un area esta bloqueada - USA BACKEND
    */
   async verificarBloqueo(area, mes) {
     try {
-      const result = await this._postAppsScript('verificarBloqueo', {
-        area,
-        mes,
-      });
+      const mesNum = MAPA_MES[mesCanonico(mes)] || MAPA_MES[mes] || new Date().getMonth() + 1;
+      const anio = new Date().getFullYear();
+      const result = await apiClient.isAreaLocked(area, mesNum, anio);
       return result.bloqueado || false;
-    } catch {
-      return false;
-    }
+    } catch { return false; }
   },
 
   /**
-   * Marca un area como finalizada (bloqueada)
-   * @param {string} area - Nombre del area
-   * @param {string} mes - Nombre del mes
+   * Marca un area como finalizada - USA BACKEND
    */
   async marcarFinalizado(area, mes) {
     try {
-      const result = await this._postAppsScript('marcarFinalizado', {
-        area,
-        mes,
-      });
-      return result;
+      const mesNum = MAPA_MES[mesCanonico(mes)] || MAPA_MES[mes] || new Date().getMonth() + 1;
+      const anio = new Date().getFullYear();
+      // Necesitamos el ID del area, no solo el nombre
+      const areas = await apiClient.getAreas();
+      const areaObj = areas.find(a => a.nombre === area || a.codigo === area);
+      if (areaObj) {
+        return await apiClient.lockArea(areaObj.id, { mes: mesNum, anio });
+      }
+      throw new Error(`Area no encontrada: ${area}`);
     } catch (error) {
       console.error('Error marcando finalizado:', error);
       throw error;
@@ -200,17 +156,16 @@ export const sheetsService = {
   },
 
   /**
-   * Desmarca un area (la desbloquea)
-   * @param {string} area - Nombre del area
-   * @param {string} mes - Nombre del mes
+   * Desmarca un area - USA BACKEND
    */
   async desmarcarFinalizado(area, mes) {
     try {
-      const result = await this._postAppsScript('desmarcarFinalizado', {
-        area,
-        mes,
-      });
-      return result;
+      const areas = await apiClient.getAreas();
+      const areaObj = areas.find(a => a.nombre === area || a.codigo === area);
+      if (areaObj) {
+        return await apiClient.unlockArea(areaObj.id);
+      }
+      throw new Error(`Area no encontrada: ${area}`);
     } catch (error) {
       console.error('Error desmarcando finalizado:', error);
       throw error;
@@ -218,27 +173,23 @@ export const sheetsService = {
   },
 
   /**
-   * Registra un descanso medico
-   * @param {Object} data - Datos del descanso
+   * Registra un descanso medico - USA BACKEND
    */
   async registrarDescansoMedico(data) {
     try {
-      const result = await this._postAppsScript('registrarDescansoMedico', data);
-      return result;
+      return await apiClient.registrarDescanso(data);
     } catch (error) {
-      console.error('Error registrando descanso medico:', error);
+      console.error('Error registrando descanso:', error);
       throw error;
     }
   },
 
   /**
-   * Registra vacaciones o PCV
-   * @param {Object} data - Datos de vacaciones
+   * Registra vacaciones - USA BACKEND
    */
   async registrarVacaciones(data) {
     try {
-      const result = await this._postAppsScript('registrarVacaciones', data);
-      return result;
+      return await apiClient.registrarVacacion(data);
     } catch (error) {
       console.error('Error registrando vacaciones:', error);
       throw error;
@@ -246,58 +197,16 @@ export const sheetsService = {
   },
 
   /**
-   * Obtiene datos directamente de Google Sheets API (lectura)
-   * Usado por el admin para leer la hoja de ESTADOS
-   * @param {string} range - Rango en notacion A1 (ej: "ESTADOS!A1:Z100")
+   * Lee datos directamente de Google Sheets (solo admin)
    */
   async leerRange(range) {
-    const { sheetId, apiKey } = this.config;
-    if (!sheetId || !apiKey) {
-      throw new Error('No hay sheetId o apiKey configurado');
-    }
-
+    const { sheetId, apiKey } = DEFAULT_GOOGLE_CONFIG;
+    if (!sheetId || !apiKey) throw new Error('No hay sheetId o apiKey configurado');
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${apiKey}`;
-
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Google Sheets API error: ${response.status}`);
-      }
-      const data = await response.json();
-      return data.values || [];
-    } catch (error) {
-      console.error('Error leyendo range:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Escribe datos en Google Sheets API
-   * @param {string} range - Rango en notacion A1
-   * @param {Array} values - Valores a escribir
-   */
-  async escribirRange(range, values) {
-    const { sheetId, apiKey } = this.config;
-    if (!sheetId || !apiKey) {
-      throw new Error('No hay sheetId o apiKey configurado');
-    }
-
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED&key=${apiKey}`;
-
-    try {
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values }),
-      });
-      if (!response.ok) {
-        throw new Error(`Google Sheets API error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error escribiendo range:', error);
-      throw error;
-    }
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Google Sheets API error: ${response.status}`);
+    const data = await response.json();
+    return data.values || [];
   },
 };
 
