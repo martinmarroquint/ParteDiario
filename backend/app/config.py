@@ -1,5 +1,6 @@
 import os
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -11,7 +12,7 @@ class Settings(BaseSettings):
     GOOGLE_APPS_SCRIPT_URL: str = ""  # Apps Script web app URL for write operations
     
     # JWT
-    JWT_SECRET: str = "change-this-to-a-secure-random-string"
+    JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
     
@@ -29,6 +30,22 @@ class Settings(BaseSettings):
     # App Info
     APP_NAME: str = "OCR Roles Servicio API"
     APP_VERSION: str = "1.0.0"
+    
+    @field_validator("JWT_SECRET")
+    @classmethod
+    def validate_jwt_secret(cls, v):
+        if not v:
+            raise ValueError(
+                "JWT_SECRET es obligatorio. Configure la variable de entorno JWT_SECRET "
+                "con un string aleatorio de al menos 32 caracteres. "
+                "Ejemplo: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        if len(v) < 32:
+            raise ValueError(
+                f"JWT_SECRET debe tener al menos 32 caracteres (actual: {len(v)}). "
+                "Use: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return v
     
     class Config:
         env_file = ".env"
