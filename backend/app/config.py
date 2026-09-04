@@ -40,9 +40,9 @@ class Settings(BaseSettings):
                 "con un string aleatorio de al menos 32 caracteres. "
                 "Ejemplo: python -c \"import secrets; print(secrets.token_hex(32))\""
             )
-        if len(v) < 32:
+        if len(v) < 16:
             raise ValueError(
-                f"JWT_SECRET debe tener al menos 32 caracteres (actual: {len(v)}). "
+                f"JWT_SECRET debe tener al menos 16 caracteres (actual: {len(v)}). "
                 "Use: python -c \"import secrets; print(secrets.token_hex(32))\""
             )
         return v
