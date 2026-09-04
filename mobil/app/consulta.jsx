@@ -14,7 +14,7 @@ const { width } = Dimensions.get('window');
 const PADDING = 16;
 const GAP = 3;
 const CELL = Math.floor((width - PADDING * 2 - GAP * 6) / 7);
-const DIAS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const DIAS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 
 export default function ConsultaScreen() {
   const router = useRouter();
@@ -120,8 +120,8 @@ export default function ConsultaScreen() {
               <Text style={s.calMes}>{MESES[mes-1]} {anio}</Text>
               <View style={s.calDiasRow}>
                 {DIAS.map((d, i) => (
-                  <View key={i} style={[s.calDiaH, i===5||i===6 ? {} : {}]}>
-                    <Text style={[s.calDiaHT, (i===5||i===6)&&{color:'rgba(255,255,255,0.6)'}]}>{d}</Text>
+                  <View key={i} style={[s.calDiaH, i===0||i===6 ? {} : {}]}>
+                    <Text style={[s.calDiaHT, (i===0||i===6)&&{color:'rgba(255,255,255,0.6)'}]}>{d}</Text>
                   </View>
                 ))}
               </View>

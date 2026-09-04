@@ -14,7 +14,7 @@ import { COLOR_PRIMARIO, MESES, TURNO_MAP, DEFAULT_GOOGLE_CONFIG, obtenerCodigoA
 
 const { width } = Dimensions.get('window');
 const CELL = Math.floor((width - 32 - 18) / 7);
-const DIAS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const DIAS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 
 const generarCodigoVerificacion = (area, mes, anio, responsable, totalPersonal, totalDias) => {
   const datos = `${area}|${mes}|${anio}|${responsable}|${totalPersonal}|${totalDias}|HRPA-PNP`;
@@ -100,6 +100,12 @@ export default function HomeScreen() {
   const [guardando, setGuardando] = useState(false);
   const [fadeAnim] = useState(() => new Animated.Value(0));
   const autoGuardarTimeout = useRef(null);
+  const personalRef = useRef([]);
+  const turnosRef = useRef({});
+  const turnosBackupRef = useRef({});
+  const guardadosPendientesRef = useRef(new Set());
+  const cargadoRef = useRef(false);
+  const cargandoRef = useRef(false);
 
   const [hojas, setHojas] = useState([]);
   const [selectorAbierto, setSelectorAbierto] = useState(false);
@@ -146,49 +152,75 @@ export default function HomeScreen() {
   }, [fechaBase, semana]);
 
   useEffect(() => { Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start(); }, []);
-  useEffect(() => { if (hojaSel) cargarDatos(hojaSel, mes, anio); }, [hojaSel, mes, anio]);
+  useEffect(() => {
+    cargadoRef.current = false;
+    cargandoRef.current = false;
+    if (hojaSel) cargarDatos(hojaSel, mes, anio);
+  }, [hojaSel, mes, anio]);
 
   const cargarDatos = async (hoja = hojaSel, m = mes, a = anio) => {
+    if (cargadoRef.current || cargandoRef.current) return;
+    cargandoRef.current = true;
     setCargando(true);
     try {
       const data = await sheetsService.cargarPersonal(hoja, m, a);
-      if (!data || data.length === 0) { setPersonal([]); setTurnos({}); return; }
+      if (!data || data.length === 0) { setPersonal([]); setTurnos({}); personalRef.current = []; turnosRef.current = {}; return; }
       const verTodas = esAdmin && (!area || area === 'ADMIN');
       const filt = verTodas ? data : data.filter(p => p.area === area);
       const t = {}; filt.forEach(e => { t[e.id] = {}; e.turnos.forEach((x, i) => { t[e.id][i+1] = x || ''; }); });
       setPersonal(filt); setTurnos(t); setTurnosBackup(JSON.parse(JSON.stringify(t)));
+      personalRef.current = filt;
+      turnosRef.current = JSON.parse(JSON.stringify(t));
+      turnosBackupRef.current = JSON.parse(JSON.stringify(t));
+      cargadoRef.current = true;
       if (!esAdmin && !soloLectura) { try { const bloq = await sheetsService.verificarBloqueo(area, hoja); setRolHabilitado(!bloq); } catch (e) {} }
-    } catch (e) { if (personal.length === 0) Alert.alert('Aviso', 'No se pudieron cargar los datos.'); }
-    finally { setCargando(false); }
+    } catch (e) { if (personalRef.current.length === 0) Alert.alert('Aviso', 'No se pudieron cargar los datos.'); }
+    finally { setCargando(false); cargandoRef.current = false; }
   };
 
   const handleTurno = useCallback((empId, fechaStr) => {
     if (!rolHabilitado || soloLectura) return;
     const dia = parseInt(fechaStr.split('-')[2]);
-    setTurnos(prev => { const actual = prev[empId]?.[dia] || ''; const nuevo = actual === turnoActivo ? '' : turnoActivo; if (actual === nuevo) return prev; return { ...prev, [empId]: { ...prev[empId], [dia]: nuevo } }; });
+    setTurnos(prev => { const actual = prev[empId]?.[dia] || ''; const nuevo = actual === turnoActivo ? '' : turnoActivo; if (actual === nuevo) return prev; const next = { ...prev, [empId]: { ...prev[empId], [dia]: nuevo } }; turnosRef.current = next; return next; });
     if (autoGuardarTimeout.current) clearTimeout(autoGuardarTimeout.current);
     autoGuardarTimeout.current = setTimeout(() => autoGuardar(), 2000);
   }, [rolHabilitado, soloLectura, turnoActivo]);
 
   const autoGuardar = useCallback(async () => {
-    if (!rolHabilitado || guardando || personal.length === 0) return;
+    if (!rolHabilitado || guardando || personalRef.current.length === 0) return;
+    const personalActual = personalRef.current;
+    const turnosActual = turnosRef.current;
+    const backupActual = turnosBackupRef.current;
     try {
-      const filas = personal.map(emp => ({ fila: emp.fila, valores: Array.from({ length: totalDias }, (_, i) => { const c = turnos[emp.id]?.[i+1]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }) }));
+      const filas = personalActual.map(emp => {
+        const antes = backupActual[emp.id] || {};
+        const ahora = turnosActual[emp.id] || {};
+        let tieneCambios = false;
+        for (let d = 1; d <= totalDias; d++) {
+          if ((antes[d] || '') !== (ahora[d] || '')) { tieneCambios = true; break; }
+        }
+        if (!tieneCambios) return null;
+        return { fila: emp.fila, valores: Array.from({ length: totalDias }, (_, i) => { const c = turnosActual[emp.id]?.[i+1]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }) };
+      }).filter(Boolean);
+      if (filas.length === 0) return;
       await sheetsService.guardarLote(hojaSel, area, responsable, filas);
-      setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
+      turnosBackupRef.current = JSON.parse(JSON.stringify(turnosActual));
+      setTurnosBackup(JSON.parse(JSON.stringify(turnosActual)));
     } catch (e) {}
-  }, [rolHabilitado, guardando, personal, turnos, totalDias, area, responsable, hojaSel]);
+  }, [rolHabilitado, guardando, totalDias, area, responsable, hojaSel]);
 
   useEffect(() => { if (!rolHabilitado) return; const intervalo = setInterval(() => autoGuardar(), 45000); return () => clearInterval(intervalo); }, [rolHabilitado, autoGuardar]);
   useEffect(() => { const sub = AppState.addEventListener('change', state => { if (state === 'background' || state === 'inactive') autoGuardar(); }); return () => sub.remove(); }, [autoGuardar]);
 
   const handleGuardar = async () => {
-    if (personal.length === 0) { Alert.alert('Aviso', 'No hay personal para guardar'); return; }
+    if (personalRef.current.length === 0) { Alert.alert('Aviso', 'No hay personal para guardar'); return; }
     setGuardando(true);
     try {
-      const filas = personal.map(emp => ({ fila: emp.fila, valores: Array.from({ length: totalDias }, (_, i) => { const c = turnos[emp.id]?.[i+1]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }) }));
+      const turnosActual = turnosRef.current;
+      const filas = personalRef.current.map(emp => ({ fila: emp.fila, valores: Array.from({ length: totalDias }, (_, i) => { const c = turnosActual[emp.id]?.[i+1]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }) }));
       await sheetsService.guardarLote(hojaSel, area, responsable, filas);
-      setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
+      turnosBackupRef.current = JSON.parse(JSON.stringify(turnosActual));
+      setTurnosBackup(JSON.parse(JSON.stringify(turnosActual)));
       if (!esAdmin) { await sheetsService.marcarFinalizado(area, mesCanonico(hojaSel)); setRolHabilitado(false); }
       Alert.alert('Éxito', 'Guardado correctamente');
     } catch (e) { Alert.alert('Error', 'No se pudo guardar.'); }
@@ -289,7 +321,7 @@ export default function HomeScreen() {
                 <View style={s.card}>
                   <View style={s.cardHeader}><View style={{flex:1}}><Text style={s.cardGrado}>{emp.grado}</Text><Text style={s.cardNombre}>{emp.nombre}</Text>{emp.dni && <Text style={s.cardDni}>DNI: {emp.dni}</Text>}</View><View style={{alignItems:'flex-end'}}><Text style={s.cardHoras}>{horasSemana}h</Text><Text style={s.cardHorasLabel}>semana</Text></View></View>
                   <View style={s.gridContainer}>
-                    <View style={s.gridHeader}>{DIAS.map((d, i) => <View key={i} style={s.gridHeaderCell}><Text style={[s.gridHeaderText, (i===5||i===6)&&{color:'#D1D5DB'}]}>{d}</Text></View>)}</View>
+                    <View style={s.gridHeader}>{DIAS.map((d, i) => <View key={i} style={s.gridHeaderCell}><Text style={[s.gridHeaderText, (i===0||i===6)&&{color:'#EF4444'}]}>{d}</Text></View>)}</View>
                     <View style={s.gridRow}>
                       {diasSemana.map(d => { const codigo = getTurno(emp.id, d.fecha); const turno = TURNO_MAP[codigo]; return (
                         <TouchableOpacity key={d.fecha} onPress={() => handleTurno(emp.id, d.fecha)} disabled={!rolHabilitado || soloLectura} style={s.gridCell} activeOpacity={0.7}>
