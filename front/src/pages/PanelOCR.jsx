@@ -369,20 +369,19 @@ const PanelOCRContent = () => {
   // FUNCIÓN: Logout - MEMOIZADA
   // ============================================================
   const handleLogout = useCallback(async () => {
-    // Cerrar sesión en el backend si está disponible
-    if (BACKEND_DISPONIBLE) {
-      try {
-        await authService.logout();
-      } catch (error) {
-        console.error('Error al cerrar sesión en backend:', error);
-      }
-    }
-    
-    // SIEMPRE limpiar localStorage y sessionStorage
+    // SIEMPRE limpiar localStorage y sessionStorage primero
     localStorage.removeItem('ocr_auth_token');
     localStorage.removeItem('ocr_user_data');
     sessionStorage.removeItem(STORAGE_SESION);
     
+    // Intentar cerrar sesión en el backend (sin await bloqueante)
+    try {
+      authService.logout().catch(() => {});
+    } catch (error) {
+      // Ignorar errores del backend
+    }
+    
+    // Reiniciar estado inmediatamente
     setUser(null);
     setIsAuthenticated(false);
     setIsAdmin(false);

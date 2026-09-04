@@ -1118,7 +1118,7 @@ const MobileRolView = ({
     if (!emp) return null;
 
     const firstDay = new Date(anioSeleccionado, mesSeleccionado - 1, 1).getDay();
-    const offset = firstDay === 0 ? 6 : firstDay - 1;
+    const offset = firstDay; // Domingo=0, Lunes=1, Martes=2, etc. (calendario Domingo-primero)
     const cells = [];
     
     for (let i = 0; i < offset; i++) cells.push({ empty: true, key: `e${i}` });

@@ -202,12 +202,7 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
               <div className="pt-2 border-t border-gray-100">
                 {BACKEND_DISPONIBLE ? (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                    <p className="text-xs text-emerald-700 text-center">
-                      <strong>Modo Producción:</strong> Usa tu DNI y contraseña inicial
-                    </p>
-                    <p className="text-[10px] text-emerald-600 text-center mt-1">
-                      Contraseña inicial: OCR + tu DNI (ej: OCR12345678)
-                    </p>
+                    
                     <p className="text-[10px] text-emerald-600 text-center">
                       Deberás cambiar tu contraseña en el primer ingreso
                     </p>
