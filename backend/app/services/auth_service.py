@@ -7,8 +7,10 @@ from app.utils.security import (
     create_access_token,
     decode_access_token,
     hash_password,
+    hash_password_sha256,
     verify_password,
     generate_temp_password,
+    generate_salt,
 )
 
 from fastapi import HTTPException, status
@@ -110,8 +112,16 @@ class AuthService:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
         
         temp_password = generate_temp_password()
-        new_hash = hash_password(temp_password)
+        
+        # SHA-256+salt (compatible con Apps Script en Google Sheets)
+        new_salt = generate_salt()
+        new_hash = hash_password_sha256(temp_password, new_salt)
+        
         await self.user_service.update_user_field(user_id, "password", new_hash)
+        await self.user_service.update_user_field(user_id, "salt", new_salt)
+        
+        # Marcar que debe cambiar password en el próximo login
+        await self.user_service.update_user_field(user_id, "requiere_cambio_password", "TRUE")
         
         return {
             "message": f"Contraseña reseteada para {user.usuario}",

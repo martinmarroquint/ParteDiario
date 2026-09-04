@@ -4,7 +4,7 @@ from typing import Optional
 
 from app.models.user import User, UserCreate, UserUpdate
 from app.services.sheets_service import GoogleSheetsService
-from app.utils.security import hash_password
+from app.utils.security import hash_password, hash_password_sha256, generate_salt
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,9 @@ class UserService:
         all_users = await self.get_all_users()
         next_id = max([u.id for u in all_users], default=0) + 1
         
-        hashed_password = hash_password(user_data.password)
+        # SHA-256+salt (compatible con Apps Script en Google Sheets)
+        salt = generate_salt()
+        hashed_password = hash_password_sha256(user_data.password, salt)
         
         row = [
             next_id,                                # A: id_usuario
@@ -59,7 +61,7 @@ class UserService:
             user_data.correo,                       # C: email
             user_data.usuario,                      # D: usuario (DNI)
             hashed_password,                        # E: password_hash
-            "",                                     # F: salt
+            salt,                                   # F: salt
             ",".join(str(r) for r in user_data.roles),  # G: rol
             json.dumps(user_data.areas),            # H: areas_json
             "",                                     # I: fecha_creacion
