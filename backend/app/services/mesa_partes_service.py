@@ -137,6 +137,9 @@ class MesaPartesService:
         data_rows = rows[1:]  # Skip header
         documentos = [self._row_to_documento(row, i + 1) for i, row in enumerate(data_rows)]
         
+        # Reverse: most recent first (newest rows at bottom of sheet)
+        documentos.reverse()
+        
         if estado:
             documentos = [d for d in documentos if d["estado"] == estado.upper()]
         

@@ -7,7 +7,7 @@ import {
   Loader2, Search, Shield, ChevronDown, Check,
   Zap, Trash2, Copy, Repeat, ChevronUp, Plus, Minus, SaveIcon, Play, ChevronLeft, ChevronRight,
   UserPlus, X, Users, Building2, GraduationCap, Inbox,
-  UserCog, Calendar, Clock, Key
+  UserCog, Calendar, Clock, Key, FileText
 } from 'lucide-react';
 import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP } from './constantes';
 
@@ -110,6 +110,8 @@ const Encabezado = ({
   onRegistrarDescanso, onRegistrarVacaciones,
   totalTurnos, completos, totalHorasRol,
   onAbrirAdminUsuarios = null,
+  onAbrirMesaPartes = null,
+  esTramite = false,
   onAbrirCambiarPassword = null,
   esJefe = false,
   esUsuario = false,
@@ -417,6 +419,17 @@ const Encabezado = ({
               BOTONES COMPARTIDOS (Todos los usuarios autenticados)
               ============================================================ */}
           
+          {/* Mesa de Partes - Visible para todos los usuarios autenticados */}
+          {onAbrirMesaPartes && (
+            <button 
+              onClick={onAbrirMesaPartes} 
+              className={btnBase} 
+              title="Mesa de Partes"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+          )}
+
           {/* ⭐ Cambiar Contraseña - SIEMPRE VISIBLE para todos los usuarios autenticados */}
           <button 
             onClick={() => {
