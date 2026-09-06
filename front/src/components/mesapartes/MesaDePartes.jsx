@@ -6,7 +6,7 @@ import {
   Clock, CheckCircle2, AlertCircle, Loader2, ChevronDown, X, Trash2
 } from 'lucide-react';
 import apiClient from '../ocr/services/apiClient';
-import { COLOR_PRIMARIO, ESTADOS, API_ENDPOINTS } from './constantes';
+import { COLOR_PRIMARIO, ESTADOS, API_ENDPOINTS, abbreviateTipo } from './constantes';
 import FormularioDocumento from './FormularioDocumento';
 import RegistroDocumento from './RegistroDocumento';
 import ModalVerDocumento from './ModalVerDocumento';
@@ -197,24 +197,26 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
             </div>
 
             {/* Filtro por estado */}
-            <div className="flex gap-2">
-              {['', 'PENDIENTE', 'ENTREGADO', 'RESUELTO'].map(estado => (
+            <div className="flex gap-1.5 bg-gray-100/80 rounded-lg p-1">
+              {[
+                { key: '', label: 'Todos' },
+                { key: 'PENDIENTE', label: 'Pendientes' },
+                { key: 'ENTREGADO', label: 'Derivados' },
+                { key: 'RESUELTO', label: 'Resueltos' }
+              ].map(f => (
                 <button
-                  key={estado}
-                  onClick={() => setFiltroEstado(estado)}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                    filtroEstado === estado
-                      ? 'text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  key={f.key}
+                  onClick={() => setFiltroEstado(f.key)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                    filtroEstado === f.key
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
                   }`}
-                  style={filtroEstado === estado ? {
-                    backgroundColor: estado ? ESTADOS[estado]?.color : COLOR_PRIMARIO
-                  } : {}}
                 >
-                  {estado || 'Todos'}
-                  {estado && (
-                    <span className="ml-1.5 text-[10px] opacity-80">
-                      {documentos.filter(d => d.estado === estado).length || ''}
+                  {f.label}
+                  {f.key && documentos.filter(d => d.estado === f.key).length > 0 && (
+                    <span className="ml-1 text-[10px] text-gray-400">
+                      {documentos.filter(d => d.estado === f.key).length}
                     </span>
                   )}
                 </button>
@@ -286,10 +288,9 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
         {/* Count */}
         {documentos.length > 0 && (
           <div className="text-center py-4">
-            <p className="text-xs text-gray-400">
+            <p className="text-[11px] text-gray-400">
               {documentos.length} documento{documentos.length !== 1 ? 's' : ''}
-              {filtroEstado && ` · ${filtroEstado}`}
-              {busqueda && ` · "${busqueda}"`}
+              {filtroEstado && <span className="ml-1 text-gray-500">· {ESTADOS[filtroEstado]?.label || filtroEstado}</span>}
             </p>
           </div>
         )}
@@ -359,120 +360,124 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
 
 
 // ============================================
-// CARD DE DOCUMENTO
+// CARD DE DOCUMENTO - Diseño moderno y mobile
 // ============================================
 const DocumentoCard = ({ documento, onVer, onEditar, onEntregar, onDescargar, onEliminar }) => {
   const estado = ESTADOS[documento.estado] || ESTADOS.PENDIENTE;
+  const esMobile = typeof window !== 'undefined' && window.innerWidth < 640;
   
   return (
-    <div className="bg-white rounded-xl border border-gray-200/60 p-4 hover:shadow-sm transition-shadow">
-      <div className="flex items-start justify-between gap-3">
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="text-xs font-bold px-2 py-0.5 rounded-md" style={{
-              backgroundColor: `${COLOR_PRIMARIO}15`,
-              color: COLOR_PRIMARIO
-            }}>
-              #{documento.numero || documento.id}
-            </span>
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{
-              backgroundColor: estado.bg,
-              color: estado.color
-            }}>
-              {estado.label}
-            </span>
-            <span className="text-[10px] text-gray-400">{documento.fecha}</span>
-          </div>
-          
-          <div className="flex items-center gap-2 mb-1">
-            {documento.tipo_doc && (
-              <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                {documento.tipo_doc}
+    <div className="bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all duration-200">
+      <div className="p-3.5 sm:p-4">
+        <div className="flex items-start justify-between gap-3">
+          {/* Info principal */}
+          <div className="flex-1 min-w-0">
+            {/* Fila superior: badge estado + fecha */}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full" style={{
+                backgroundColor: estado.bg,
+                color: estado.color
+              }}>
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: estado.dot }} />
+                {estado.label}
               </span>
+              <span className="text-[10px] text-gray-400 font-medium">{documento.fecha}</span>
+            </div>
+            
+            {/* Tipo doc + N° doc origen */}
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              {documento.tipo_doc && (
+                <span className="text-xs font-semibold text-gray-700 bg-gray-50 px-2 py-0.5 rounded-md border border-gray-100">
+                  {esMobile ? abbreviateTipo(documento.tipo_doc, 16) : abbreviateTipo(documento.tipo_doc, 25)}
+                </span>
+              )}
+              {documento.n_doc_origen && (
+                <span className="text-[11px] text-gray-400 font-mono">
+                  {documento.n_doc_origen}
+                </span>
+              )}
+            </div>
+            
+            {/* Contenido */}
+            <p className="text-[13px] text-gray-600 line-clamp-2 leading-relaxed">
+              {documento.contenido || 'Sin contenido'}
+            </p>
+            
+            {/* Procedencia */}
+            {documento.procedencia && (
+              <p className="text-[11px] text-gray-400 mt-1.5 truncate">
+                {documento.procedencia}
+              </p>
             )}
-            {documento.n_doc_origen && (
-              <span className="text-xs text-gray-400">
-                Doc: {documento.n_doc_origen}
-              </span>
+
+            {/* Etapa 2: Derivación */}
+            {documento.area_entregada && (
+              <div className="flex items-center gap-1.5 mt-2 px-2.5 py-1.5 bg-blue-50/60 rounded-lg w-fit">
+                <Send className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                <span className="text-[11px] text-blue-600 truncate max-w-[200px] sm:max-w-none">
+                  {documento.area_entregada}
+                </span>
+              </div>
+            )}
+
+            {/* Etapa 3: Resolución */}
+            {documento.descargo && (
+              <div className="flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 bg-emerald-50/60 rounded-lg w-fit">
+                <FileCheck className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                <span className="text-[11px] text-emerald-600 font-medium">Resuelto</span>
+              </div>
             )}
           </div>
-          
-          <p className="text-sm text-gray-700 line-clamp-2 mt-1">
-            {documento.contenido || 'Sin contenido'}
-          </p>
-          
-          {documento.procedencia && (
-            <p className="text-xs text-gray-400 mt-1">De: {documento.procedencia}</p>
-          )}
 
-          {/* Etapa 2 info */}
-          {documento.area_entregada && (
-            <div className="flex items-center gap-1.5 mt-2 text-xs text-blue-600">
-              <Send className="w-3 h-3" />
-              <span>Entregado a: <span className="font-medium">{documento.area_entregada}</span></span>
-            </div>
-          )}
-
-          {/* Etapa 3 info */}
-          {documento.descargo && (
-            <div className="flex items-center gap-1.5 mt-1 text-xs text-emerald-600">
-              <FileCheck className="w-3 h-3" />
-              <span className="font-medium">Descargo registrado</span>
-            </div>
-          )}
-        </div>
-
-        {/* Acciones */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={() => onVer(documento)}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Ver detalle"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          
-          {documento.estado === 'PENDIENTE' && (
-            <>
-              <button
-                onClick={() => onEditar(documento)}
-                className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                title="Editar"
-              >
-                <Edit3 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => onEntregar(documento)}
-                className="p-2 text-white hover:opacity-90 rounded-lg transition-colors"
-                style={{ backgroundColor: '#2563EB' }}
-                title="Entregar"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </>
-          )}
-          
-          {documento.estado === 'ENTREGADO' && (
+          {/* Acciones */}
+          <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
             <button
-              onClick={() => onDescargar(documento)}
-              className="p-2 text-white hover:opacity-90 rounded-lg transition-colors"
-              style={{ backgroundColor: '#059669' }}
-              title="Registrar descargo"
+              onClick={() => onVer(documento)}
+              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+              title="Ver detalle"
             >
-              <FileCheck className="w-4 h-4" />
+              <Eye className="w-4 h-4" />
             </button>
-          )}
+            
+            {documento.estado === 'PENDIENTE' && (
+              <>
+                <button
+                  onClick={() => onEditar(documento)}
+                  className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                  title="Editar"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onEntregar(documento)}
+                  className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Derivar"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </>
+            )}
+            
+            {documento.estado === 'ENTREGADO' && (
+              <button
+                onClick={() => onDescargar(documento)}
+                className="p-2 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                title="Resolver"
+              >
+                <FileCheck className="w-4 h-4" />
+              </button>
+            )}
 
-          {onEliminar && (
-            <button
-              onClick={() => onEliminar(documento)}
-              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="Eliminar"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+            {onEliminar && (
+              <button
+                onClick={() => onEliminar(documento)}
+                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Eliminar"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
