@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     GOOGLE_SHEETS_ID: str = ""
     GOOGLE_APPS_SCRIPT_URL: str = ""  # Apps Script web app URL for write operations
     
+    # Mesa de Partes (separate sheet)
+    MESA_PARTES_SHEET_ID: str = ""
+    MESA_PARTES_APPS_SCRIPT_URL: str = ""
+    
     # JWT
     JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"

@@ -18,6 +18,7 @@ from app.routers import (
     vacaciones,
     areas,
     estructura_jerarquica,
+    mesa_partes,
 )
 
 # Configure logging
@@ -83,6 +84,7 @@ app.include_router(descansos.router, prefix="/api/v1")
 app.include_router(vacaciones.router, prefix="/api/v1")
 app.include_router(areas.router, prefix="/api/v1")
 app.include_router(estructura_jerarquica.router, prefix="/api/v1")
+app.include_router(mesa_partes.router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Root"])
