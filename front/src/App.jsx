@@ -7,7 +7,7 @@ import PanelOCR from './pages/PanelOCR';
 
 function App() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       <PanelOCR />
     </div>
   );
