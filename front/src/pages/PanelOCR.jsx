@@ -12,6 +12,7 @@ import ModalRegistroVacaciones from '../components/ocr/ModalRegistroVacaciones';
 import ParteDiario from '../components/ocr/ParteDiario';
 import ModalSolicitudCambioTurno from '../components/ocr/ModalSolicitudCambioTurno';
 import PanelAdminUsuariosOCR from '../components/ocr/admin/PanelAdminUsuariosOCR';
+import MesaDePartes from '../components/mesapartes/MesaDePartes';
 import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn } from '../components/ocr/constantes';
 import { apiClient } from '../components/ocr/services/apiClient';
 import { authService } from '../components/ocr/services/authService';
@@ -99,12 +100,23 @@ const USUARIOS_PRUEBA = {
     areas: ['Emergencia'],
     area: 'Emergencia',
     requiereCambio: false
+  },
+  tramite_documentario: {
+    id: 'USR007',
+    nombre: 'Oficina de Trámite Documentario',
+    usuario: 'tramite',
+    rol: 'tramite_documentario',
+    roles: [5],
+    areas: ['UNIDAD DE TRAMITE DOCUMENTARIO'],
+    area: 'UNIDAD DE TRAMITE DOCUMENTARIO',
+    requiereCambio: false
   }
 };
 
 // Lista de roles disponibles para el selector de prueba
 const ROLES_PRUEBA = [
   { value: 'admin', label: 'Administrador', desc: 'Acceso total' },
+  { value: 'tramite_documentario', label: 'Trámite Documentario', desc: 'Registra y deriva documentos' },
   { value: 'jefe_area', label: 'Jefe de Área', desc: 'Gestiona su área' },
   { value: 'jefe_departamento', label: 'Jefe de Departamento', desc: 'Gestiona su departamento' },
   { value: 'jefe_division', label: 'Jefe de División', desc: 'Gestiona su división' },
@@ -156,6 +168,7 @@ const PanelOCRContent = () => {
   );
   const [responsable, setResponsable] = useState(initialSession?.user?.nombre || '');
   const [esAdmin, setEsAdmin] = useState(initialSession?.user?.rol === 'admin');
+  const [esTramite, setEsTramite] = useState(initialSession?.user?.rol === 'tramite_documentario');
   const [areas, setAreas] = useState([]);
   const [responsables, setResponsables] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -173,6 +186,7 @@ const PanelOCRContent = () => {
   // IMPORTANTE: INICIAR EN false - Solo se abre con el botón
   // ============================================================
   const [mostrarAdminUsuarios, setMostrarAdminUsuarios] = useState(false);
+  const [mostrarMesaPartes, setMostrarMesaPartes] = useState(false);
   // ============================================================
 
   // ============================================================
@@ -210,7 +224,7 @@ const PanelOCRContent = () => {
       try {
         const result = await apiClient.get('/users/me', {}, { _skipAuthRedirect: true });
         if (result && result.roles) {
-          const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin' };
+      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin', 5: 'tramite_documentario' };
           const maxRol = Math.max(...result.roles);
           const freshUser = {
             ...result,
@@ -273,6 +287,7 @@ const PanelOCRContent = () => {
           setIsUsuario(userData.rol_principal === 0);
           setResponsable(userData.nombre);
           setEsAdmin(userData.rol_principal === 4);
+          setEsTramite(userData.rol_principal === 5);
           
           if (userData.areas && userData.areas.length > 0) {
             setAreaSeleccionada(userData.areas[0]);
@@ -315,6 +330,7 @@ const PanelOCRContent = () => {
       setIsUsuario(userData.rol === 'usuario');
       setResponsable(userData.nombre);
       setEsAdmin(userData.rol === 'admin');
+      setEsTramite(userData.rol === 'tramite_documentario');
       
       if (userData.areas && userData.areas.length > 0) {
         setAreaSeleccionada(userData.areas[0]);
@@ -351,6 +367,7 @@ const PanelOCRContent = () => {
     setIsUsuario(userData.rol === 'usuario');
     setResponsable(userData.nombre);
     setEsAdmin(userData.rol === 'admin');
+    setEsTramite(userData.rol === 'tramite_documentario');
     
     if (userData.areas && userData.areas.length > 0) {
       setAreaSeleccionada(userData.areas[0]);
@@ -390,6 +407,7 @@ const PanelOCRContent = () => {
     setAreaSeleccionada(null);
     setResponsable('');
     setEsAdmin(false);
+    setEsTramite(false);
     setPantalla('seleccion');
     setMostrarAdminUsuarios(false);
   }, []);
@@ -658,6 +676,8 @@ const PanelOCRContent = () => {
   const abrirCambiosTurno = useCallback(() => setMostrarCambiosTurno(true), []);
   const abrirAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(true), []);
   const cerrarAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(false), []);
+  const abrirMesaPartes = useCallback(() => setMostrarMesaPartes(true), []);
+  const cerrarMesaPartes = useCallback(() => setMostrarMesaPartes(false), []);
   const abrirDescansoMedico = useCallback(() => setMostrarDescansoMedico(true), []);
   const cerrarDescansoMedico = useCallback(() => setMostrarDescansoMedico(false), []);
   const abrirVacaciones = useCallback(() => setMostrarVacaciones(true), []);
@@ -691,10 +711,13 @@ const PanelOCRContent = () => {
         areaAsignada={areaSeleccionada}
         responsable={responsable}
         esAdmin={esAdmin}
+        esTramite={esTramite}
         onSalir={handleSalir}
         todasLasAreas={areas.filter(a => a !== 'TODAS')}
         medicos={medicosSistema}
         onAbrirCambiosTurno={abrirCambiosTurno}
+        onAbrirAdminUsuarios={abrirAdminUsuarios}
+        onAbrirMesaPartes={abrirMesaPartes}
         esJefe={isJefe}
         esUsuario={isUsuario}
         user={user}
@@ -777,7 +800,14 @@ const PanelOCRContent = () => {
       {/* ============================================================
           PANEL PRINCIPAL - OPTIMIZADO CON useMemo
           ============================================================ */}
-      {panelContent}
+      {mostrarMesaPartes ? (
+        <MesaDePartes
+          onSalir={cerrarMesaPartes}
+          esAdmin={esAdmin}
+          esTramite={esTramite}
+          user={user}
+        />
+      ) : panelContent}
 
       {/* ============================================================
           MODALES

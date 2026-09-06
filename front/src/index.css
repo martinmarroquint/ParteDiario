@@ -33,3 +33,12 @@ body {
     animation: none;
   }
 }
+
+/* Hide scrollbar for filter tabs */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
