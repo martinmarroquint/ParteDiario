@@ -230,26 +230,57 @@ class MesaPartesService:
         
         return await self._apps_script_action("descargar", row_data)
     
-    async def get_opciones(self) -> dict:
-        """Get distinct values for dropdowns from existing data."""
-        rows = await self._get_all_rows()
-        if not rows or len(rows) < 2:
-            return {"tipos_doc": [], "areas": [], "docs_tramite": []}
+    async def _get_bd_rows(self) -> list[list]:
+        """Read all rows from the BD sheet (catalog of document types)."""
+        if not self._is_configured():
+            return []
         
-        data_rows = rows[1:]
-        return {
-            "tipos_doc": sorted(list(set(
-                str(row[self.COL['tipo_doc']]) for row in data_rows 
-                if len(row) > self.COL['tipo_doc'] and row[self.COL['tipo_doc']]
-            ))),
-            "areas": sorted(list(set(
+        url = f"{self.BASE_URL}/{self.sheet_id}/values/BD"
+        params = {"key": self.api_key, "majorDimension": "ROWS"}
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                return response.json().get("values", [])
+        except Exception as e:
+            logger.error(f"Error reading BD sheet: {e}")
+            return []
+    
+    async def get_opciones(self) -> dict:
+        """Get distinct values for dropdowns.
+        
+        tipo_doc: from BD sheet (catalog of document types)
+        areas, docs_tramite: from DOCUMENTOS sheet (derived from actual data)
+        """
+        # Read tipo_doc from BD sheet (catalog)
+        bd_rows = await self._get_bd_rows()
+        tipos_doc = []
+        if bd_rows and len(bd_rows) > 1:
+            tipos_doc = sorted(list(set(
+                str(row[0]) for row in bd_rows[1:] 
+                if row and len(row) > 0 and row[0]
+            )))
+        
+        # Read areas and docs_tramite from DOCUMENTOS sheet
+        rows = await self._get_all_rows()
+        areas = []
+        docs_tramite = []
+        if rows and len(rows) > 1:
+            data_rows = rows[1:]
+            areas = sorted(list(set(
                 str(row[self.COL['area_entregada']]) for row in data_rows 
                 if len(row) > self.COL['area_entregada'] and row[self.COL['area_entregada']]
-            ))),
-            "docs_tramite": sorted(list(set(
+            )))
+            docs_tramite = sorted(list(set(
                 str(row[self.COL['doc_tramite']]) for row in data_rows 
                 if len(row) > self.COL['doc_tramite'] and row[self.COL['doc_tramite']]
-            ))),
+            )))
+        
+        return {
+            "tipos_doc": tipos_doc,
+            "areas": areas,
+            "docs_tramite": docs_tramite,
         }
     
     async def eliminar_documento(self, doc_id: int) -> dict:
