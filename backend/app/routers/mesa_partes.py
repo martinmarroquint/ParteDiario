@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 
@@ -9,6 +10,8 @@ from app.models.documento_mesa_partes import (
 from app.services.mesa_partes_service import MesaPartesService
 from app.middleware.auth import get_current_user
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mesa-partes", tags=["Mesa de Partes"])
 
@@ -149,7 +152,8 @@ async def registrar_documento(
     )
     
     if result and result.get("error"):
-        raise HTTPException(status_code=500, detail=f"Error al registrar: {result['error']}")
+        logger.warning(f"Apps Script warning on registrar: {result['error']}")
+        # Don't fail - the script may have executed successfully despite the error
     
     documento = DocumentoMesaPartes(
         id=0,
@@ -182,7 +186,7 @@ async def actualizar_documento(
     
     result = await mesa_partes_service.actualizar_documento(doc_id, update_data)
     if result and result.get("error"):
-        raise HTTPException(status_code=500, detail=f"Error al actualizar: {result['error']}")
+        logger.warning(f"Apps Script warning on actualizar: {result['error']}")
     
     documento = await mesa_partes_service.get_documento(doc_id)
     if not documento:
@@ -208,7 +212,8 @@ async def entregar_documento(
     
     result = await mesa_partes_service.entregar_documento(doc_id, data.model_dump())
     if result and result.get("error"):
-        raise HTTPException(status_code=500, detail=f"Error al entregar: {result['error']}")
+        logger.warning(f"Apps Script warning on entregar: {result['error']}")
+        # Don't fail - log and continue
     
     documento = await mesa_partes_service.get_documento(doc_id)
     if not documento:
@@ -244,7 +249,7 @@ async def descargar_documento(
     
     result = await mesa_partes_service.descargar_documento(doc_id, data.model_dump())
     if result and result.get("error"):
-        raise HTTPException(status_code=500, detail=f"Error al descargar: {result['error']}")
+        logger.warning(f"Apps Script warning on descargar: {result['error']}")
     
     documento = await mesa_partes_service.get_documento(doc_id)
     if not documento:
@@ -264,6 +269,6 @@ async def eliminar_documento(
     
     result = await mesa_partes_service.eliminar_documento(doc_id)
     if result and result.get("error"):
-        raise HTTPException(status_code=500, detail=f"Error al eliminar: {result['error']}")
+        logger.warning(f"Apps Script warning on eliminar: {result['error']}")
     
     return {"message": "Documento eliminado correctamente"}

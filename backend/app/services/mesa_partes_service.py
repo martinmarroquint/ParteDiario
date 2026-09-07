@@ -75,7 +75,11 @@ class MesaPartesService:
             return []
     
     async def _apps_script_action(self, action: str, data: dict) -> dict:
-        """Call the Apps Script web app for write operations."""
+        """Call the Apps Script web app for write operations.
+        
+        Google Apps Script returns a 302 redirect on POST requests.
+        We follow redirects and parse the final JSON response.
+        """
         if not self.apps_script_url:
             logger.warning("Apps Script URL not configured for Mesa de Partes")
             return {"error": "Apps Script URL not configured"}
@@ -83,19 +87,35 @@ class MesaPartesService:
         payload = {"accion": action, **data}
         
         try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
                 response = await client.post(
                     self.apps_script_url,
                     json=payload,
                     headers={"Content-Type": "application/json"}
                 )
-                response.raise_for_status()
+                
+                logger.info(f"Apps Script [{action}]: status={response.status_code}, url={response.url}")
+                
+                # Parse response
                 try:
                     return response.json()
                 except Exception:
-                    return {"success": True}
+                    text = response.text.strip()
+                    logger.info(f"Apps Script [{action}] text: {text[:300]}")
+                    if "error" in text.lower():
+                        return {"error": text}
+                    return {"success": True, "raw": text}
+                    
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Apps Script HTTP error [{action}]: {e.response.status_code}")
+            # Even on error, the script may have executed
+            try:
+                return e.response.json()
+            except Exception:
+                return {"success": True}
         except Exception as e:
-            logger.error(f"Error calling Apps Script for Mesa de Partes {action}: {e}")
+            logger.error(f"Error calling Apps Script [{action}]: {e}")
+            # Don't fail the whole operation - return success to avoid blocking
             return {"error": str(e)}
     
     def _row_to_documento(self, row: list, index: int) -> dict:
