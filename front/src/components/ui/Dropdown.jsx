@@ -1,7 +1,8 @@
 // src/components/ui/Dropdown.jsx
-// DROPDOWN PERSONALIZADO - ESTILO COMBOBOX MODERNO
+// DROPDOWN CON PORTAL - Siempre flota sobre todo
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { ChevronDown, Search, X, Check, Loader2 } from 'lucide-react';
 
 const Dropdown = ({
@@ -24,6 +25,7 @@ const Dropdown = ({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [posicion, setPosicion] = useState({ top: 0, left: 0, width: 0 });
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -37,9 +39,13 @@ const Dropdown = ({
       )
     : options;
 
+  // Click outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        // Si el click es en el dropdown portal, no cerrar
+        const portal = document.getElementById('dropdown-portal-list');
+        if (portal && portal.contains(e.target)) return;
         setIsOpen(false);
         setSearchTerm('');
         setHighlightedIndex(-1);
@@ -59,6 +65,37 @@ const Dropdown = ({
       }
     }
   }, [highlightedIndex]);
+
+  // Calcular posición del input para el portal
+  const calcularPosicion = useCallback(() => {
+    if (dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const listHeight = 240; // max-h-56 = 14rem = 224px + padding
+
+      const shouldGoUp = rect.bottom + listHeight > viewportHeight - 20;
+
+      setPosicion({
+        top: shouldGoUp ? rect.top - listHeight - 8 : rect.bottom + 6,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+  }, []);
+
+  // Recalcular posición al abrir
+  useEffect(() => {
+    if (isOpen) {
+      calcularPosicion();
+      const recalc = () => calcularPosicion();
+      window.addEventListener('scroll', recalc, true);
+      window.addEventListener('resize', recalc);
+      return () => {
+        window.removeEventListener('scroll', recalc, true);
+        window.removeEventListener('resize', recalc);
+      };
+    }
+  }, [isOpen, calcularPosicion]);
 
   const handleKeyDown = (e) => {
     if (!isOpen && (e.key === 'ArrowDown' || e.key === 'Enter')) {
@@ -131,6 +168,8 @@ const Dropdown = ({
   const handleInputBlur = () => {
     setTimeout(() => {
       if (!dropdownRef.current?.contains(document.activeElement)) {
+        const portal = document.getElementById('dropdown-portal-list');
+        if (portal && portal.contains(document.activeElement)) return;
         setIsOpen(false);
         setSearchTerm('');
         setHighlightedIndex(-1);
@@ -156,6 +195,44 @@ const Dropdown = ({
     if (isOpen && searchable) return '';
     return placeholder;
   };
+
+  const listPortal = isOpen && !disabled ? ReactDOM.createPortal(
+    <div
+      id="dropdown-portal-list"
+      className="fixed bg-white border border-gray-200 rounded-xl shadow-2xl z-[9999] overflow-hidden"
+      style={{ top: posicion.top, left: posicion.left, width: posicion.width }}
+    >
+      <div ref={listRef} className="max-h-56 overflow-y-auto py-1">
+        {filteredOptions.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-gray-400 text-center">
+            {searchTerm ? `Sin resultados para "${searchTerm}"` : noOptionsMessage}
+          </div>
+        ) : (
+          filteredOptions.map((option, index) => {
+            const isSelected = option.value === value;
+            const isHighlighted = index === highlightedIndex;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleSelect(option)}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors duration-150 ${
+                  isSelected ? 'bg-[#e6f4f2] text-[#0f766e]' :
+                  isHighlighted ? 'bg-gray-100 text-gray-900' :
+                  'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span className="truncate">{option.label}</span>
+                {isSelected && <Check className="w-4 h-4 text-[#0f766e] flex-shrink-0 ml-2" />}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>,
+    document.body
+  ) : null;
 
   return (
     <div className={`relative ${fullWidth ? 'w-full' : ''} ${className}`} ref={dropdownRef}>
@@ -211,38 +288,7 @@ const Dropdown = ({
 
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
 
-      {isOpen && !disabled && (
-        <div className="absolute z-[9999] w-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          <div ref={listRef} className="max-h-56 overflow-y-auto py-1">
-            {filteredOptions.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-gray-400 text-center">
-                {searchTerm ? `Sin resultados para "${searchTerm}"` : noOptionsMessage}
-              </div>
-            ) : (
-              filteredOptions.map((option, index) => {
-                const isSelected = option.value === value;
-                const isHighlighted = index === highlightedIndex;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => handleSelect(option)}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors duration-150 ${
-                      isSelected ? 'bg-[#e6f4f2] text-[#0f766e]' :
-                      isHighlighted ? 'bg-gray-100 text-gray-900' :
-                      'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span className="truncate">{option.label}</span>
-                    {isSelected && <Check className="w-4 h-4 text-[#0f766e] flex-shrink-0 ml-2" />}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
+      {listPortal}
     </div>
   );
 };

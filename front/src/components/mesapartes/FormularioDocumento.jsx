@@ -1,6 +1,8 @@
 // src/components/mesapartes/FormularioDocumento.jsx
 // Formulario ETAPA 1: RECEPCIÓN - Layout mobile-first, 1-2 columnas
-import React, { useState, useRef, useEffect } from 'react';
+// SelectorFecha usa portal para que el calendario siempre flote sobre todo
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { Save, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import Dropdown from '../ui/Dropdown';
 
@@ -9,10 +11,11 @@ const DIAS_SEMANA = ['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
 const ANIOS_DISPONIBLES = [2020,2021,2022,2023,2024,2025,2026,2027,2028,2029,2030];
 
 // ============================================
-// SELECTOR DE FECHA
+// SELECTOR DE FECHA (con portal para floating)
 // ============================================
 const SelectorFecha = ({ value, onChange, placeholder = 'Seleccionar fecha' }) => {
   const [abierto, setAbierto] = useState(false);
+  const [posicion, setPosicion] = useState({ top: 0, left: 0 });
   const [fecha, setFecha] = useState(() => {
     if (value && value.includes('-')) { const [a,m,d]=value.split('-'); return {dia:parseInt(d),mes:parseInt(m),anio:parseInt(a)}; }
     const hoy=new Date(); return {dia:hoy.getDate(),mes:hoy.getMonth()+1,anio:hoy.getFullYear()};
@@ -26,7 +29,50 @@ const SelectorFecha = ({ value, onChange, placeholder = 'Seleccionar fecha' }) =
     if (value && value.includes('-')) { const [a,m,d]=value.split('-'); setFecha({dia:parseInt(d),mes:parseInt(m),anio:parseInt(a)}); setVistaMes(parseInt(m)); setVistaAnio(parseInt(a)); }
   }, [value]);
 
-  useEffect(() => { const h=(e)=>{if(ref.current&&!ref.current.contains(e.target))setAbierto(false);}; document.addEventListener('mousedown',h); return ()=>document.removeEventListener('mousedown',h); }, []);
+  // Calcular posición del botón para posicionar el calendario
+  const calcularPosicion = useCallback(() => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const calendarHeight = 320; // altura estimada del calendario
+      
+      // Si cabe abajo, ponerlo abajo. Si no, arriba.
+      const shouldGoUp = rect.bottom + calendarHeight > viewportHeight - 20;
+      
+      setPosicion({
+        top: shouldGoUp ? rect.top - calendarHeight - 8 : rect.bottom + 8,
+        left: Math.max(16, Math.min(rect.left, window.innerWidth - 280)),
+      });
+    }
+  }, []);
+
+  // Click outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        // Si el click es en el calendario portal, no cerrar
+        const calendar = document.getElementById('selector-fecha-calendar');
+        if (calendar && calendar.contains(e.target)) return;
+        setAbierto(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Recalcular posición al abrir
+  useEffect(() => {
+    if (abierto) {
+      calcularPosicion();
+      const recalc = () => calcularPosicion();
+      window.addEventListener('scroll', recalc, true);
+      window.addEventListener('resize', recalc);
+      return () => {
+        window.removeEventListener('scroll', recalc, true);
+        window.removeEventListener('resize', recalc);
+      };
+    }
+  }, [abierto, calcularPosicion]);
 
   const diasEnMes = new Date(vistaAnio,vistaMes,0).getDate();
   const primerDiaSemana = new Date(vistaAnio,vistaMes-1,1).getDay();
@@ -37,6 +83,39 @@ const SelectorFecha = ({ value, onChange, placeholder = 'Seleccionar fecha' }) =
   const esSel = (d) => d===fecha.dia&&vistaMes===fecha.mes&&vistaAnio===fecha.anio;
   const fechaMostrada = value&&value.includes('-') ? (()=>{const[a,m,d]=value.split('-');return`${d}/${m}/${a}`;})() : '';
 
+  const calendarioPortal = abierto ? ReactDOM.createPortal(
+    <div 
+      id="selector-fecha-calendar"
+      className="fixed bg-white border border-gray-200 rounded-xl shadow-2xl z-[9999] p-3 w-64"
+      style={{ top: posicion.top, left: posicion.left }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-0.5">
+          <button type="button" onClick={()=>cambiarMes(-1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.5}/></button>
+          <span className="text-sm font-medium text-gray-700 w-14 text-center">{MESES[vistaMes-1].substring(0,3)}</span>
+          <button type="button" onClick={()=>cambiarMes(1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5}/></button>
+        </div>
+        <div className="flex items-center gap-0.5">
+          <button type="button" onClick={()=>cambiarAnio(-1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.5}/></button>
+          <button type="button" onClick={()=>setMostrarSelectorAnio(!mostrarSelectorAnio)} className="text-sm font-medium text-gray-700 hover:bg-gray-100 px-1 rounded w-12 text-center">{vistaAnio}</button>
+          <button type="button" onClick={()=>cambiarAnio(1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5}/></button>
+        </div>
+      </div>
+      {mostrarSelectorAnio&&(
+        <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-4 gap-1">{ANIOS_DISPONIBLES.map(a=><button key={a} type="button" onClick={()=>{setVistaAnio(a);setMostrarSelectorAnio(false);}} className={`py-1.5 text-xs rounded-lg transition-colors ${a===vistaAnio?'bg-gray-900 text-white font-medium':'text-gray-600 hover:bg-gray-100'}`}>{a}</button>)}</div>
+        </div>
+      )}
+      <div className="grid grid-cols-7 mb-1">{DIAS_SEMANA.map(d=><div key={d} className="text-center text-[10px] font-medium text-gray-400 py-1">{d}</div>)}</div>
+      <div className="grid grid-cols-7 gap-0.5">
+        {Array.from({length:primerDiaSemana}).map((_,i)=><div key={`e-${i}`} className="aspect-square"/>)}
+        {Array.from({length:diasEnMes},(_,i)=>i+1).map(dia=>{const hoy=esHoy(dia),sel=esSel(dia),finde=(primerDiaSemana+dia-1)%7===0||(primerDiaSemana+dia-1)%7===6;return(<button key={dia} type="button" onClick={()=>seleccionarDia(dia)} className={`aspect-square flex items-center justify-center text-xs rounded-lg transition-all ${sel?'bg-gray-900 text-white font-medium':hoy?'bg-gray-100 text-gray-900 font-medium':finde?'text-gray-400 hover:bg-gray-50':'text-gray-600 hover:bg-gray-50'}`}>{dia}</button>);})}
+      </div>
+      <div className="mt-3 pt-2 border-t border-gray-100"><button type="button" onClick={()=>{const h=new Date();onChange(`${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`);setAbierto(false);}} className="w-full py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors">Hoy</button></div>
+    </div>,
+    document.body
+  ) : null;
+
   return (
     <div className="relative" ref={ref}>
       <label className="block text-xs font-medium text-gray-500 mb-1.5">{placeholder}</label>
@@ -44,33 +123,7 @@ const SelectorFecha = ({ value, onChange, placeholder = 'Seleccionar fecha' }) =
         <span className={fechaMostrada?'text-gray-700':'text-gray-400'}>{fechaMostrada||placeholder}</span>
         <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${abierto?'rotate-90':''}`} strokeWidth={1.5} />
       </button>
-      {abierto&&(
-        <div className="absolute top-full mt-1.5 left-0 bg-white border border-gray-200 rounded-xl shadow-xl z-[9999] p-3 w-64">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-0.5">
-              <button type="button" onClick={()=>cambiarMes(-1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.5}/></button>
-              <span className="text-sm font-medium text-gray-700 w-14 text-center">{MESES[vistaMes-1].substring(0,3)}</span>
-              <button type="button" onClick={()=>cambiarMes(1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5}/></button>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <button type="button" onClick={()=>cambiarAnio(-1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.5}/></button>
-              <button type="button" onClick={()=>setMostrarSelectorAnio(!mostrarSelectorAnio)} className="text-sm font-medium text-gray-700 hover:bg-gray-100 px-1 rounded w-12 text-center">{vistaAnio}</button>
-              <button type="button" onClick={()=>cambiarAnio(1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5}/></button>
-            </div>
-          </div>
-          {mostrarSelectorAnio&&(
-            <div className="mb-3 p-2 bg-gray-50 rounded-lg">
-              <div className="grid grid-cols-4 gap-1">{ANIOS_DISPONIBLES.map(a=><button key={a} type="button" onClick={()=>{setVistaAnio(a);setMostrarSelectorAnio(false);}} className={`py-1.5 text-xs rounded-lg transition-colors ${a===vistaAnio?'bg-gray-900 text-white font-medium':'text-gray-600 hover:bg-gray-100'}`}>{a}</button>)}</div>
-            </div>
-          )}
-          <div className="grid grid-cols-7 mb-1">{DIAS_SEMANA.map(d=><div key={d} className="text-center text-[10px] font-medium text-gray-400 py-1">{d}</div>)}</div>
-          <div className="grid grid-cols-7 gap-0.5">
-            {Array.from({length:primerDiaSemana}).map((_,i)=><div key={`e-${i}`} className="aspect-square"/>)}
-            {Array.from({length:diasEnMes},(_,i)=>i+1).map(dia=>{const hoy=esHoy(dia),sel=esSel(dia),finde=(primerDiaSemana+dia-1)%7===0||(primerDiaSemana+dia-1)%7===6;return(<button key={dia} type="button" onClick={()=>seleccionarDia(dia)} className={`aspect-square flex items-center justify-center text-xs rounded-lg transition-all ${sel?'bg-gray-900 text-white font-medium':hoy?'bg-gray-100 text-gray-900 font-medium':finde?'text-gray-400 hover:bg-gray-50':'text-gray-600 hover:bg-gray-50'}`}>{dia}</button>);})}
-          </div>
-          <div className="mt-3 pt-2 border-t border-gray-100"><button type="button" onClick={()=>{const h=new Date();onChange(`${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`);setAbierto(false);}} className="w-full py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors">Hoy</button></div>
-        </div>
-      )}
+      {calendarioPortal}
     </div>
   );
 };
