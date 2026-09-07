@@ -125,7 +125,7 @@ class MesaPartesService:
             return row[idx] if len(row) > idx else default
         
         return {
-            "id": index + 2,  # Sheet row number (header is row 1)
+            "id": index + 1,  # Sheet row: header=row1, data starts at row2, index starts at 1
             "numero": str(get('numero', str(index + 1))),
             "fecha": str(get('fecha')),
             "tipo_doc": str(get('tipo_doc')),
@@ -203,7 +203,6 @@ class MesaPartesService:
             "fechaDoc": data.get("fecha_doc", ""),
             "procedencia": data.get("procedencia", ""),
             "contenido": data.get("contenido", ""),
-            "registradoPor": user_name,
         }
         
         return await self._apps_script_action("registrar", row_data)
