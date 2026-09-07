@@ -45,7 +45,7 @@ const SelectorFecha = ({ value, onChange, placeholder = 'Seleccionar fecha' }) =
         <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${abierto?'rotate-90':''}`} strokeWidth={1.5} />
       </button>
       {abierto&&(
-        <div className="absolute top-full mt-1.5 left-0 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3 w-64">
+        <div className="absolute top-full mt-1.5 left-0 bg-white border border-gray-200 rounded-xl shadow-xl z-[9999] p-3 w-64">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-0.5">
               <button type="button" onClick={()=>cambiarMes(-1)} className="p-0.5 hover:bg-gray-100 rounded text-gray-400"><ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.5}/></button>

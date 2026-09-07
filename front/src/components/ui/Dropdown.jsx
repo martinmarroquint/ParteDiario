@@ -212,7 +212,7 @@ const Dropdown = ({
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
 
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+        <div className="absolute z-[9999] w-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
           <div ref={listRef} className="max-h-56 overflow-y-auto py-1">
             {filteredOptions.length === 0 ? (
               <div className="px-4 py-3 text-sm text-gray-400 text-center">
