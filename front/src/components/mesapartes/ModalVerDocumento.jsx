@@ -25,7 +25,7 @@ const ModalVerDocumento = ({ documento, onClose, onEditar, onEntregar, onDescarg
                 </span>
               </div>
               {documento.numero && (
-                <p className="text-[11px] text-gray-400 mt-0.5">#{documento.numero}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">{documento.numero}</p>
               )}
             </div>
           </div>
