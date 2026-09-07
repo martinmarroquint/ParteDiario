@@ -83,7 +83,7 @@ class MesaPartesService:
         payload = {"accion": action, **data}
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 response = await client.post(
                     self.apps_script_url,
                     json=payload,
