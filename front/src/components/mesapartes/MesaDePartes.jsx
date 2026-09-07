@@ -2,7 +2,7 @@
 // Mesa de Partes - Layout original restaurado + Backend FastAPI
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  ArrowLeft, Search, Plus, Eye, Edit2,
+  ArrowLeft, Search, Plus, Edit2,
   Send, FileCheck, Calendar, User, Inbox,
   X, SlidersHorizontal, ChevronLeft, ChevronRight
 } from 'lucide-react';
@@ -263,18 +263,16 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                     return (
                       <div
                         key={doc.id}
-                        className="bg-white rounded-lg px-4 py-3 border border-gray-200/60 hover:border-gray-300/80 cursor-pointer"
+                        className="bg-white rounded-lg px-4 py-3 border border-gray-200/60 hover:border-gray-300/80 cursor-pointer transition-colors"
                         onClick={() => setDocVer(doc)}
                       >
                         <div className="flex items-center gap-2 mb-1.5">
-                          {doc.numero && <span className="text-[11px] font-semibold" style={{ color: COLOR_PRIMARIO }}>#{doc.numero}</span>}
-                          {doc.numero && <span className="text-gray-300">-</span>}
                           <span className="text-[11px] text-gray-500">
-                            <Calendar className="w-3 h-3 inline mr-1" strokeWidth={1.5} />{doc.fecha}
+                            {doc.fecha}
                           </span>
                           {doc.tipo_doc && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                              {doc.tipo_doc.length > 18 ? doc.tipo_doc.substring(0, 18) + '…' : doc.tipo_doc}
+                              {doc.tipo_doc.length > 20 ? doc.tipo_doc.substring(0, 20) + '…' : doc.tipo_doc}
                             </span>
                           )}
 
@@ -286,19 +284,17 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                             {style.label}
                           </span>
 
+                          {/* Acciones - stopPropagation para que no abra el modal */}
                           <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-                            <button onClick={() => setDocVer(doc)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg" title="Ver">
-                              <Eye className="w-3.5 h-3.5" strokeWidth={1.5} />
-                            </button>
-                            {canRegister && (
-                              <button onClick={() => setDocEditar(doc)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg" title="Editar">
-                                <Edit2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                              </button>
-                            )}
-                            {doc.estado === 'PENDIENTE' && canRegister && (
-                              <button onClick={() => setDocEntregar(doc)} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Entregar">
-                                <Send className="w-3.5 h-3.5" strokeWidth={1.5} />
-                              </button>
+                            {canRegister && doc.estado === 'PENDIENTE' && (
+                              <>
+                                <button onClick={() => setDocEditar(doc)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg" title="Editar">
+                                  <Edit2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                                </button>
+                                <button onClick={() => setDocEntregar(doc)} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Entregar">
+                                  <Send className="w-3.5 h-3.5" strokeWidth={1.5} />
+                                </button>
+                              </>
                             )}
                             {doc.estado === 'ENTREGADO' && (
                               <button onClick={() => setDocDescargar(doc)} className="p-1.5 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Descargar">
@@ -312,11 +308,11 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
 
                         <div className="flex items-center gap-3 text-[11px] text-gray-400 flex-wrap">
                           {doc.procedencia && (
-                            <span className="flex items-center gap-1">
-                              <User className="w-3 h-3" strokeWidth={1.5} />{doc.procedencia}
+                            <span className="flex items-center gap-1 truncate">
+                              <User className="w-3 h-3 flex-shrink-0" strokeWidth={1.5} />{doc.procedencia}
                             </span>
                           )}
-                          {doc.area_entregada && <span>→ {doc.area_entregada}</span>}
+                          {doc.area_entregada && <span className="truncate">→ {doc.area_entregada}</span>}
                           {doc.doc_tramite && (
                             <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{doc.doc_tramite}</span>
                           )}
