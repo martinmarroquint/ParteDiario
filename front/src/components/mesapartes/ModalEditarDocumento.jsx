@@ -65,10 +65,6 @@ const ModalEditarDocumento = ({ documento, onClose, onActualizado }) => {
 
         {/* Formulario */}
         <div className="flex-1 overflow-y-auto p-5">
-          <div className="mb-4 p-3 bg-amber-50 rounded-xl flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-            <p className="text-xs text-amber-700">Solo se pueden editar los campos iniciales del documento</p>
-          </div>
           <FormularioDocumento 
             form={form} 
             onChange={setForm} 

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Search, Plus, Edit2,
   Send, FileCheck, Calendar, User, Inbox,
-  X, SlidersHorizontal, ChevronLeft, ChevronRight
+  X, SlidersHorizontal, ChevronLeft, ChevronRight, FileText
 } from 'lucide-react';
 import apiClient from '../ocr/services/apiClient';
 import { COLOR_PRIMARIO, API_ENDPOINTS } from './constantes';
@@ -371,11 +371,17 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
 
       {/* Modal Nuevo Documento */}
       {docVer === 'nuevo' && (
-        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-[200] sm:p-4" onClick={() => setDocVer(null)}>
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-4" onClick={() => setDocVer(null)}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Nuevo Documento</h3>
-              <button onClick={() => setDocVer(null)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+            <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-amber-500" strokeWidth={1.5} />
+                  Nuevo Documento
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">Etapa 1: Recepción · Estado: Pendiente</p>
+              </div>
+              <button onClick={() => setDocVer(null)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                 <X className="w-4 h-4" strokeWidth={2} />
               </button>
             </div>

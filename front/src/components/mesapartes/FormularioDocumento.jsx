@@ -1,5 +1,5 @@
 // src/components/mesapartes/FormularioDocumento.jsx
-// Formulario ETAPA 1: RECEPCIÓN - Usa Dropdown profesional
+// Formulario ETAPA 1: RECEPCIÓN - Layout mobile-first, 1-2 columnas
 import React, { useState, useRef, useEffect } from 'react';
 import { Save, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import Dropdown from '../ui/Dropdown';
@@ -39,7 +39,8 @@ const SelectorFecha = ({ value, onChange, placeholder = 'Seleccionar fecha' }) =
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={()=>setAbierto(!abierto)} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-left outline-none transition-all bg-white hover:border-gray-300 flex items-center justify-between gap-2">
+      <label className="block text-xs font-medium text-gray-500 mb-1.5">{placeholder}</label>
+      <button type="button" onClick={()=>setAbierto(!abierto)} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-left outline-none transition-all bg-white hover:border-gray-300 focus:border-gray-400 flex items-center justify-between gap-2">
         <span className={fechaMostrada?'text-gray-700':'text-gray-400'}>{fechaMostrada||placeholder}</span>
         <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${abierto?'rotate-90':''}`} strokeWidth={1.5} />
       </button>
@@ -85,15 +86,15 @@ const FormularioDocumento = ({ form, onChange, onSubmit, guardando, modo = 'regi
   const tipoDocOptions = (opcionesBD.tiposDoc || []).map(t => ({ value: t, label: t }));
 
   return (
-    <form onSubmit={e=>{e.preventDefault();onSubmit?.();}} className="space-y-3">
+    <form onSubmit={e=>{e.preventDefault();onSubmit?.();}} className="space-y-4">
       
-      {/* Fila 1: Fecha | Tipo de Doc. | N Doc. Origen */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Campo único: Fecha */}
+      <SelectorFecha value={form.fecha} onChange={v=>handleChange('fecha',v)} placeholder="Fecha"/>
+
+      {/* Fila: Tipo de Doc. | N Doc. Origen */}
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Fecha</label>
-          <SelectorFecha value={form.fecha} onChange={v=>handleChange('fecha',v)} placeholder="Fecha"/>
-        </div>
-        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Tipo de Doc.</label>
           <Dropdown
             options={tipoDocOptions}
             value={form.tipoDoc || ''}
@@ -101,21 +102,17 @@ const FormularioDocumento = ({ form, onChange, onSubmit, guardando, modo = 'regi
             placeholder="Tipo de documento"
             searchable
             clearable
-            size="md"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">N Doc. Origen</label>
-          <input type="text" value={form.nDocOrigen||''} onChange={e=>handleChange('nDocOrigen',e.target.value)} placeholder="N documento origen" className={inputStyle}/>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">N° Doc. Origen</label>
+          <input type="text" value={form.nDocOrigen||''} onChange={e=>handleChange('nDocOrigen',e.target.value)} placeholder="Ej: 12345" className={inputStyle}/>
         </div>
       </div>
 
-      {/* Fila 2: Fecha Doc. | Procedencia */}
+      {/* Fila: Fecha Doc. | Procedencia */}
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Fecha Doc.</label>
-          <SelectorFecha value={form.fechaDoc} onChange={v=>handleChange('fechaDoc',v)} placeholder="Fecha doc."/>
-        </div>
+        <SelectorFecha value={form.fechaDoc} onChange={v=>handleChange('fechaDoc',v)} placeholder="Fecha documento"/>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Procedencia</label>
           <input type="text" value={form.procedencia||''} onChange={e=>handleChange('procedencia',e.target.value)} placeholder="Procedencia" className={inputStyle}/>
@@ -129,13 +126,13 @@ const FormularioDocumento = ({ form, onChange, onSubmit, guardando, modo = 'regi
           value={form.contenido||''} 
           onChange={e=>handleChange('contenido',e.target.value)} 
           placeholder="Describa el contenido del documento..."
-          rows={4}
+          rows={3}
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-700 placeholder:text-gray-400 outline-none transition-all bg-white focus:border-gray-400 focus:bg-gray-50/50 resize-none"
         />
       </div>
 
       <button type="submit" disabled={guardando}
-        className="w-full py-2.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 bg-gray-900 hover:bg-gray-800 mt-2">
+        className="w-full py-2.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 bg-gray-900 hover:bg-gray-800">
         {guardando?<><Loader2 className="w-4 h-4 animate-spin"/>Guardando...</>:<><Save className="w-4 h-4"/>{modo==='registro'?'Registrar Documento':'Guardar Cambios'}</>}
       </button>
     </form>
