@@ -17,6 +17,27 @@ import ModalDescargarDocumento from './ModalDescargarDocumento';
 const REGISTROS_POR_PAGINA = 20;
 const normalizarTexto = (t) => (t || '').toLowerCase().trim();
 
+// Abreviaturas para tipos de documento
+const ABREV_TIPOS = {
+  'OFICIO SIMPLE': 'O/S',
+  'OFICIO MULTIPLPE': 'O/M',
+  'MEMORANDUM MULTIPLE': 'M/M',
+  'CARTAS': 'C',
+  'SOLICITUDES': 'S',
+  'DESCARGOS': 'D',
+  'COMUNICACION TELEFONICA': 'C/T',
+  'COMUNICACION ELECTRONICA': 'C/E',
+  'ORDEN TELEFONICA': 'O/T',
+  'ELEVACIONES': 'E',
+  'PARTES': 'P',
+  'DISPOSICION DE COMANDO': 'D/C',
+};
+
+const abreviarTipo = (tipo) => {
+  if (!tipo) return '';
+  return ABREV_TIPOS[tipo] || tipo.substring(0, 6);
+};
+
 // Estados con colores sutiles
 const ESTADOS = {
   TODOS: { label: 'Todos', color: '#6B7280', bg: '#F3F4F6' },
@@ -267,12 +288,16 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                         onClick={() => setDocVer(doc)}
                       >
                         <div className="flex items-center gap-2 mb-1.5">
+                          {doc.numero && (
+                            <span className="text-[11px] font-semibold" style={{ color: COLOR_PRIMARIO }}>{doc.numero}</span>
+                          )}
+                          {doc.numero && <span className="text-gray-300">-</span>}
                           <span className="text-[11px] text-gray-500">
                             {doc.fecha}
                           </span>
                           {doc.tipo_doc && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                              {doc.tipo_doc.length > 20 ? doc.tipo_doc.substring(0, 20) + '…' : doc.tipo_doc}
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+                              {abreviarTipo(doc.tipo_doc)}
                             </span>
                           )}
 
