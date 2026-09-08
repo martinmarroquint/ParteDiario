@@ -66,13 +66,6 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
       const result = await apiClient.get(API_ENDPOINTS.documentos);
       const docs = result.documentos || [];
       setDocumentos(docs);
-
-      const hoy = new Date().toISOString().split('T')[0];
-      setStats({
-        total: docs.length,
-        hoy: docs.filter(d => d.fecha === hoy).length,
-        pendientes: docs.filter(d => d.estado === 'PENDIENTE').length
-      });
     } catch (err) {
       console.error('Error cargando documentos:', err);
       setError(err.message || 'Error al cargar documentos');
@@ -92,6 +85,19 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
   const handleActualizado = useCallback(() => {
     cargarDocumentos();
   }, [cargarDocumentos]);
+
+  useEffect(() => {
+    const docsFiltrados = documentos.filter(d => {
+      if (filtroFecha && d.fecha !== filtroFecha && d.fecha_doc !== filtroFecha) return false;
+      return true;
+    });
+    const hoy = new Date().toISOString().split('T')[0];
+    setStats({
+      total: docsFiltrados.length,
+      hoy: docsFiltrados.filter(d => d.fecha === hoy).length,
+      pendientes: docsFiltrados.filter(d => d.estado === 'PENDIENTE').length
+    });
+  }, [documentos, filtroFecha]);
 
   const handleDevolver = useCallback(async (doc) => {
     if (!window.confirm(`¿Devolver documento ${doc.numero} a estado PENDIENTE?`)) return;

@@ -2,8 +2,6 @@
 import React from 'react';
 import { X, Calendar, FileText, Send, FileCheck } from 'lucide-react';
 import { COLOR_PRIMARIO, ESTADOS } from './constantes';
-import apiClient from '../ocr/services/apiClient';
-import { API_ENDPOINTS } from './constantes';
 
 const ModalVerDocumento = ({ documento, onClose, onEditar, onEntregar, onDescargar, onDevolver, onEliminar, esTramite, esAdmin }) => {
   const estadoStyle = ESTADOS[documento.estado] || ESTADOS.PENDIENTE;

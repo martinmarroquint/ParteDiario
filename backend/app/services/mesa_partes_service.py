@@ -315,5 +315,7 @@ class MesaPartesService:
         }
     
     async def eliminar_documento(self, doc_id: int) -> dict:
-        """Delete a document row (admin only)."""
-        return await self._apps_script_action("eliminar", {"fila": doc_id})
+        """Delete a document row (admin only).
+        Passes the doc_id as 'numero' so Apps Script can find by N° column.
+        """
+        return await self._apps_script_action("eliminar", {"fila": doc_id, "numero": doc_id})

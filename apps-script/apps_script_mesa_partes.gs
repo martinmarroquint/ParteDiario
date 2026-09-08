@@ -1,5 +1,5 @@
 // Google Apps Script - MESA DE PARTES HRPA
-// VERSION 3.1 - 14 COLUMNAS + ESTADOS
+// VERSION 3.2 - 14 COLUMNAS + ESTADOS
 // Columnas: A(N°) B(FECHA) C(TIPO DOC) D(N° DOC ORIGEN) E(FECHA DOC)
 //           F(PROCEDENCIA) G(CONTENIDO) H(ESTADO) I(DOC TRAMITE)
 //           J(N° DOC TRAMITADO) K(AREA ENTREGADA) L(DESCARGO) M(N° DESCARGO) N(HT)
@@ -164,7 +164,7 @@ function descargarDocumento(data) {
 
 // ============================================
 // DEVOLVER - ENTREGADO → PENDIENTE
-// Clear columns I(9), J(10), K(11), set H(8)=PENDIENTE
+// Clear columns I(9), J(10), K(11), N(14), set H(8)=PENDIENTE
 // ============================================
 function devolverDocumento(data) {
   try {
@@ -174,18 +174,26 @@ function devolverDocumento(data) {
     sheet.getRange(fila, 9).setValue('');              // I = DOC TRAMITE
     sheet.getRange(fila, 10).setValue('');             // J = N° DOC TRAMITADO
     sheet.getRange(fila, 11).setValue('');             // K = AREA ENTREGADA
+    sheet.getRange(fila, 14).setValue('');             // N = HT
     return { success: true };
   } catch(e) { return { success: false, error: e.toString() }; }
 }
 
 // ============================================
-// ELIMINAR - Delete row from DOCUMENTOS sheet
+// ELIMINAR - Search by N° (column A) and delete
+// Safe: won't break other rows' IDs
 // ============================================
 function eliminarDocumento(data) {
   try {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DOCUMENTOS');
-    const fila = parseInt(data.fila);
-    sheet.deleteRow(fila);
-    return { success: true };
+    const numero = data.numero || data.fila;
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(numero)) {
+        sheet.deleteRow(i + 1);
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'Documento no encontrado por N° ' + numero };
   } catch(e) { return { success: false, error: e.toString() }; }
 }
