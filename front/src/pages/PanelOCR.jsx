@@ -136,11 +136,12 @@ const getStoredSession = () => {
     if (!token || !userData) return null;
     const user = JSON.parse(userData);
     if (!user || !user.nombre) return null;
-    // Asegurar que el campo 'rol' exista
-    if (!user.rol && user.roles) {
-      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin' };
-      user.rol = rolMap[Math.max(...user.roles)] || 'usuario';
-      user.rol_principal = Math.max(...user.roles);
+    // Asegurar que los campos 'rol' y 'rol_principal' existan
+    if (user.roles && user.roles.length) {
+      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin', 5: 'tramite_documentario' };
+      if (!user.rol) user.rol = rolMap[Math.max(...user.roles)] || 'usuario';
+      if (!user.rol_principal) user.rol_principal = Math.max(...user.roles);
+      if (!user.areas) user.areas = user.area ? [user.area] : [];
     }
     const sessionData = session ? JSON.parse(session) : null;
     return { user, sessionData };
@@ -197,6 +198,7 @@ const PanelOCRContent = () => {
 
   const config = DEFAULT_GOOGLE_CONFIG;
   const hojaActiva = hojaDelMesActual();
+
   const mesActivo = mesActualFn();
   const anioActivo = anioActualFn();
 
@@ -273,10 +275,13 @@ const PanelOCRContent = () => {
           
           const rolString = rolMap[userData.rol_principal] || 'usuario';
           
+          const maxRol = userData.rol_principal || (userData.roles?.length ? Math.max(...userData.roles) : 0);
           const normalizedUser = {
             ...userData,
             rol: rolString,
-            area: userData.areas?.[0] || '',
+            rol_principal: maxRol,
+            area: userData.areas?.[0] || userData.area || '',
+            areas: userData.areas || (userData.area ? [userData.area] : []),
             requiereCambio: false
           };
           
@@ -845,8 +850,12 @@ const PanelOCRContent = () => {
         anio={anioActivo}
         area={areaSeleccionada || 'SIN AREA'}
         userName={user?.nombre || 'ADMIN'}
-        userRol={user?.rol_principal || user?.roles ? Math.max(...(user.roles || [0])) : 0}
-        userAreas={user?.areas || (user?.area ? [user.area] : [])}
+        userRol={user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0)}
+        userAreas={
+          (user?.areas?.length > 0) ? user.areas : 
+          (user?.area ? [user.area] : 
+            (isAdmin ? ['TODAS'] : []))
+        }
       />
 
       {isAdmin && (

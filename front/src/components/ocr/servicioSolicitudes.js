@@ -74,15 +74,15 @@ export const calcularRutaAprobacion = async (areaSolicitante) => {
     const d = await r.json();
     const rows = d.values || [];
 
-    // USUARIOS_OCR columns: A=id, B=nombre, C=email, D=usuario(DNI), ...
-    // We need: nombre (B=1), rol (F=5), areas (G=6)
+    // USUARIOS_OCR columns: A(0)=id, B(1)=nombre, C(2)=email, D(3)=usuario,
+    // E(4)=password_hash, F(5)=salt, G(6)=rol, H(7)=areas_json
     const jefes = [];
     for (let i = 1; i < rows.length; i++) {
       const cols = rows[i];
-      if (!cols || cols.length < 7) continue;
+      if (!cols || cols.length < 8) continue;
       const nombre = String(cols[1] || '').trim();
-      const rol = parseInt(cols[5]) || 0;
-      let areasRaw = cols[6] || '[]';
+      const rol = parseInt(cols[6]) || 0;          // G = rol
+      let areasRaw = cols[7] || '[]';              // H = areas_json
       let areas = [];
       try { areas = JSON.parse(areasRaw); } catch { areas = []; }
       if (!Array.isArray(areas)) areas = [];
@@ -140,13 +140,16 @@ export const enviarSolicitudCambio = async (config, datos) => {
 
   // Construir detalle con cadena incluida
   // La cadena se almacena en la columna 'detalle' (index 31) via __detalleJSON_
+  // nivel_actual = primer nivel de la cadena (si no hay jefes, empieza en admin)
+  // Usar mes/anio del formulario del usuario (NO sobreescribir con actual)
+  const primerNivel = cadena && cadena.length > 0 ? cadena[0].nivel : 4;
   const datosConCadena = {
     ...datos,
-    mes: mesActual,
-    anio: anioActual,
+    mes: datos.mes || mesActual,
+    anio: datos.anio || anioActual,
     // Datos de la cadena multinivel (guardados en columna detalle)
     cadena: cadena || [{ nombre: 'Administrador', nivel: 4 }],
-    nivel_actual: 1,
+    nivel_actual: primerNivel,
     historial_aprobaciones: [],
   };
 

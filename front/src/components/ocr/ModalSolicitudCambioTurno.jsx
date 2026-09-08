@@ -21,12 +21,26 @@ const ModalSolicitudCambioTurno = ({
   anio = new Date().getFullYear(),
   area = '',
   userName = 'ADMIN',
-  userRol = 0,       // rol numérico del usuario (0-4)
-  userAreas = [],     // áreas que cubre el usuario
+  userRol: userRolProp = 0,       // prop como respaldo
+  userAreas: userAreasProp = [],   // prop como respaldo
 }) => {
-  const [vista, setVista] = useState('bandeja');
+  // Leer directamente de localStorage para evitar race conditions con React
+  const getUserFromStorage = () => {
+    try {
+      const raw = localStorage.getItem('ocr_user_data');
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch { return null; }
+  };
+  const storedUser = isOpen ? getUserFromStorage() : null;
+  const userRol = storedUser?.rol_principal ?? 
+    (storedUser?.roles?.length ? Math.max(...storedUser.roles) : 
+      ({ admin: 4, jefe_division: 3, jefe_departamento: 2, jefe_area: 1, tramite_documentario: 5 }[storedUser?.rol] ?? userRolProp));
+  const userAreas = storedUser?.areas?.length > 0 ? storedUser.areas : 
+    (storedUser?.area ? [storedUser.area] : userAreasProp);
   const esAdmin = userRol === 4;
 
+  const [vista, setVista] = useState('bandeja');
   const [lista, setLista] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
@@ -52,12 +66,12 @@ const ModalSolicitudCambioTurno = ({
       const data = await obtenerSolicitudesCambio(config, filtroArea);
       setLista(data);
       setError('');
-    } catch {
+    } catch (e) {
       setError('No se pudieron cargar las solicitudes.');
     } finally {
       setCargando(false);
     }
-  }, [isOpen, config, esAdmin, area]);
+  }, [isOpen, config, esAdmin, area, userRol]);
 
   useEffect(() => {
     if (isOpen && vista === 'bandeja') {
@@ -124,10 +138,19 @@ const ModalSolicitudCambioTurno = ({
           observacion: observacion.trim(),
         });
 
-        // ¿Es el admin (nivel final)?
-        const esNivelFinal = nivelActualSol === 4 || nivelActualSol >= cadena.length;
+        // Admin (rol 4) siempre aprueba al final. Para jefes, avanzar al siguiente nivel.
+        const esNivelFinal = esAdmin || nivelActualSol === 4 || nivelActualSol >= (cadena.length > 0 ? Math.max(...cadena.map(c => c.nivel)) : 4);
         const nuevoEstadoFinal = esNivelFinal ? ESTADOS.APROBADO : ESTADOS.PENDIENTE;
-        const nuevoNivel = esNivelFinal ? nivelActualSol : nivelActualSol + 1;
+        // Si no es final, buscar el siguiente nivel en la cadena
+        let nuevoNivel = nivelActualSol;
+        if (!esNivelFinal) {
+          const idxActual = cadena.findIndex(c => c.nivel === nivelActualSol);
+          if (idxActual >= 0 && idxActual < cadena.length - 1) {
+            nuevoNivel = cadena[idxActual + 1].nivel;
+          } else {
+            nuevoNivel = 4; // Fallback a admin
+          }
+        }
 
         await actualizarSolicitudCambio(config, {
           id: sol.id,
@@ -193,13 +216,15 @@ const ModalSolicitudCambioTurno = ({
 
     let puedeActuar = false;
     if (esAdmin) {
-      puedeActuar = estadoSol === ESTADOS.PENDIENTE && nivelActualSol === 4;
+      // Admin puede actuar en CUALQUIER solicitud pendiente (es la autoridad final)
+      puedeActuar = estadoSol === ESTADOS.PENDIENTE;
     } else if (userRol >= 1 && userRol <= 3) {
       // Jefe solo puede actuar si el nivel coincide Y es su área
       const esSuArea = userAreas.includes(sol.area_solicitante) ||
         sol.participantes?.some(p => userAreas.includes(p.area));
       puedeActuar = estadoSol === ESTADOS.PENDIENTE && nivelActualSol === userRol && esSuArea;
     }
+    // Usuarios (rol 0) no pueden actuar en nada
 
     return { ...sol, puedeActuar, totalNiveles: cadena.length };
   });
@@ -499,6 +524,11 @@ const ModalSolicitudCambioTurno = ({
         )}
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2.5">
+          {/* DIAGNÓSTICO: Muestra el rol y estado del usuario */}
+          <div className="p-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-700 font-mono">
+            Rol: {userRol} | Admin: {String(esAdmin)} | Áreas: {userAreas.join(',')} | Pendientes: {pendientes.length} | Total: {lista.length}
+          </div>
+
           {cargando && actual.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Loader2 className="w-10 h-10 animate-spin mb-3" style={{ color: COLOR_PRIMARIO }} />

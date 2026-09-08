@@ -1193,6 +1193,7 @@ function __filasParticipante_(d, i) {
 }
 
 function __detalleJSON_(d) {
+  // Incluir cadena multinivel + historial ademas de participantes
   return JSON.stringify({
     participantes: (d.participantes || []).map(function(p) {
       return {
@@ -1203,7 +1204,10 @@ function __detalleJSON_(d) {
           return { dia: Number(c.dia) || 0, actual: String(c.actual || '').trim(), nuevo: String(c.nuevo || '').trim() };
         })
       };
-    })
+    }),
+    cadena: d.cadena || [{ nombre: 'Administrador', nivel: 4 }],
+    nivel_actual: Number(d.nivel_actual) || 4,
+    historial_aprobaciones: d.historial_aprobaciones || []
   });
 }
 
