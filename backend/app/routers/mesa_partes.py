@@ -152,11 +152,20 @@ async def registrar_documento(
     )
     
     if result and result.get("error"):
-        logger.warning(f"Apps Script warning on registrar: {result['error']}")
-        # Don't fail - the script may have executed successfully despite the error
+        logger.warning(f"Apps Script error on registrar: {result['error']}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Error al guardar en Apps Script: {result['error']}"
+        )
+    
+    if result and not result.get("success", True):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Apps Script no confirmó el registro: {result}"
+        )
     
     documento = DocumentoMesaPartes(
-        id=0,
+        id=result.get("fila", 0),
         numero=str(result.get("numero", "")),
         estado="PENDIENTE",
         fecha=data.fecha,
@@ -186,7 +195,8 @@ async def actualizar_documento(
     
     result = await mesa_partes_service.actualizar_documento(doc_id, update_data)
     if result and result.get("error"):
-        logger.warning(f"Apps Script warning on actualizar: {result['error']}")
+        logger.warning(f"Apps Script error on actualizar: {result['error']}")
+        raise HTTPException(status_code=502, detail=f"Error al actualizar: {result['error']}")
     
     documento = await mesa_partes_service.get_documento(doc_id)
     if not documento:
@@ -212,8 +222,8 @@ async def entregar_documento(
     
     result = await mesa_partes_service.entregar_documento(doc_id, data.model_dump())
     if result and result.get("error"):
-        logger.warning(f"Apps Script warning on entregar: {result['error']}")
-        # Don't fail - log and continue
+        logger.warning(f"Apps Script error on entregar: {result['error']}")
+        raise HTTPException(status_code=502, detail=f"Error al entregar: {result['error']}")
     
     documento = await mesa_partes_service.get_documento(doc_id)
     if not documento:
@@ -249,7 +259,8 @@ async def descargar_documento(
     
     result = await mesa_partes_service.descargar_documento(doc_id, data.model_dump())
     if result and result.get("error"):
-        logger.warning(f"Apps Script warning on descargar: {result['error']}")
+        logger.warning(f"Apps Script error on descargar: {result['error']}")
+        raise HTTPException(status_code=502, detail=f"Error al descargar: {result['error']}")
     
     documento = await mesa_partes_service.get_documento(doc_id)
     if not documento:

@@ -201,6 +201,23 @@ function doPost(e) {
         resultado = limpiarCeldasModificadas(data);
         break;
 
+      // ========== MESA DE PARTES ==========
+      case 'registrar':
+        resultado = mpRegistrarDocumento(data);
+        break;
+      case 'listar':
+        resultado = mpListarDocumentos();
+        break;
+      case 'actualizar':
+        resultado = mpActualizarDocumento(data);
+        break;
+      case 'entregar':
+        resultado = mpEntregarDocumento(data);
+        break;
+      case 'descargar':
+        resultado = mpDescargarDocumento(data);
+        break;
+
       // ========== PING / HEALTH CHECK ==========
       case 'ping':
         resultado = { success: true, status: 'ok', timestamp: new Date().toISOString(), version: '13.0' };
@@ -1487,6 +1504,136 @@ function limpiarCeldasModificadas(data) {
 
 // ============================================
 // FUNCIÓN DE TEST (para debugging)
+// ============================================
+// MESA DE PARTES - HRPA v3.1
+// Columnas: A(N°) B(FECHA) C(TIPO DOC) D(N° DOC ORIGEN) E(FECHA DOC)
+//           F(PROCEDENCIA) G(CONTENIDO) H(ESTADO) I(DOC TRAMITE)
+//           J(N° DOC TRAMITADO) K(AREA ENTREGADA) L(DESCARGO) M(N° DESCARGO) N(HT)
+// ============================================
+
+function __ensureDocumentosSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('DOCUMENTOS');
+  if (!sheet) {
+    sheet = ss.insertSheet('DOCUMENTOS');
+    sheet.getRange('A1:N1').setValues([[
+      'N','FECHA','TIPO DOC.','N DOC. ORIGEN','FECHA DOC.',
+      'PROCEDENCIA','CONTENIDO','ESTADO',
+      'DOC. DE TRAMITE','N DOC. TRAMITADO','AREA ENTREGADA',
+      'DESCARGO','N DESCARGO','HT'
+    ]]);
+    sheet.getRange('A1:N1').setFontWeight('bold').setBackground('#1E3A5F').setFontColor('#FFFFFF');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function mpRegistrarDocumento(data) {
+  try {
+    var sheet = __ensureDocumentosSheet_();
+    SpreadsheetApp.flush();
+    var lastRow = sheet.getLastRow();
+    var num = lastRow;  // row 1 = header, so row 2 = doc 1, etc.
+    var row = lastRow + 1;
+
+    sheet.getRange(row, 1, 1, 14).setValues([[
+      num,
+      data.fecha || '', data.tipoDoc || '', data.nDocOrigen || '', data.fechaDoc || '',
+      data.procedencia || '', data.contenido || '',
+      'PENDIENTE',
+      '', '', '', '', '', ''
+    ]]);
+
+    SpreadsheetApp.flush();
+    return { success: true, numero: num, fila: row };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function mpListarDocumentos() {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DOCUMENTOS');
+    if (!sheet) return { success: true, documentos: [], total: 0 };
+    var rows = sheet.getDataRange().getValues();
+    if (rows.length <= 1) return { success: true, documentos: [], total: 0 };
+    var docs = [];
+    for (var i = 1; i < rows.length; i++) {
+      var r = rows[i];
+      if (!String(r[0] || '').trim() && !String(r[1] || '').trim()) continue;
+      docs.push({
+        id: i + 1,
+        numero: String(r[0] || '').trim(),
+        fecha: String(r[1] || '').trim(),
+        tipoDoc: String(r[2] || '').trim(),
+        nDocOrigen: String(r[3] || '').trim(),
+        fechaDoc: String(r[4] || '').trim(),
+        procedencia: String(r[5] || '').trim(),
+        contenido: String(r[6] || '').trim(),
+        estado: String(r[7] || 'PENDIENTE').trim(),
+        docTramite: String(r[8] || '').trim(),
+        nDocTramitado: String(r[9] || '').trim(),
+        areaEntregada: String(r[10] || '').trim(),
+        descargo: String(r[11] || '').trim(),
+        nDescargo: String(r[12] || '').trim(),
+        ht: String(r[13] || '').trim()
+      });
+    }
+    return { success: true, documentos: docs, total: docs.length };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function mpActualizarDocumento(data) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DOCUMENTOS');
+    if (!sheet) return { success: false, error: 'Hoja DOCUMENTOS no existe' };
+    var fila = parseInt(data.fila);
+    if (!fila || fila < 2) return { success: false, error: 'Fila invalida: ' + data.fila };
+    sheet.getRange(fila, 2, 1, 6).setValues([[
+      data.fecha || '', data.tipoDoc || '', data.nDocOrigen || '', data.fechaDoc || '',
+      data.procedencia || '', data.contenido || ''
+    ]]);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function mpEntregarDocumento(data) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DOCUMENTOS');
+    if (!sheet) return { success: false, error: 'Hoja DOCUMENTOS no existe' };
+    var fila = parseInt(data.fila);
+    if (!fila || fila < 2) return { success: false, error: 'Fila invalida: ' + data.fila };
+    sheet.getRange(fila, 8).setValue('ENTREGADO');             // H = ESTADO
+    sheet.getRange(fila, 9).setValue(data.docTramite || '');    // I = DOC TRAMITE
+    sheet.getRange(fila, 10).setValue(data.nDocTramitado || ''); // J = N° DOC TRAMITADO
+    sheet.getRange(fila, 11).setValue(data.areaEntregada || ''); // K = AREA ENTREGADA
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function mpDescargarDocumento(data) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DOCUMENTOS');
+    if (!sheet) return { success: false, error: 'Hoja DOCUMENTOS no existe' };
+    var fila = parseInt(data.fila);
+    if (!fila || fila < 2) return { success: false, error: 'Fila invalida: ' + data.fila };
+    sheet.getRange(fila, 8).setValue('RESUELTO');              // H = ESTADO
+    sheet.getRange(fila, 12).setValue(data.descargo || '');     // L = DESCARGO
+    sheet.getRange(fila, 13).setValue(data.nDescargo || '');    // M = N° DESCARGO
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+// ============================================
+// TEST
 // ============================================
 function testDoPost() {
   var testData = {

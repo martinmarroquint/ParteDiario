@@ -108,14 +108,15 @@ class MesaPartesService:
                     
         except httpx.HTTPStatusError as e:
             logger.error(f"Apps Script HTTP error [{action}]: {e.response.status_code}")
-            # Even on error, the script may have executed
             try:
-                return e.response.json()
+                resp = e.response.json()
+                if not resp.get("success", True):
+                    return resp
             except Exception:
-                return {"success": True}
+                pass
+            return {"error": f"HTTP {e.response.status_code}"}
         except Exception as e:
             logger.error(f"Error calling Apps Script [{action}]: {e}")
-            # Don't fail the whole operation - return success to avoid blocking
             return {"error": str(e)}
     
     def _row_to_documento(self, row: list, index: int) -> dict:

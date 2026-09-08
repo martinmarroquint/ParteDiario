@@ -737,6 +737,8 @@ const PanelOCRContent = () => {
           user={user}
           medicos={medicosSistema}
           pendingSolicitudesCount={pendingSolicitudesCount}
+          esTramite={esTramite}
+          onAbrirMesaPartes={abrirMesaPartes}
         />
       );
     }

@@ -105,7 +105,7 @@ const ModalDescargarDocumento = ({ documento, onClose, onActualizado }) => {
 
           <button 
             onClick={handleDescargar} 
-            disabled={guardando}
+            disabled={guardando || !form.descargo.trim()}
             className="w-full py-2.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-40 bg-emerald-600 hover:bg-emerald-700"
           >
             {guardando ? (

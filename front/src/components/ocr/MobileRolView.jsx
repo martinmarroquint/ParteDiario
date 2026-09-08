@@ -94,7 +94,9 @@ const MobileRolView = ({
   user = null,
   esUsuario = false,
   esJefe = false,
-  pendingSolicitudesCount = 0
+  pendingSolicitudesCount = 0,
+  onAbrirMesaPartes = null,
+  esTramite = false
 }) => {
   // ============================================
   // REFS PARA CONTROL DE CARGA
@@ -1365,6 +1367,7 @@ const MobileRolView = ({
             {esAdmin && <button onClick={handleAbrirHistorial} className="p-1.5 hover:bg-white/20 rounded-lg"><History className="w-4 h-4" /></button>}
             {esAdmin && <button onClick={() => setMostrarPanelAdmin(true)} className="p-1.5 hover:bg-white/20 rounded-lg"><Shield className="w-4 h-4" /></button>}
             {esAdmin && onAbrirCambiosTurno && <button onClick={onAbrirCambiosTurno} className="relative p-1.5 hover:bg-white/20 rounded-lg"><Inbox className="w-4 h-4" />{pendingSolicitudesCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}</button>}
+            {(esAdmin || esTramite) && onAbrirMesaPartes && <button onClick={onAbrirMesaPartes} className="p-1.5 hover:bg-white/20 rounded-lg" title="Mesa de Partes"><FileText className="w-4 h-4" /></button>}
             <button onClick={onSalir} className="p-1.5 hover:bg-white/20 rounded-lg"><X className="w-4 h-4" /></button>
           </div>
         </div>
