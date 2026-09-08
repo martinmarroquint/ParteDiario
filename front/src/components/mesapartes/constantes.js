@@ -3,6 +3,7 @@
 export const COLOR_PRIMARIO = '#3D9972';
 
 export const ESTADOS = {
+  TODOS: { label: 'Todos', color: '#6B7280', bg: '#F3F4F6', icon: 'Inbox', dot: '#6B7280' },
   PENDIENTE: { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB', icon: 'Clock', dot: '#F59E0B' },
   ENTREGADO: { label: 'Derivado', color: '#1D4ED8', bg: '#EFF6FF', icon: 'Send', dot: '#3B82F6' },
   RESUELTO: { label: 'Resuelto', color: '#047857', bg: '#ECFDF5', icon: 'CheckCircle2', dot: '#10B981' }
@@ -22,4 +23,6 @@ export const API_ENDPOINTS = {
   documento: (id) => `/mesa-partes/${id}`,
   entregar: (id) => `/mesa-partes/${id}/entregar`,
   descargar: (id) => `/mesa-partes/${id}/descargar`,
+  devolver: (id) => `/mesa-partes/${id}/devolver`,
+  eliminar: (id) => `/mesa-partes/${id}`,
 };

@@ -7,8 +7,9 @@ import { API_ENDPOINTS } from './constantes';
 import Dropdown from '../ui/Dropdown';
 
 const ModalEntregarDocumento = ({ documento, onClose, onActualizado }) => {
-  const [form, setForm] = useState({ docTramite: '', areaEntregada: '' });
+  const [form, setForm] = useState({ docTramite: '', nDocTramitado: '', areaEntregada: '' });
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
   const [opcionesBD, setOpcionesBD] = useState({ docsTramite: [], areas: [] });
 
   useEffect(() => {
@@ -24,15 +25,17 @@ const ModalEntregarDocumento = ({ documento, onClose, onActualizado }) => {
   const handleEntregar = async () => {
     if (!form.areaEntregada) return;
     setGuardando(true);
+    setError(null);
     try {
       await apiClient.put(API_ENDPOINTS.entregar(documento.id), {
         doc_tramite: form.docTramite,
+        n_doc_tramitado: form.nDocTramitado,
         area_entregada: form.areaEntregada,
       });
       onActualizado?.();
       onClose();
     } catch(e) {
-      console.error('Error:', e);
+      setError(e.message || 'Error al entregar documento');
     } finally { setGuardando(false); }
   };
 
@@ -84,6 +87,12 @@ const ModalEntregarDocumento = ({ documento, onClose, onActualizado }) => {
 
         {/* Formulario */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {error && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600 flex items-center gap-2">
+              <span className="text-red-400">✕</span> {error}
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Doc. de Trámite</label>
             <Dropdown
@@ -93,6 +102,17 @@ const ModalEntregarDocumento = ({ documento, onClose, onActualizado }) => {
               placeholder="Seleccionar tipo de trámite"
               searchable
               clearable
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">N° Trámitado</label>
+            <input
+              type="text"
+              value={form.nDocTramitado}
+              onChange={e => setForm(p => ({...p, nDocTramitado: e.target.value}))}
+              placeholder="Número de documento de trámite"
+              className="w-full px-3 py-2.5 border border-gray-200/60 rounded-xl text-sm text-gray-700 placeholder:text-gray-400 outline-none transition-all bg-white focus:border-gray-400"
             />
           </div>
           

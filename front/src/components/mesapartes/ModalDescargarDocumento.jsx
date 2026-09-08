@@ -8,9 +8,11 @@ import { API_ENDPOINTS } from './constantes';
 const ModalDescargarDocumento = ({ documento, onClose, onActualizado }) => {
   const [form, setForm] = useState({ descargo: '', nDescargo: '' });
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleDescargar = async () => {
     setGuardando(true);
+    setError(null);
     try {
       await apiClient.put(API_ENDPOINTS.descargar(documento.id), {
         descargo: form.descargo,
@@ -19,7 +21,7 @@ const ModalDescargarDocumento = ({ documento, onClose, onActualizado }) => {
       onActualizado?.();
       onClose();
     } catch(e) {
-      console.error('Error:', e);
+      setError(e.message || 'Error al registrar descargo');
     } finally { setGuardando(false); }
   };
 
@@ -74,6 +76,12 @@ const ModalDescargarDocumento = ({ documento, onClose, onActualizado }) => {
 
         {/* Formulario */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {error && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600 flex items-center gap-2">
+              <span className="text-red-400">✕</span> {error}
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Descargo</label>
             <textarea 

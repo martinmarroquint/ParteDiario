@@ -250,6 +250,17 @@ class MesaPartesService:
         
         return await self._apps_script_action("descargar", row_data)
     
+    async def devolver_documento(self, doc_id: int) -> dict:
+        """Return document to PENDIENTE (ENTREGADO → PENDIENTE).
+        Clears: H=PENDIENTE, I='', J='', K=''
+        """
+        row_data = {
+            "accion": "devolver",
+            "fila": doc_id,
+        }
+        
+        return await self._apps_script_action("devolver", row_data)
+    
     async def _get_bd_rows(self) -> list[list]:
         """Read all rows from the BD sheet (catalog of document types)."""
         if not self._is_configured():

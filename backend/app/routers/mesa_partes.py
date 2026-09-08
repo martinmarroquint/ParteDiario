@@ -41,15 +41,6 @@ def _user_is_admin(user: User) -> bool:
     return False
 
 
-def _user_is_jefe(user: User) -> bool:
-    """Check if user is any jefe level (1, 2, or 3)."""
-    if hasattr(user, 'roles') and user.roles:
-        return any(r in user.roles for r in [1, 2, 3])
-    if hasattr(user, 'rol') and isinstance(user.rol, int):
-        return user.rol in [1, 2, 3]
-    return False
-
-
 def _get_user_areas(user: User) -> list[str]:
     """Get list of areas assigned to the user."""
     if hasattr(user, 'areas') and user.areas:
@@ -265,6 +256,32 @@ async def descargar_documento(
     documento = await mesa_partes_service.get_documento(doc_id)
     if not documento:
         documento = {"id": doc_id, "estado": "RESUELTO"}
+    
+    return DocumentoResponse(documento=DocumentoMesaPartes(**documento))
+
+
+@router.put("/{doc_id}/devolver", response_model=DocumentoResponse)
+async def devolver_documento(
+    doc_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    """Return document to PENDIENTE (ENTREGADO → PENDIENTE).
+    ONLY Trámite Documentario can return documents (wrong area assignment, etc).
+    """
+    if not _user_is_tramite(current_user) and not _user_is_admin(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Trámite Documentario puede devolver documentos"
+        )
+    
+    result = await mesa_partes_service.devolver_documento(doc_id)
+    if result and result.get("error"):
+        logger.warning(f"Apps Script error on devolver: {result['error']}")
+        raise HTTPException(status_code=502, detail=f"Error al devolver: {result['error']}")
+    
+    documento = await mesa_partes_service.get_documento(doc_id)
+    if not documento:
+        documento = {"id": doc_id, "estado": "PENDIENTE"}
     
     return DocumentoResponse(documento=DocumentoMesaPartes(**documento))
 

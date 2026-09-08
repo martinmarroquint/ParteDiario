@@ -7,7 +7,7 @@ import {
   X, SlidersHorizontal, ChevronLeft, ChevronRight, FileText
 } from 'lucide-react';
 import apiClient from '../ocr/services/apiClient';
-import { COLOR_PRIMARIO, API_ENDPOINTS } from './constantes';
+import { COLOR_PRIMARIO, API_ENDPOINTS, ESTADOS } from './constantes';
 import RegistroDocumento from './RegistroDocumento';
 import ModalVerDocumento from './ModalVerDocumento';
 import ModalEditarDocumento from './ModalEditarDocumento';
@@ -36,14 +36,6 @@ const ABREV_TIPOS = {
 const abreviarTipo = (tipo) => {
   if (!tipo) return '';
   return ABREV_TIPOS[tipo] || tipo.substring(0, 6);
-};
-
-// Estados con colores sutiles
-const ESTADOS = {
-  TODOS: { label: 'Todos', color: '#6B7280', bg: '#F3F4F6' },
-  PENDIENTE: { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB' },
-  ENTREGADO: { label: 'Derivado', color: '#1D4ED8', bg: '#EFF6FF' },
-  RESUELTO: { label: 'Resuelto', color: '#047857', bg: '#ECFDF5' }
 };
 
 const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
@@ -99,6 +91,26 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
 
   const handleActualizado = useCallback(() => {
     cargarDocumentos();
+  }, [cargarDocumentos]);
+
+  const handleDevolver = useCallback(async (doc) => {
+    if (!window.confirm(`¿Devolver documento ${doc.numero} a estado PENDIENTE?`)) return;
+    try {
+      await apiClient.put(API_ENDPOINTS.devolver(doc.id));
+      cargarDocumentos();
+    } catch (e) {
+      alert('Error al devolver: ' + (e.message || e));
+    }
+  }, [cargarDocumentos]);
+
+  const handleEliminar = useCallback(async (doc) => {
+    if (!window.confirm(`¿Eliminar permanentemente el documento ${doc.numero}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await apiClient.delete(API_ENDPOINTS.eliminar(doc.id));
+      cargarDocumentos();
+    } catch (e) {
+      alert('Error al eliminar: ' + (e.message || e));
+    }
   }, [cargarDocumentos]);
 
   // ============================================
@@ -326,6 +338,11 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                                 <FileCheck className="w-3.5 h-3.5" strokeWidth={1.5} />
                               </button>
                             )}
+                            {esAdmin && (
+                              <button onClick={() => handleEliminar(doc)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Eliminar">
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -400,6 +417,10 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
           onEditar={(d) => { setDocVer(null); setDocEditar(d); }}
           onEntregar={(d) => { setDocVer(null); setDocEntregar(d); }}
           onDescargar={(d) => { setDocVer(null); setDocDescargar(d); }}
+          onDevolver={handleDevolver}
+          onEliminar={handleEliminar}
+          esTramite={esTramite}
+          esAdmin={esAdmin}
         />
       )}
 

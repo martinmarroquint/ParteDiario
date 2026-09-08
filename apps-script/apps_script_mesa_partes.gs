@@ -36,6 +36,8 @@ function doPost(e) {
       case 'actualizar': return crearRespuesta(actualizarDocumento(data));
       case 'entregar': return crearRespuesta(entregarDocumento(data));
       case 'descargar': return crearRespuesta(descargarDocumento(data));
+      case 'devolver': return crearRespuesta(devolverDocumento(data));
+      case 'eliminar': return crearRespuesta(eliminarDocumento(data));
       default: return crearRespuesta({ success: false, error: 'Accion no reconocida' });
     }
   } catch(error) {
@@ -44,7 +46,7 @@ function doPost(e) {
 }
 
 function doGet(e) {
-  return crearRespuesta({ status: 'activo', sistema: 'MESA_PARTES_HRPA', version: '3.1' });
+  return crearRespuesta({ status: 'activo', sistema: 'MESA_PARTES_HRPA', version: '3.2' });
 }
 
 function doOptions(e) {
@@ -156,6 +158,34 @@ function descargarDocumento(data) {
     sheet.getRange(fila, 8).setValue('RESUELTO');              // H = ESTADO
     sheet.getRange(fila, 12).setValue(data.descargo||'');      // L = DESCARGO
     sheet.getRange(fila, 13).setValue(data.nDescargo||'');     // M = N° DESCARGO
+    return { success: true };
+  } catch(e) { return { success: false, error: e.toString() }; }
+}
+
+// ============================================
+// DEVOLVER - ENTREGADO → PENDIENTE
+// Clear columns I(9), J(10), K(11), set H(8)=PENDIENTE
+// ============================================
+function devolverDocumento(data) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DOCUMENTOS');
+    const fila = parseInt(data.fila);
+    sheet.getRange(fila, 8).setValue('PENDIENTE');    // H = ESTADO
+    sheet.getRange(fila, 9).setValue('');              // I = DOC TRAMITE
+    sheet.getRange(fila, 10).setValue('');             // J = N° DOC TRAMITADO
+    sheet.getRange(fila, 11).setValue('');             // K = AREA ENTREGADA
+    return { success: true };
+  } catch(e) { return { success: false, error: e.toString() }; }
+}
+
+// ============================================
+// ELIMINAR - Delete row from DOCUMENTOS sheet
+// ============================================
+function eliminarDocumento(data) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DOCUMENTOS');
+    const fila = parseInt(data.fila);
+    sheet.deleteRow(fila);
     return { success: true };
   } catch(e) { return { success: false, error: e.toString() }; }
 }
