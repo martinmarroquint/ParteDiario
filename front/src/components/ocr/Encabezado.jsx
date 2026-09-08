@@ -117,6 +117,7 @@ const Encabezado = ({
   esUsuario = false,
   user = null,
   areaSeleccionadaJefe = null,
+  pendingSolicitudesCount = 0,
   onAreaChangeJefe = null,
   areasDisponiblesJefe = [],
   areaSeleccionadaAdmin = null,
@@ -352,8 +353,9 @@ const Encabezado = ({
               )}
 
               {puedeBandeja && onAbrirCambiosTurno && (
-                <button onClick={onAbrirCambiosTurno} className={`${btnBase} flex-shrink-0`} title="Bandeja">
+                <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`} title="Bandeja">
                   <Inbox className="w-4 h-4" />
+                  {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
                 </button>
               )}
             </>
@@ -381,8 +383,9 @@ const Encabezado = ({
               )}
 
               {puedeBandeja && onAbrirCambiosTurno && (
-                <button onClick={onAbrirCambiosTurno} className={`${btnBase} flex-shrink-0`} title="Bandeja">
+                <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`} title="Bandeja">
                   <Inbox className="w-4 h-4" />
+                  {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
                 </button>
               )}
 

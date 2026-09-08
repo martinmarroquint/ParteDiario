@@ -19,6 +19,7 @@ import { authService } from '../components/ocr/services/authService';
 import { rolesService } from '../components/ocr/services/rolesService';
 import { descansosService } from '../components/ocr/services/descansosService';
 import { vacacionesService } from '../components/ocr/services/vacacionesService';
+import { obtenerSolicitudesCambio, filtrarSolicitudesParaUsuario } from '../components/ocr/servicioSolicitudes';
 
 const STORAGE_SESION = 'ocr_sesion_activa';
 
@@ -182,6 +183,8 @@ const PanelOCRContent = () => {
   const guardandoDescanso = useRef(false);
   const guardandoVacaciones = useRef(false);
   const [mostrarCambiosTurno, setMostrarCambiosTurno] = useState(false);
+  const [pendingSolicitudesCount, setPendingSolicitudesCount] = useState(0);
+  const prevCountRef = useRef(0);
   
   // ============================================================
   // IMPORTANTE: INICIAR EN false - Solo se abre con el botón
@@ -249,6 +252,31 @@ const PanelOCRContent = () => {
 
     verificarToken();
   }, []);
+
+  // ============================================================
+  // POLLING: Contar solicitudes pendientes cada 60 segundos
+  // ============================================================
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    const userRol = user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0);
+    const userAreas = user?.areas || (user?.area ? [user.area] : []);
+    const userName = user?.nombre || '';
+
+    const contarPendientes = async () => {
+      try {
+        const data = await obtenerSolicitudesCambio(config, null);
+        const filtradas = filtrarSolicitudesParaUsuario(data, userRol, userAreas, userName);
+        const pendientes = filtradas.filter(s => s.estado === 'PENDIENTE' && s.puedeActuar).length;
+        setPendingSolicitudesCount(pendientes);
+      } catch {
+        // Silencioso - no molestar al usuario
+      }
+    };
+
+    contarPendientes();
+    const it = setInterval(contarPendientes, 60000);
+    return () => clearInterval(it);
+  }, [isAuthenticated, user, config]);
 
   // ============================================================
   // FUNCIÓN: Login (backend real o modo prueba)
@@ -708,6 +736,7 @@ const PanelOCRContent = () => {
           esUsuario={isUsuario}
           user={user}
           medicos={medicosSistema}
+          pendingSolicitudesCount={pendingSolicitudesCount}
         />
       );
     }
@@ -726,6 +755,7 @@ const PanelOCRContent = () => {
         esJefe={isJefe}
         esUsuario={isUsuario}
         user={user}
+        pendingSolicitudesCount={pendingSolicitudesCount}
       />
     );
   }, [
