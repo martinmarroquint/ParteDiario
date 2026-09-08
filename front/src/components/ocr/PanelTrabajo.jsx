@@ -75,6 +75,8 @@ const PanelTrabajo = ({
   medicos = [], 
   onAbrirCambiosTurno,
   onAbrirAdminUsuarios = null,
+  onAbrirMesaPartes = null,
+  esTramite = false,
   esJefe = false,
   esUsuario = false,
   user = null
@@ -1297,6 +1299,8 @@ const PanelTrabajo = ({
         onAbrirCambiosTurno={handleAbrirSolicitudCambio} 
         guardando={guardando}
         onAbrirAdminUsuarios={esAdmin ? onAbrirAdminUsuarios : null}
+        onAbrirMesaPartes={onAbrirMesaPartes}
+        esTramite={esTramite}
         // Cambiar Contraseña - Visible para todos
         onAbrirCambiarPassword={() => setMostrarCambiarPassword(true)}
         // Selector de área para jefes

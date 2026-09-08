@@ -1,15 +1,15 @@
 // src/components/ocr/ModalSolicitudCambioTurno.jsx
-// MODULO DE CAMBIOS DE TURNO - SOLO PERMITE MES ACTUAL Y DIAS FUTUROS
-// SIN EMOJIS
+// BANDEJA DE SOLICITUDES — CADENA MULTINIVEL SIN CONTRASEÑA
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  X, Inbox, RefreshCw, Loader2, ChevronDown, Lock, Shield,
+  X, Inbox, RefreshCw, Loader2, ChevronDown, Shield,
   AlertCircle, Check, Ban, Calendar, User, ArrowRightLeft, FileText,
-  UserPlus
+  UserPlus, ChevronRight, Clock, CheckCircle2, XCircle
 } from 'lucide-react';
-import { COLOR_PRIMARIO, CLAVE_SECRETA, MESES, TURNO_MAP, hojaDelMesActual } from './constantes';
+import { COLOR_PRIMARIO, MESES, TURNO_MAP, hojaDelMesActual } from './constantes';
 import {
-  ESTADOS, ESTADOS_META, obtenerSolicitudesCambio, actualizarSolicitudCambio
+  ESTADOS, ESTADOS_META, obtenerSolicitudesCambio, actualizarSolicitudCambio,
+  getNivelLabel
 } from './servicioSolicitudes';
 import SolicitudesCambioTurno from './SolicitudesCambioTurno';
 
@@ -20,12 +20,12 @@ const ModalSolicitudCambioTurno = ({
   mes = 0,
   anio = new Date().getFullYear(),
   area = '',
-  userName = 'ADMIN'
+  userName = 'ADMIN',
+  userRol = 0,       // rol numérico del usuario (0-4)
+  userAreas = [],     // áreas que cubre el usuario
 }) => {
   const [vista, setVista] = useState('bandeja');
-  const [esAdmin, setEsAdmin] = useState(false);
-  const [claveModo, setClaveModo] = useState(false);
-  const [claveInput, setClaveInput] = useState('');
+  const esAdmin = userRol === 4;
 
   const [lista, setLista] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -35,16 +35,9 @@ const ModalSolicitudCambioTurno = ({
   const [observacion, setObservacion] = useState('');
   const [procesando, setProcesando] = useState(false);
 
-  // Usar el mes que viene del panel (ya es el mes actual)
   const [mesResuelto, setMesResuelto] = useState(mes);
   const [hojaResuelta, setHojaResuelta] = useState(hoja || config?.sheetName || hojaDelMesActual());
 
-  // Validar que el mes sea el actual (por si acaso)
-  const fechaActual = new Date();
-  const mesActual = fechaActual.getMonth() + 1;
-  const anioActual = fechaActual.getFullYear();
-
-  // Usar el mes que viene del panel (ya no se fuerza al actual)
   useEffect(() => {
     setMesResuelto(mes);
     setHojaResuelta(hoja);
@@ -69,9 +62,6 @@ const ModalSolicitudCambioTurno = ({
   useEffect(() => {
     if (isOpen && vista === 'bandeja') {
       setVista('bandeja');
-      setEsAdmin(false);
-      setClaveModo(false);
-      setClaveInput('');
       setExpandida(null);
       setObservacion('');
       cargar();
@@ -104,11 +94,9 @@ const ModalSolicitudCambioTurno = ({
     );
   }
 
-  const verificarClave = () => {
-    if (claveInput.trim() === CLAVE_SECRETA) { setEsAdmin(true); setClaveModo(false); setClaveInput(''); setError(''); }
-    else { setClaveInput(''); setError('Clave incorrecta'); }
-  };
-
+  // ============================================
+  // APROBACIÓN MULTINIVEL
+  // ============================================
   const procesar = async (sol, nuevoEstado) => {
     if (procesando) return;
     if (nuevoEstado === ESTADOS.DESAPROBADO && !observacion.trim()) {
@@ -118,27 +106,75 @@ const ModalSolicitudCambioTurno = ({
     }
     setProcesando(true);
     setError('');
+
     try {
-      await actualizarSolicitudCambio(config, {
-        id: sol.id, estado: nuevoEstado, revisadoPor: userName, observacion: observacion.trim()
-      });
-      setObservacion('');
-      setExpandida(null);
-      await cargar();
+      const ahora = new Date().toISOString();
+      const nivelActualSol = sol.nivel_actual || 4;
+      const cadena = sol.cadena || [];
+      const historial = [...(sol.historial || [])];
 
       if (nuevoEstado === ESTADOS.APROBADO) {
-        window.dispatchEvent(new CustomEvent('registrar-cambios-aprobados', {
-          detail: {
-            solicitud: sol,
-            participantes: sol.participantes || []
-          }
-        }));
-        window.dispatchEvent(new CustomEvent('solicitud-aprobada'));
-        setError('Solicitud aprobada. Cambios registrados en historial.');
+        // Registrar esta aprobación en el historial
+        historial.push({
+          nombre: userName,
+          nivel: nivelActualSol,
+          nivelLabel: getNivelLabel(nivelActualSol),
+          fecha: ahora,
+          estado: 'APROBADO',
+          observacion: observacion.trim(),
+        });
+
+        // ¿Es el admin (nivel final)?
+        const esNivelFinal = nivelActualSol === 4 || nivelActualSol >= cadena.length;
+        const nuevoEstadoFinal = esNivelFinal ? ESTADOS.APROBADO : ESTADOS.PENDIENTE;
+        const nuevoNivel = esNivelFinal ? nivelActualSol : nivelActualSol + 1;
+
+        await actualizarSolicitudCambio(config, {
+          id: sol.id,
+          estado: nuevoEstadoFinal,
+          revisadoPor: userName,
+          observacion: observacion.trim(),
+          nivelActual: nuevoNivel,
+          cadena,
+          historial,
+        });
+
+        if (esNivelFinal) {
+          // Admin aprobó → aplicar cambios
+          window.dispatchEvent(new CustomEvent('registrar-cambios-aprobados', {
+            detail: { solicitud: sol, participantes: sol.participantes || [] }
+          }));
+          window.dispatchEvent(new CustomEvent('solicitud-aprobada'));
+          setError('Solicitud aprobada. Cambios aplicados al rol.');
+        } else {
+          setError(`Aprobado por ${getNivelLabel(nivelActualSol)}. Enviado a ${getNivelLabel(nuevoNivel)}.`);
+        }
       } else {
+        // RECHAZO
+        historial.push({
+          nombre: userName,
+          nivel: nivelActualSol,
+          nivelLabel: getNivelLabel(nivelActualSol),
+          fecha: ahora,
+          estado: 'DESAPROBADO',
+          observacion: observacion.trim(),
+        });
+
+        await actualizarSolicitudCambio(config, {
+          id: sol.id,
+          estado: ESTADOS.DESAPROBADO,
+          revisadoPor: userName,
+          observacion: observacion.trim(),
+          nivelActual: nivelActualSol,
+          cadena,
+          historial,
+        });
         setError('Solicitud desaprobada.');
       }
 
+      setObservacion('');
+      setExpandida(null);
+      await cargar();
       setTimeout(() => setError(''), 4000);
     } catch {
       setError('No se pudo procesar la solicitud. Verifique el Apps Script.');
@@ -147,9 +183,30 @@ const ModalSolicitudCambioTurno = ({
     }
   };
 
-  const pendientes = lista.filter(s => s.estado === ESTADOS.PENDIENTE);
-  const aprobadas = lista.filter(s => s.estado === ESTADOS.APROBADO);
-  const desaprobadas = lista.filter(s => s.estado === ESTADOS.DESAPROBADO);
+  // ============================================
+  // FILTRADO POR NIVEL DEL USUARIO
+  // ============================================
+  const solicitudesConNivel = lista.map(sol => {
+    const nivelActualSol = sol.nivel_actual || 4;
+    const estadoSol = sol.estado || ESTADOS.PENDIENTE;
+    const cadena = sol.cadena || [];
+
+    let puedeActuar = false;
+    if (esAdmin) {
+      puedeActuar = estadoSol === ESTADOS.PENDIENTE && nivelActualSol === 4;
+    } else if (userRol >= 1 && userRol <= 3) {
+      // Jefe solo puede actuar si el nivel coincide Y es su área
+      const esSuArea = userAreas.includes(sol.area_solicitante) ||
+        sol.participantes?.some(p => userAreas.includes(p.area));
+      puedeActuar = estadoSol === ESTADOS.PENDIENTE && nivelActualSol === userRol && esSuArea;
+    }
+
+    return { ...sol, puedeActuar, totalNiveles: cadena.length };
+  });
+
+  const pendientes = solicitudesConNivel.filter(s => s.estado === ESTADOS.PENDIENTE);
+  const aprobadas = solicitudesConNivel.filter(s => s.estado === ESTADOS.APROBADO);
+  const desaprobadas = solicitudesConNivel.filter(s => s.estado === ESTADOS.DESAPROBADO);
   const actual = tab === ESTADOS.APROBADO ? aprobadas : tab === ESTADOS.DESAPROBADO ? desaprobadas : pendientes;
 
   const formatearFecha = (iso) => {
@@ -187,11 +244,18 @@ const ModalSolicitudCambioTurno = ({
     );
   };
 
+  // ============================================
+  // TARJETA DE SOLICITUD
+  // ============================================
   const Tarjeta = ({ s }) => {
     const abierta = expandida === s.id;
     const meta = ESTADOS_META[s.estado] || ESTADOS_META[ESTADOS.PENDIENTE];
     const participantes = s.participantes || [];
     const resumen = participantes.map(p => p.trabajador).filter(Boolean).join(' y ') || 'Sin trabajadores';
+    const cadena = s.cadena || [];
+    const historial = s.historial || [];
+    const nivelActual = s.nivel_actual || 4;
+
     return (
       <div className={`bg-white border rounded-2xl overflow-hidden transition-all ${abierta ? 'border-emerald-300 shadow-md' : 'border-gray-100 hover:border-gray-200'}`}>
         <button
@@ -209,6 +273,11 @@ const ModalSolicitudCambioTurno = ({
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {s.estado === ESTADOS.PENDIENTE && cadena.length > 1 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
+                Nivel {nivelActual}/{cadena.length}
+              </span>
+            )}
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${meta.cls}`}>{meta.etiqueta}</span>
             <ChevronDown className={`w-4 h-4 text-gray-300 transition-transform ${abierta ? 'rotate-180' : ''}`} />
           </div>
@@ -223,18 +292,53 @@ const ModalSolicitudCambioTurno = ({
               </div>
               <div className="bg-gray-50 rounded-xl p-2.5">
                 <p className="text-[9px] text-gray-400 uppercase font-semibold">Tipo</p>
-                <p className="text-[11px] font-semibold text-gray-700 mt-0.5 truncate">{s.tipo_cambio === 'CON COMPANERO' ? 'Con companero' : 'Personal'}</p>
+                <p className="text-[11px] font-semibold text-gray-700 mt-0.5 truncate">{s.tipo_cambio || '-'}</p>
               </div>
               <div className="bg-gray-50 rounded-xl p-2.5">
                 <p className="text-[9px] text-gray-400 uppercase font-semibold">Dias</p>
                 <p className="text-[11px] font-semibold text-gray-700 mt-0.5">{s.dias.join(', ')}</p>
               </div>
               <div className="bg-gray-50 rounded-xl p-2.5">
-                <p className="text-[9px] text-gray-400 uppercase font-semibold">Fecha solicitud</p>
+                <p className="text-[9px] text-gray-400 uppercase font-semibold">Fecha</p>
                 <p className="text-[11px] font-semibold text-gray-700 mt-0.5">{formatearFecha(s.fecha_solicitud) || '-'}</p>
               </div>
             </div>
 
+            {/* CADENA DE APROBACIÓN */}
+            {cadena.length > 1 && (
+              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3">
+                <p className="text-[9px] text-blue-500 uppercase font-semibold mb-2 flex items-center gap-1">
+                  <Shield className="w-3 h-3" /> Cadena de aprobacion
+                </p>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {cadena.map((nivel, idx) => {
+                    const esNivelActual = s.estado === ESTADOS.PENDIENTE && nivel.nivel === nivelActual;
+                    const yaPaso = historial.some(h => h.nivel === nivel.nivel);
+                    const fueAprobado = historial.find(h => h.nivel === nivel.nivel && h.estado === 'APROBADO');
+                    const fueRechazado = historial.find(h => h.nivel === nivel.nivel && h.estado === 'DESAPROBADO');
+                    return (
+                      <React.Fragment key={idx}>
+                        <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border ${
+                          fueRechazado ? 'bg-red-50 text-red-600 border-red-200' :
+                          fueAprobado ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                          esNivelActual ? 'bg-amber-50 text-amber-600 border-amber-200 ring-1 ring-amber-300' :
+                          'bg-white text-gray-500 border-gray-200'
+                        }`}>
+                          {fueAprobado ? <CheckCircle2 className="w-3 h-3" /> :
+                           fueRechazado ? <XCircle className="w-3 h-3" /> :
+                           esNivelActual ? <Clock className="w-3 h-3" /> : null}
+                          <span>{nivel.nombre}</span>
+                          <span className="text-[8px] opacity-60">({getNivelLabel(nivel.nivel)})</span>
+                        </div>
+                        {idx < cadena.length - 1 && <ChevronRight className="w-3 h-3 text-gray-300 flex-shrink-0" />}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* PARTICIPANTES */}
             <div className="space-y-2">
               {participantes.map((p, i) => (
                 <div key={i} className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3">
@@ -254,7 +358,7 @@ const ModalSolicitudCambioTurno = ({
             </div>
 
             <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-[9px] text-gray-400 uppercase font-semibold mb-1">{s.tipo_cambio || 'Tipo'} · Motivo</p>
+              <p className="text-[9px] text-gray-400 uppercase font-semibold mb-1">Motivo</p>
               <p className="text-xs text-gray-700">{s.motivo || '-'}</p>
             </div>
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
@@ -264,6 +368,34 @@ const ModalSolicitudCambioTurno = ({
               <p className="text-xs text-amber-800 whitespace-pre-line">{s.pormenores || '-'}</p>
             </div>
 
+            {/* HISTORIAL DE APROBACIONES */}
+            {historial.length > 0 && (
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                <p className="text-[9px] text-gray-400 uppercase font-semibold mb-2 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Historial de revisiones
+                </p>
+                <div className="space-y-2">
+                  {historial.map((h, i) => (
+                    <div key={i} className={`flex items-start gap-2 p-2 rounded-lg ${h.estado === 'APROBADO' ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${h.estado === 'APROBADO' ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                        {h.estado === 'APROBADO' ? <Check className="w-3 h-3 text-white" /> : <Ban className="w-3 h-3 text-white" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-[10px] font-semibold ${h.estado === 'APROBADO' ? 'text-emerald-700' : 'text-red-700'}`}>
+                          {h.nivelLabel || getNivelLabel(h.nivel)} — {h.nombre}
+                        </p>
+                        <p className="text-[9px] text-gray-400">{formatearFecha(h.fecha)}</p>
+                        {h.observacion && (
+                          <p className="text-[10px] text-gray-600 mt-0.5 italic">"{h.observacion}"</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* RESULTADO FINAL (si ya se procesó) */}
             {s.estado !== ESTADOS.PENDIENTE && (
               <div className={`rounded-xl p-3 ${s.estado === ESTADOS.APROBADO ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
                 <p className={`text-[9px] uppercase font-semibold mb-1 ${s.estado === ESTADOS.APROBADO ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -271,17 +403,18 @@ const ModalSolicitudCambioTurno = ({
                 </p>
                 {s.observacion_revision && (
                   <p className={`text-xs whitespace-pre-line ${s.estado === ESTADOS.APROBADO ? 'text-emerald-800' : 'text-red-700'}`}>
-                    <strong>Observacion / motivos:</strong> {s.observacion_revision}
+                    <strong>Observacion:</strong> {s.observacion_revision}
                   </p>
                 )}
               </div>
             )}
 
-            {s.estado === ESTADOS.PENDIENTE && esAdmin && (
+            {/* BOTONES DE ACCIÓN (solo si puede actuar) */}
+            {s.estado === ESTADOS.PENDIENTE && s.puedeActuar && (
               <>
                 <div>
                   <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                    Observacion <span className="text-gray-400">(obligatoria al desaprobar)</span>
+                    Observacion {s.puedeActuar && <span className="text-gray-40">(obligatoria al desaprobar)</span>}
                   </label>
                   <textarea
                     value={observacion}
@@ -310,9 +443,15 @@ const ModalSolicitudCambioTurno = ({
                 </div>
               </>
             )}
-            {s.estado === ESTADOS.PENDIENTE && !esAdmin && (
+
+            {/* PENDIENTE pero no puede actuar */}
+            {s.estado === ESTADOS.PENDIENTE && !s.puedeActuar && (
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
-                <p className="text-xs text-amber-700">Solicitud pendiente de revision por el administrador.</p>
+                <p className="text-xs text-amber-700">
+                  {s.nivel_actual === 4
+                    ? 'Pendiente de aprobacion final por el administrador.'
+                    : `Pendiente con ${getNivelLabel(s.nivel_actual)}.`}
+                </p>
               </div>
             )}
           </div>
@@ -330,21 +469,11 @@ const ModalSolicitudCambioTurno = ({
             <div>
               <h3 className="font-bold text-sm sm:text-base">Cambios de Turno</h3>
               <p className="text-[10px] sm:text-xs text-white/70">
-                {MESES[(mesResuelto || 1) - 1]} {anio} · Bandeja de solicitudes {esAdmin ? '· Modo administrador' : ''}{area && area !== 'SIN AREA' ? ` · ${area}` : ''}
+                {MESES[(mesResuelto || 1) - 1]} {anio} · Bandeja {esAdmin ? '· Administrador' : `· ${getNivelLabel(userRol)}`}{area && area !== 'SIN AREA' ? ` · ${area}` : ''}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {!esAdmin && (
-              <button onClick={() => setClaveModo(!claveModo)} className={`p-1.5 rounded-lg transition-colors ${claveModo ? 'bg-white/20' : 'hover:bg-white/20'}`} title={claveModo ? 'Cancelar' : 'Acceso administrador'}>
-                <Shield className="w-4 h-4" />
-              </button>
-            )}
-            {esAdmin && (
-              <button onClick={() => setEsAdmin(false)} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors flex items-center gap-1 text-[10px]" title="Salir de modo administrador">
-                <Lock className="w-4 h-4" />
-              </button>
-            )}
             <button onClick={cargar} disabled={cargando} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors" title="Actualizar">
               <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
             </button>
@@ -353,23 +482,6 @@ const ModalSolicitudCambioTurno = ({
             </button>
           </div>
         </div>
-
-        {claveModo && !esAdmin && (
-          <div className="px-4 sm:px-5 py-3 bg-white border-b border-gray-100 flex items-center gap-2 flex-shrink-0">
-            <input
-              type="password"
-              value={claveInput}
-              onChange={e => { setClaveInput(e.target.value); setError(''); }}
-              onKeyDown={e => { if (e.key === 'Enter') verificarClave(); }}
-              placeholder="Clave de administrador"
-              autoFocus
-              className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 bg-white"
-            />
-            <button onClick={verificarClave} className="px-4 py-2.5 text-white rounded-xl text-sm font-bold" style={{ backgroundColor: COLOR_PRIMARIO }}>
-              Verificar
-            </button>
-          </div>
-        )}
 
         <div className="px-4 sm:px-5 py-3 bg-white border-b border-gray-100 flex gap-2 flex-shrink-0">
           <TabButton estado={ESTADOS.PENDIENTE} conteo={pendientes.length} etiqueta="Pendientes" />

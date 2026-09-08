@@ -20,7 +20,8 @@ const HOJA_PERSONAL = hojaDelMesActual();
 const HOJA_USUARIOS = 'USUARIOS_OCR';
 
 const ROLES_DISPONIBLES = [
-  { value: 'admin', label: 'Administrador', nivel: 4, color: 'bg-amber-100 text-amber-700' },
+  { value: 'admin', label: 'Administrador', nivel: 5, color: 'bg-amber-100 text-amber-700' },
+  { value: 'tramite_documentario', label: 'Trámite Documentario', nivel: 4, color: 'bg-indigo-100 text-indigo-700' },
   { value: 'jefe_division', label: 'Jefe de División', nivel: 3, color: 'bg-purple-100 text-purple-700' },
   { value: 'jefe_departamento', label: 'Jefe de Departamento', nivel: 2, color: 'bg-blue-100 text-blue-700' },
   { value: 'jefe_area', label: 'Jefe de Área', nivel: 1, color: 'bg-emerald-100 text-emerald-700' },

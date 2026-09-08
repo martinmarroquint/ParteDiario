@@ -1309,6 +1309,15 @@ function actualizarSolicitudCambio(params) {
     fila[13] = new Date().toISOString();
     fila[14] = String(params.observacion || '');
 
+    // Guardar cadena multinivel en columna detalle (index 31) si se proporciona
+    if (params.detalle && fila.length > 31) {
+      fila[31] = String(params.detalle);
+    } else if (params.detalle && fila.length <= 31) {
+      // Extender el array si la fila no tiene suficientes columnas
+      while (fila.length <= 31) fila.push('');
+      fila[31] = String(params.detalle);
+    }
+
     if (estado === 'APROBADO') {
       var hojaMes = String(fila[4] || '');
       var detalle = fila.length > 31 ? String(fila[31] || '') : '';

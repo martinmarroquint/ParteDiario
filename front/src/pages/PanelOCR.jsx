@@ -845,6 +845,8 @@ const PanelOCRContent = () => {
         anio={anioActivo}
         area={areaSeleccionada || 'SIN AREA'}
         userName={user?.nombre || 'ADMIN'}
+        userRol={user?.rol_principal || user?.roles ? Math.max(...(user.roles || [0])) : 0}
+        userAreas={user?.areas || (user?.area ? [user.area] : [])}
       />
 
       {isAdmin && (

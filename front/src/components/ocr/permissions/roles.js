@@ -3,6 +3,7 @@
 
 export const ROLES_OCR = {
   ADMIN: 'admin',
+  TRAMITE_DOCUMENTARIO: 'tramite_documentario',
   JEFE_DIVISION: 'jefe_division',
   JEFE_DEPARTAMENTO: 'jefe_departamento',
   JEFE_AREA: 'jefe_area',
@@ -11,10 +12,16 @@ export const ROLES_OCR = {
 
 export const JERARQUIA_OCR = {
   [ROLES_OCR.ADMIN]: {
-    nivel: 4,
+    nivel: 5,
     siguiente: null,
     etiqueta: 'Administrador',
     descripcion: 'Acceso total al sistema'
+  },
+  [ROLES_OCR.TRAMITE_DOCUMENTARIO]: {
+    nivel: 4,
+    siguiente: ROLES_OCR.ADMIN,
+    etiqueta: 'Tramite Documentario',
+    descripcion: 'Registra, deriva y distribuye documentos'
   },
   [ROLES_OCR.JEFE_DIVISION]: {
     nivel: 3,
@@ -49,7 +56,23 @@ export const PERMISOS_OCR = {
     puedeVerTodos: true,
     puedeGestionarUsuarios: true,
     puedeConfigurar: true,
-    puedeVerAuditoria: true
+    puedeVerAuditoria: true,
+    puedeMesaPartes: true,
+    puedeRegistarDocumento: true,
+    puedeEntregarDocumento: true,
+    puedeDescargarDocumento: true
+  },
+  [ROLES_OCR.TRAMITE_DOCUMENTARIO]: {
+    puedeEditar: false,
+    puedeAprobar: false,
+    puedeVerTodos: true,
+    puedeGestionarUsuarios: false,
+    puedeConfigurar: false,
+    puedeVerAuditoria: false,
+    puedeMesaPartes: true,
+    puedeRegistarDocumento: true,
+    puedeEntregarDocumento: true,
+    puedeDescargarDocumento: false
   },
   [ROLES_OCR.JEFE_DIVISION]: {
     puedeEditar: true,
@@ -57,7 +80,11 @@ export const PERMISOS_OCR = {
     puedeVerTodos: false,
     puedeGestionarUsuarios: false,
     puedeConfigurar: false,
-    puedeVerAuditoria: false
+    puedeVerAuditoria: false,
+    puedeMesaPartes: false,
+    puedeRegistarDocumento: false,
+    puedeEntregarDocumento: false,
+    puedeDescargarDocumento: true
   },
   [ROLES_OCR.JEFE_DEPARTAMENTO]: {
     puedeEditar: true,
@@ -65,7 +92,11 @@ export const PERMISOS_OCR = {
     puedeVerTodos: false,
     puedeGestionarUsuarios: false,
     puedeConfigurar: false,
-    puedeVerAuditoria: false
+    puedeVerAuditoria: false,
+    puedeMesaPartes: false,
+    puedeRegistarDocumento: false,
+    puedeEntregarDocumento: false,
+    puedeDescargarDocumento: true
   },
   [ROLES_OCR.JEFE_AREA]: {
     puedeEditar: true,
@@ -73,7 +104,11 @@ export const PERMISOS_OCR = {
     puedeVerTodos: false,
     puedeGestionarUsuarios: false,
     puedeConfigurar: false,
-    puedeVerAuditoria: false
+    puedeVerAuditoria: false,
+    puedeMesaPartes: false,
+    puedeRegistarDocumento: false,
+    puedeEntregarDocumento: false,
+    puedeDescargarDocumento: true
   },
   [ROLES_OCR.USUARIO]: {
     puedeEditar: false,
@@ -81,7 +116,11 @@ export const PERMISOS_OCR = {
     puedeVerTodos: false,
     puedeGestionarUsuarios: false,
     puedeConfigurar: false,
-    puedeVerAuditoria: false
+    puedeVerAuditoria: false,
+    puedeMesaPartes: false,
+    puedeRegistarDocumento: false,
+    puedeEntregarDocumento: false,
+    puedeDescargarDocumento: false
   }
 };
 
