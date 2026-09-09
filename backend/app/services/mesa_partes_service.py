@@ -285,69 +285,46 @@ class MesaPartesService:
         })
     
     async def get_opciones(self) -> dict:
-        """Get dropdown options from config sheets and existing data."""
-        # Tipos de documento desde hoja TIPO DOC (columna A)
+        """Get dropdown options from Mesa de Partes sheet BD.
+        
+        BD sheet structure:
+          Col A (0) = TIPO DOC.
+          Col B (1) = DOC. DE TRAMITE
+          Col C (2) = AREA ENTREGADA
+        """
         tipos_doc = []
-        
-        # Intentar leer de múltiples fuentes
-        sheet_ids_to_try = []
-        if self._is_configured():
-            sheet_ids_to_try.append(self.sheet_id)
-        # También intentar desde el sheet principal si TIPO DOC no está en el de Mesa de Partes
-        from app.config import settings
-        if settings.GOOGLE_SHEETS_ID and settings.GOOGLE_SHEETS_ID not in sheet_ids_to_try:
-            sheet_ids_to_try.append(settings.GOOGLE_SHEETS_ID)
-        
-        # Nombres posibles de la hoja
-        sheet_names_to_try = ["TIPO DOC", "TIPO_DOC", "TIPODOC", "BD"]
-        
-        for sid in sheet_ids_to_try:
-            if tipos_doc:
-                break
-            for sheet_name in sheet_names_to_try:
-                rows = await self._read_sheet_from(sid, sheet_name)
-                if rows and len(rows) > 0:
-                    # Saltar header si la primera fila parece header
-                    data_rows = rows[1:] if self._looks_like_header(rows[0]) else rows
-                    tipos = sorted(set(
-                        str(row[0]).strip()
-                        for row in data_rows
-                        if row and row[0] and str(row[0]).strip()
-                    ))
-                    if tipos:
-                        tipos_doc = tipos
-                        break
-        
-        # ÁREAS desde hoja BD columna E (AREA)
         areas_desde_bd = []
-        for sid in sheet_ids_to_try:
-            rows = await self._read_sheet_from(sid, "BD")
+        
+        # SOLO leer del sheet de Mesa de Partes (NUNCA del de OCR)
+        if self._is_configured():
+            rows = await self._read_sheet_from(self.sheet_id, "BD")
             if rows and len(rows) > 1:
-                # Columna E = índice 4 (AREA)
-                for row in rows[1:]:
-                    if len(row) > 4 and row[4] and str(row[4]).strip():
-                        val = str(row[4]).strip()
-                        if val.upper() != "AREA":  # skip header
+                # Saltar header (fila 1: TIPO DOC. | DOC. DE TRAMITE | AREA ENTREGADA)
+                data_rows = rows[1:]
+                
+                # Col A (índice 0) = Tipos de documento
+                tipos_doc = sorted(set(
+                    str(row[0]).strip()
+                    for row in data_rows
+                    if row and len(row) > 0 and row[0] and str(row[0]).strip()
+                ))
+                
+                # Col C (índice 2) = Áreas de destino
+                for row in data_rows:
+                    if len(row) > 2 and row[2] and str(row[2]).strip():
+                        val = str(row[2]).strip()
+                        if val.upper() not in ("AREA ENTREGADA", "AREA"):
                             areas_desde_bd.append(val)
-                if areas_desde_bd:
-                    break
         
-        # Áreas de derivaciones existentes
-        documentos = await self._read_documentos()
+        # Áreas de derivaciones existentes (del sheet de Mesa de Partes)
         derivaciones = await self._read_derivaciones()
-        
-        procedencias = sorted(list(set(
-            d["procedencia"] for d in documentos if d["procedencia"]
-        )))
-        
         areas_existentes = [d["area_destino"] for d in derivaciones if d["area_destino"]]
         
-        # Combinar áreas de BD + derivaciones existentes, sin duplicados
+        # Combinar: BD column C + derivaciones, sin duplicados
         todas_las_areas = sorted(set(areas_desde_bd + areas_existentes))
         
         return {
             "tipos_doc": tipos_doc,
-            "procedencias": procedencias,
             "areas": todas_las_areas
         }
     
