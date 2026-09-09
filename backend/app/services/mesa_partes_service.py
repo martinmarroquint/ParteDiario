@@ -283,13 +283,21 @@ class MesaPartesService:
         })
     
     async def get_opciones(self) -> dict:
-        """Get dropdown options from existing data."""
+        """Get dropdown options from config sheets and existing data."""
+        # Tipos de documento desde hoja TIPO DOC (columna A)
+        tipos_doc = []
+        if self._is_configured():
+            rows = await self._read_sheet("TIPO DOC")
+            if rows:
+                tipos_doc = sorted([
+                    str(row[0]).strip()
+                    for row in rows
+                    if row and row[0] and str(row[0]).strip()
+                ])
+        
+        # Procedencias y áreas de datos existentes
         documentos = await self._read_documentos()
         derivaciones = await self._read_derivaciones()
-        
-        tipos_doc = sorted(list(set(
-            d["tipo_doc"] for d in documentos if d["tipo_doc"]
-        )))
         
         procedencias = sorted(list(set(
             d["procedencia"] for d in documentos if d["procedencia"]

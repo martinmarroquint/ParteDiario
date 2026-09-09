@@ -72,7 +72,7 @@ const SolicitudesCambioTurno = ({
           todos.push({ id: i, dni: (c[0] || '').trim(), grado: (c[1] || '').trim(), nombre: (c[2] || '').trim(), area: (c[3] || '').trim(), fila: i + 1 });
           // Turnos del rol completo (columnas F en adelante), mapeados igual que el resto del sistema
           const te = {};
-          for (let d = 0; d < totalDias; d++) { te[d + 1] = NOMBRE_A_CODIGO[(c[5 + d] || '').trim()] || ''; }
+          for (let d = 0; d < totalDias; d++) { const val = (c[5 + d] || '').trim(); te[d + 1] = (TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val]) || ''; }
           tObj[i] = te;
         }
         setPersonal(todos);

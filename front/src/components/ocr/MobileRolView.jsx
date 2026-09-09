@@ -427,7 +427,10 @@ const MobileRolView = ({
         }
         
         const te = {}; 
-        for (let d = 0; d < totalDiasMes; d++) { te[d+1] = NOMBRE_A_CODIGO[(cols[5+d]||'').trim()] || ''; }
+        for (let d = 0; d < totalDiasMes; d++) {
+          const val = (cols[5+d]||'').trim();
+          te[d+1] = (TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val]) || '';
+        }
         tObj[i] = te;
       }
       

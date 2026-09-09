@@ -448,7 +448,12 @@ const PanelTrabajo = ({
         const emp = { id: i, fila: i + 1, dni: (cols[0]||'').trim(), grado: (cols[1]||'').trim(), nombre: (cols[2]||'').trim(), area: af, areaOriginal: af };
         todos.push(emp);
         const te = {}; 
-        for (let d = 0; d < totalDiasMes; d++) { te[d+1] = NOMBRE_A_CODIGO[(cols[5+d]||'').trim()] || ''; }
+        for (let d = 0; d < totalDiasMes; d++) {
+          const val = (cols[5+d]||'').trim();
+          // Si el valor es un código corto que ya existe en TURNO_MAP, usarlo directo
+          // Si es nombre completo, mapear a código
+          te[d+1] = (TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val]) || '';
+        }
         tObj[i] = te; cObj[i] = af;
       }
       
@@ -529,6 +534,18 @@ const PanelTrabajo = ({
       cargarDatosIniciales();
     }
   }, [hojaSeleccionada, config.sheetId, cargarDatosIniciales]);
+
+  // Auto-refresh: recargar datos cada 30 segundos si ya se cargó
+  useEffect(() => {
+    if (!cargadoRef.current) return;
+    const interval = setInterval(() => {
+      if (!cargandoRef.current) {
+        cargadoRef.current = false;
+        cargarDatosIniciales();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [cargarDatosIniciales, hojaSeleccionada]);
 
   // Sync mesSeleccionado with hojaSeleccionada
   useEffect(() => {

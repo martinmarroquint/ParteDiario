@@ -300,7 +300,7 @@ const ParteDiario = ({ isOpen, onClose, todasLasAreas }) => {
         const emp = { id: i, fila: i + 1, dni: (cols[0]||'').trim(), grado: (cols[1]||'').trim(), nombre: (cols[2]||'').trim(), area: (cols[3]||'').trim(), celular: (cols[4]||'').trim() };
         todos.push(emp);
         const te = {};
-        for (let d = 0; d < totalDiasMes; d++) te[d+1] = NOMBRE_A_CODIGO[(cols[5+d]||'').trim()] || '';
+        for (let d = 0; d < totalDiasMes; d++) { const val = (cols[5+d]||'').trim(); te[d+1] = (TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val]) || ''; }
         tObj[i] = te;
       }
       setPersonal(todos); setTurnos(tObj);

@@ -105,7 +105,7 @@ const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegist
           const cols = rows[i]; if (!cols || cols.length < 3) continue;
           todos.push({ id: i, dni: (cols[0]||'').trim(), grado: (cols[1]||'').trim(), nombre: (cols[2]||'').trim(), area: (cols[3]||'').trim() });
           const te = {};
-          for (let d = 0; d < totalDias; d++) te[d+1] = NOMBRE_A_CODIGO[(cols[5+d]||'').trim()] || '';
+          for (let d = 0; d < totalDias; d++) { const val = (cols[5+d]||'').trim(); te[d+1] = (TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val]) || ''; }
           tObj[i] = te;
         }
         setPersonalConsulta(todos); setTurnosConsulta(tObj);
