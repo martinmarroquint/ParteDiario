@@ -693,9 +693,7 @@ function registrarEnCambios(datos) {
 }
 
 function guardarCelda(data, nombreHoja) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(1000)) return { success: false, error: 'Lock no disponible, intente de nuevo' };
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(nombreHoja);
     if (!sheet) throw new Error('Hoja no encontrada: ' + nombreHoja);
@@ -734,15 +732,11 @@ function guardarCelda(data, nombreHoja) {
     return { success: true, celda: celda, valor: valorNuevo, anterior: valorActual, cambiado: valorActual !== valorNuevo };
   } catch (error) {
     return { success: false, error: error.toString() };
-  } finally {
-    lock.releaseLock();
   }
 }
 
 function guardarLoteTurnos(data, nombreHoja) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(3000)) return { success: false, error: 'Lock no disponible, intente de nuevo' };
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nombreHoja);
     if (!sheet) throw new Error('Hoja no encontrada: ' + nombreHoja);
 
@@ -768,15 +762,11 @@ function guardarLoteTurnos(data, nombreHoja) {
     return { success: true, filasProcesadas: filasActualizadas, totalFilas: filas.length, errores: errores };
   } catch (error) {
     return { success: false, error: error.toString() };
-  } finally {
-    lock.releaseLock();
   }
 }
 
 function guardarIndividual(data, nombreHoja) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(1000)) return { success: false, error: 'Lock no disponible, intente de nuevo' };
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nombreHoja);
     if (!sheet) throw new Error('Hoja no encontrada: ' + nombreHoja);
 
@@ -796,15 +786,11 @@ function guardarIndividual(data, nombreHoja) {
     return { success: true, celda: colInicio + fila };
   } catch (error) {
     return { success: false, error: error.toString() };
-  } finally {
-    lock.releaseLock();
   }
 }
 
 function guardarLoteCeldas(data, nombreHoja) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(2000)) return { success: false, error: 'Lock no disponible, intente de nuevo' };
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nombreHoja);
     if (!sheet) throw new Error('Hoja no encontrada: ' + nombreHoja);
 
@@ -822,8 +808,6 @@ function guardarLoteCeldas(data, nombreHoja) {
     return { success: true, actualizadas: actualizadas };
   } catch (error) {
     return { success: false, error: error.toString() };
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -999,9 +983,7 @@ function desmarcarFinalizado(data) {
 }
 
 function marcarLoteFinalizado(data) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(3000)) return { success: false, error: 'Lock no disponible, intente de nuevo' };
     var mes = String(data.mes || data.hoja || 'AGOSTO');
     var areas = Array.isArray(data.areas) ? data.areas : [];
     var actualizadas = 0;
@@ -1012,13 +994,11 @@ function marcarLoteFinalizado(data) {
       actualizadas++;
     });
     return { success: true, mes: mes, actualizadas: actualizadas, estado: 'FINALIZADO' };
-  } catch (error) { return { success: false, error: error.toString() }; } finally { lock.releaseLock(); }
+  } catch (error) { return { success: false, error: error.toString() }; }
 }
 
 function desmarcarLoteFinalizado(data) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(3000)) return { success: false, error: 'Lock no disponible, intente de nuevo' };
     var mes = String(data.mes || data.hoja || 'AGOSTO');
     var areas = Array.isArray(data.areas) ? data.areas : [];
     var actualizadas = 0;
@@ -1029,7 +1009,7 @@ function desmarcarLoteFinalizado(data) {
       actualizadas++;
     });
     return { success: true, mes: mes, actualizadas: actualizadas, estado: 'DISPONIBLE' };
-  } catch (error) { return { success: false, error: error.toString() }; } finally { lock.releaseLock(); }
+  } catch (error) { return { success: false, error: error.toString() }; }
 }
 
 function inicializarEstructura(data) {
@@ -1212,9 +1192,7 @@ function __detalleJSON_(d) {
 }
 
 function registrarSolicitudCambio(params) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(3000)) return { ok: false, error: 'Lock no disponible, intente de nuevo' };
     var d = params.datos || params;
     var hoja = __crearHojaSolicitudes_();
     var filas = hoja.getDataRange().getValues();
@@ -1244,8 +1222,6 @@ function registrarSolicitudCambio(params) {
     return { ok: true, id: nuevoId };
   } catch (e) {
     return { ok: false, error: String(e) };
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -1290,9 +1266,7 @@ function __aplicarDetalleMes_(ss, hojaMes, detalle, responsable) {
 }
 
 function actualizarSolicitudCambio(params) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(3000)) return { ok: false, error: 'Lock no disponible, intente de nuevo' };
     var id = String(params.id || '').trim();
     var estado = String(params.estado || 'PENDIENTE').toUpperCase();
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1332,8 +1306,6 @@ function actualizarSolicitudCambio(params) {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String(e) };
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -1385,9 +1357,7 @@ function ensureCeldaModificadaSheet() {
 }
 
 function registrarCeldaModificada(data) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(1000)) return { success: false, error: 'Lock no disponible' };
     var sheet = ensureCeldaModificadaSheet();
 
     var hoja = data.hoja || '';
@@ -1421,8 +1391,6 @@ function registrarCeldaModificada(data) {
     return { success: true, hoja: hoja, fila: fila, dia: dia };
   } catch (error) {
     return { success: false, error: error.toString() };
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -1456,9 +1424,7 @@ function cargarCeldasModificadas(data) {
 }
 
 function limpiarCeldasModificadas(data) {
-  var lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(1000)) return { success: false, error: 'Lock no disponible' };
     var sheet = ensureCeldaModificadaSheet();
     var hoja = data.hoja || '';
 
@@ -1480,8 +1446,6 @@ function limpiarCeldasModificadas(data) {
     return { success: true, eliminadas: filasEliminar.length };
   } catch (error) {
     return { success: false, error: error.toString() };
-  } finally {
-    lock.releaseLock();
   }
 }
 
