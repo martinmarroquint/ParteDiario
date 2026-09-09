@@ -216,7 +216,7 @@ def _get_default_turnos() -> list:
         {"codigo": "SC",  "nombre": "SERVICIO CONTINUO",                  "horas": 24},
         {"codigo": "EXT", "nombre": "EXTERNO",                            "horas": 0},
         {"codigo": "CUM", "nombre": "CUMPLEAÑOS 🥳",                     "horas": 1},
-        {"codigo": "R",   "nombre": "RETEN",                              "horas": 0},
+        {"codigo": "R",   "nombre": "RETEN",                              "horas": 6},
         {"codigo": "S",   "nombre": "SERVICIO",                           "horas": 24},
         {"codigo": "M/N", "nombre": "MAÑANA - 12 HRS N",                  "horas": 18},
         {"codigo": "T/N", "nombre": "TARDE - 12 HRS N",                   "horas": 18},
