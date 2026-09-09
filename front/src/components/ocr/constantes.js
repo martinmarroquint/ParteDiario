@@ -40,7 +40,8 @@ export const TURNOS = [
   { codigo: '24',  nombre: '24 X 48',                                   horas: 24, color: '#C3D9FF', texto: '#1A365D' },
   { codigo: 'SC',  nombre: 'SERVICIO CONTINUO',                         horas: 24, color: '#FFD129', texto: '#22543D' },
   { codigo: 'EXT', nombre: 'EXTERNO',                                   horas: 0,  color: '#E2E8F0', texto: '#2D3748' },
-  { codigo: 'R',   nombre: 'RETEN',                                     horas: 24, color: '#FEEBC8', texto: '#7B341E' },
+  { codigo: 'CUM', nombre: 'CUMPLEAÑOS 🥳',                            horas: 1,  color: '#FF6B6B', texto: '#FFFFFF' },
+  { codigo: 'R',   nombre: 'RETEN',                                     horas: 0,  color: '#FEEBC8', texto: '#7B341E' },
   { codigo: 'S',   nombre: 'SERVICIO',                                  horas: 24, color: '#C3D9FF', texto: '#1A365D' },
   { codigo: 'M/N', nombre: 'MAÑANA - 12 HRS N',                         horas: 18, color: '#BEE3F8', texto: '#2A4365' },
   { codigo: 'T/N', nombre: 'TARDE - 12 HRS N',                          horas: 18, color: '#FEFCBF', texto: '#744210' },
@@ -54,6 +55,7 @@ export const TURNOS = [
   { codigo: 'PN',  nombre: 'OFICIAL DE PERMANENCIA (NOCTURNO)',         horas: 12, color: '#C3D9FF', texto: '#1A365D' },
   { codigo: 'PM',  nombre: 'OFICIAL DE PERMANENCIA (MAÑANA)',           horas: 6,  color: '#C6F6D5', texto: '#22543D' },
   { codigo: 'PT',  nombre: 'OFICIAL DE PERMANENCIA (TARDE)',            horas: 6,  color: '#FEFCBF', texto: '#744210' },
+  { codigo: 'CD',  nombre: 'CLASE DE DIA',                              horas: 12, color: '#BEE3F8', texto: '#2A4365' },
 ];
 
 // Crear mapas para búsqueda rápida
@@ -62,6 +64,34 @@ TURNOS.forEach(t => { TURNO_MAP[t.codigo] = t; });
 
 export const NOMBRE_A_CODIGO = {};
 TURNOS.forEach(t => { NOMBRE_A_CODIGO[t.nombre] = t.codigo; });
+
+/**
+ * Update TURNOS from API data (called on app startup).
+ * Mutates TURNO_MAP properties so all existing imports see the update.
+ */
+export async function initTurnosDinamicos() {
+  try {
+    const { loadTurnos } = await import('./services/turnosService.js');
+    const turnos = await loadTurnos();
+    
+    if (turnos && turnos.length > 0) {
+      // Clear and repopulate TURNOS array
+      TURNOS.length = 0;
+      turnos.forEach(t => TURNOS.push(t));
+      
+      // Clear and repopulate maps (mutate, don't reassign)
+      Object.keys(TURNO_MAP).forEach(k => delete TURNO_MAP[k]);
+      turnos.forEach(t => { TURNO_MAP[t.codigo] = t; });
+      
+      Object.keys(NOMBRE_A_CODIGO).forEach(k => delete NOMBRE_A_CODIGO[k]);
+      turnos.forEach(t => { NOMBRE_A_CODIGO[t.nombre] = t.codigo; });
+      
+      console.log(`Turnos cargados desde BD: ${turnos.length} turnos`);
+    }
+  } catch (e) {
+    console.warn('No se pudieron cargar turnos dinámicos, usando fallback:', e);
+  }
+}
 
 export const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 

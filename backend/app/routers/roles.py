@@ -101,3 +101,134 @@ async def desfinalizar_rol(
     
     result = await role_service.desfinalizar_rol(data.mes, data.anio, data.area)
     return result
+
+
+@router.get("/turnos")
+async def get_turnos(current_user: User = Depends(get_current_user)):
+    """Get available turnos from BD sheet (column A=name, column B=hours).
+    Returns turnos with short codes matching frontend constantes.
+    """
+    rows = await sheets_service.get_range("BD")
+    if not rows or len(rows) < 2:
+        return {"turnos": _get_default_turnos(), "source": "default"}
+    
+    # Mapping: nombre completo → código corto (igual que en frontend)
+    NAME_TO_CODE = {
+        'MAÑANA': 'M',
+        'TARDE': 'T',
+        'FRANCO': 'F',
+        '12 HRS M': 'MT',
+        '12 HRS N': 'N',
+        'FERIADO': 'FE',
+        'VACACIONES': 'V',
+        'FALTO AL SERVICIO': 'FS',
+        'LICENCIA DE GRAVIDEZ': 'LG',
+        'DESCANSO MEDICO': 'DM',
+        'LEY 12633': 'L12',
+        'HOSPITALIZADO': 'H',
+        'COMISION': 'C',
+        'PERMISO DE RADIACION': 'PR',
+        'ADAPTACION A LA VIDA CIVIL': 'AVC',
+        'LICENCIA POR ENFERMEDA GRAVE DE FAMILIAR': 'LEGF',
+        'LICENCIA ENFERMEDAD GRAVE FAMILIAR': 'LEGF',
+        'PERMISO A CUENTA DE VACACIONES': 'PCV',
+        'REFERIDO A LIMA': 'RL',
+        'SOMETIDO A LEY': 'SL',
+        '24 X 48': '24',
+        'SERVICIO CONTINUO': 'SC',
+        'EXTERNO': 'EXT',
+        'CUMPLEAÑOS 🥳🥳🥳🥳': 'CUM',
+        'RETEN': 'R',
+        'SERVICIO': 'S',
+        'MAÑANA - 12 HRS N': 'M/N',
+        'TARDE - 12 HRS N': 'T/N',
+        'ADMINISTRATIVO': 'ADM',
+        'LICENCIA POR FALLECIMIENTO DE CONYUGUE': 'LFC',
+        'LICENCIA FALLECIMIENTO CONYUGUE': 'LFC',
+        'PAPELETA DE PERMISO': 'PP',
+        'CAMBIADO OTRA UNIDAD': 'COU',
+        '24 HRS MTN': '24M',
+        'LICENCIA POR PATERNIDAD': 'LP',
+        'OFICIAL DE PERMANENCIA (DIURNO)': 'PD',
+        'OFICIAL DE PERMANENCIA (NOCTURNO)': 'PN',
+        'OFICIAL DE PERMANENCIA (MAÑANA)': 'PM',
+        'OFICIAL DE PERMANENCIA (TARDE)': 'PT',
+        'CLASE DE DIA': 'CD',
+    }
+    
+    turnos = []
+    found_codes = set()
+    
+    for row in rows[1:]:  # Skip header
+        if not row or not row[0]:
+            continue
+        nombre = str(row[0]).strip()
+        horas = 0
+        if len(row) > 1:
+            try:
+                horas = int(str(row[1]).strip())
+            except (ValueError, TypeError):
+                horas = 0
+        
+        nombre_upper = nombre.upper().strip()
+        code = NAME_TO_CODE.get(nombre_upper)
+        
+        if code:
+            found_codes.add(code)
+            turnos.append({"codigo": code, "nombre": nombre, "horas": horas})
+        else:
+            # Unknown turno - generate a code
+            code = nombre[:3].upper()
+            c = code
+            n = 2
+            while c in found_codes:
+                c = f"{code}{n}"
+                n += 1
+            found_codes.add(c)
+            turnos.append({"codigo": c, "nombre": nombre, "horas": horas})
+    
+    return {"turnos": turnos, "source": "bd_sheet"}
+
+
+def _get_default_turnos() -> list:
+    """Default turnos if BD sheet is unavailable."""
+    return [
+        {"codigo": "M",   "nombre": "MAÑANA",                             "horas": 6},
+        {"codigo": "T",   "nombre": "TARDE",                              "horas": 6},
+        {"codigo": "F",   "nombre": "FRANCO",                             "horas": 0},
+        {"codigo": "MT",  "nombre": "12 HRS M",                           "horas": 12},
+        {"codigo": "N",   "nombre": "12 HRS N",                           "horas": 12},
+        {"codigo": "FE",  "nombre": "FERIADO",                            "horas": 0},
+        {"codigo": "V",   "nombre": "VACACIONES",                         "horas": 0},
+        {"codigo": "FS",  "nombre": "FALTO AL SERVICIO",                  "horas": 0},
+        {"codigo": "LG",  "nombre": "LICENCIA DE GRAVIDEZ",               "horas": 0},
+        {"codigo": "DM",  "nombre": "DESCANSO MEDICO",                    "horas": 0},
+        {"codigo": "L12", "nombre": "LEY 12633",                          "horas": 0},
+        {"codigo": "H",   "nombre": "HOSPITALIZADO",                      "horas": 0},
+        {"codigo": "C",   "nombre": "COMISION",                           "horas": 0},
+        {"codigo": "PR",  "nombre": "PERMISO DE RADIACION",               "horas": 0},
+        {"codigo": "AVC", "nombre": "ADAPTACION A LA VIDA CIVIL",         "horas": 0},
+        {"codigo": "LEGF","nombre": "LICENCIA ENFERMEDAD GRAVE FAMILIAR", "horas": 0},
+        {"codigo": "PCV", "nombre": "PERMISO A CUENTA DE VACACIONES",     "horas": 0},
+        {"codigo": "RL",  "nombre": "REFERIDO A LIMA",                    "horas": 0},
+        {"codigo": "SL",  "nombre": "SOMETIDO A LEY",                     "horas": 0},
+        {"codigo": "24",  "nombre": "24 X 48",                            "horas": 24},
+        {"codigo": "SC",  "nombre": "SERVICIO CONTINUO",                  "horas": 24},
+        {"codigo": "EXT", "nombre": "EXTERNO",                            "horas": 0},
+        {"codigo": "CUM", "nombre": "CUMPLEAÑOS 🥳",                     "horas": 1},
+        {"codigo": "R",   "nombre": "RETEN",                              "horas": 0},
+        {"codigo": "S",   "nombre": "SERVICIO",                           "horas": 24},
+        {"codigo": "M/N", "nombre": "MAÑANA - 12 HRS N",                  "horas": 18},
+        {"codigo": "T/N", "nombre": "TARDE - 12 HRS N",                   "horas": 18},
+        {"codigo": "ADM", "nombre": "ADMINISTRATIVO",                     "horas": 8},
+        {"codigo": "LFC", "nombre": "LICENCIA FALLECIMIENTO CONYUGUE",    "horas": 0},
+        {"codigo": "PP",  "nombre": "PAPELETA DE PERMISO",                "horas": 0},
+        {"codigo": "COU", "nombre": "CAMBIADO OTRA UNIDAD",               "horas": 0},
+        {"codigo": "24M", "nombre": "24 HRS MTN",                         "horas": 24},
+        {"codigo": "LP",  "nombre": "LICENCIA POR PATERNIDAD",            "horas": 0},
+        {"codigo": "PD",  "nombre": "OFICIAL DE PERMANENCIA (DIURNO)",    "horas": 12},
+        {"codigo": "PN",  "nombre": "OFICIAL DE PERMANENCIA (NOCTURNO)",  "horas": 12},
+        {"codigo": "PM",  "nombre": "OFICIAL DE PERMANENCIA (MAÑANA)",    "horas": 6},
+        {"codigo": "PT",  "nombre": "OFICIAL DE PERMANENCIA (TARDE)",     "horas": 6},
+        {"codigo": "CD",  "nombre": "CLASE DE DIA",                      "horas": 12},
+    ]

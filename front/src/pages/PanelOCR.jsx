@@ -13,7 +13,7 @@ import ParteDiario from '../components/ocr/ParteDiario';
 import ModalSolicitudCambioTurno from '../components/ocr/ModalSolicitudCambioTurno';
 import PanelAdminUsuariosOCR from '../components/ocr/admin/PanelAdminUsuariosOCR';
 import MesaDePartes from '../components/mesapartes/MesaDePartes';
-import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn } from '../components/ocr/constantes';
+import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn, initTurnosDinamicos } from '../components/ocr/constantes';
 import { apiClient } from '../components/ocr/services/apiClient';
 import { authService } from '../components/ocr/services/authService';
 import { rolesService } from '../components/ocr/services/rolesService';
@@ -216,6 +216,8 @@ const PanelOCRContent = () => {
       console.log('⚠️ [OCR] Modo: PRUEBA (sin backend)');
       console.log('💡 [OCR] Configura VITE_API_URL en .env para usar el backend real');
     }
+    // Cargar turnos dinámicos desde BD sheet
+    initTurnosDinamicos();
   }, []);
 
   // ============================================================
