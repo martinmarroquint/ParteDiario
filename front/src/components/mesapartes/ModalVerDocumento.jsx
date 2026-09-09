@@ -1,6 +1,6 @@
 // src/components/mesapartes/ModalVerDocumento.jsx
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, FileText, Send, FileCheck, ArrowLeft, History, Clock, Loader2 } from 'lucide-react';
+import { X, Calendar, FileText, Send, FileCheck, ArrowLeft, History, Clock, Loader2, Mail, File } from 'lucide-react';
 import { COLOR_PRIMARIO, ESTADOS, ESTADOS_DERIVACION } from './constantes';
 import apiClient from '../ocr/services/apiClient';
 import { API_ENDPOINTS } from './constantes';
@@ -91,7 +91,7 @@ const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolve
               <InfoField label="Tipo" value={documento.tipo_doc} />
               <InfoField label="N° Doc." value={documento.n_doc_origen} mono />
               <InfoField label="Fecha Doc." value={documento.fecha_doc} />
-              <InfoField label="Fuente" value={documento.fuente === 'digital' ? '📧 Digital' : '📄 Físico'} />
+              <InfoField label="Fuente" value={documento.fuente === 'digital' ? 'Digital' : 'Fisico'} />
               <InfoField label="Creado por" value={documento.creado_por} />
             </div>
             {documento.procedencia && <div className="mt-3"><InfoField label="Procedencia" value={documento.procedencia} /></div>}

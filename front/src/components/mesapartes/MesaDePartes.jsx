@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Search, Plus, Send, FileCheck, Calendar, User, Inbox,
   X, SlidersHorizontal, ChevronLeft, ChevronRight, FileText,
-  ArrowUpRight, ArrowDownRight, CheckCircle, Clock, History
+  ArrowUpRight, ArrowDownRight, CheckCircle, Clock, History, Mail, File
 } from 'lucide-react';
 import apiClient from '../ocr/services/apiClient';
 import { COLOR_PRIMARIO, API_ENDPOINTS, ESTADOS, ESTADOS_DERIVACION, FUENTES } from './constantes';
@@ -254,7 +254,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">{doc.tipo_doc}</span>
                           )}
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: doc.fuente === 'digital' ? '#EFF6FF' : '#FEF3C7', color: doc.fuente === 'digital' ? '#1D4ED8' : '#B45309' }}>
-                            {doc.fuente === 'digital' ? '📧' : '📄'}
+                            {doc.fuente === 'digital' ? <Mail className="w-3 h-3 inline" /> : <File className="w-3 h-3 inline" />}
                           </span>
                           <span
                             className="text-[10px] font-semibold px-2 py-0.5 rounded-full ml-auto inline-flex items-center gap-1.5"
