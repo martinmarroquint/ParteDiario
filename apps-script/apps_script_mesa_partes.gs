@@ -72,51 +72,52 @@ function ensureSheets() {
   let doc = ss.getSheetByName('DOCUMENTOS');
   if (!doc) {
     doc = ss.insertSheet('DOCUMENTOS');
-    doc.getRange('A1:L1').setValues([[
-      'ID', 'NUMERO', 'FECHA_REGISTRO', 'TIPO_DOC', 'N_DOC_ORIGEN',
-      'FECHA_DOC', 'PROCEDENCIA', 'ASUNTO', 'CONTENIDO', 'FUENTE',
-      'CREADO_POR', 'ESTADO'
-    ]]);
-    doc.getRange('A1:L1').setFontWeight('bold').setBackground('#E8F5E9');
-    doc.setFrozenRows(1);
   }
+  // SIEMPRE actualizar encabezados (por si cambiaron)
+  doc.getRange('A1:L1').setValues([[
+    'ID', 'NUMERO', 'FECHA_REGISTRO', 'TIPO_DOC', 'N_DOC_ORIGEN',
+    'FECHA_DOC', 'PROCEDENCIA', 'ASUNTO', 'CONTENIDO', 'FUENTE',
+    'CREADO_POR', 'ESTADO'
+  ]]);
+  doc.getRange('A1:L1').setFontWeight('bold').setBackground('#E8F5E9');
+  doc.setFrozenRows(1);
 
   // MOVIMIENTOS — pases, devoluciones, resoluciones
   let mov = ss.getSheetByName('MOVIMIENTOS');
   if (!mov) {
     mov = ss.insertSheet('MOVIMIENTOS');
-    mov.getRange('A1:H1').setValues([[
-      'ID', 'DOCUMENTO_ID', 'TIPO_MOV', 'NUMERO', 'FECHA',
-      'CONTENIDO', 'AREA_DESTINO', 'CREADO_POR'
-    ]]);
-    mov.getRange('A1:H1').setFontWeight('bold').setBackground('#E3F2FD');
-    mov.setFrozenRows(1);
   }
+  mov.getRange('A1:I1').setValues([[
+    'ID', 'DOCUMENTO_ID', 'TIPO_MOV', 'NUMERO', 'FECHA',
+    'CONTENIDO', 'AREA_DESTINO', 'CREADO_POR', 'N_DOC_REF'
+  ]]);
+  mov.getRange('A1:I1').setFontWeight('bold').setBackground('#E3F2FD');
+  mov.setFrozenRows(1);
 
   // DERIVACIONES — estado de entrega por área
   let deriv = ss.getSheetByName('DERIVACIONES');
   if (!deriv) {
     deriv = ss.insertSheet('DERIVACIONES');
-    deriv.getRange('A1:J1').setValues([[
-      'ID', 'DOCUMENTO_ID', 'MOVIMIENTO_ID', 'AREA_DESTINO',
-      'FECHA_DERIVACION', 'RECIBIDO_POR', 'FECHA_RECEPCION',
-      'DEVUELTO_POR', 'FECHA_DEVOLUCION', 'ESTADO'
-    ]]);
-    deriv.getRange('A1:J1').setFontWeight('bold').setBackground('#FFF3E0');
-    deriv.setFrozenRows(1);
   }
+  deriv.getRange('A1:J1').setValues([[
+    'ID', 'DOCUMENTO_ID', 'MOVIMIENTO_ID', 'AREA_DESTINO',
+    'FECHA_DERIVACION', 'RECIBIDO_POR', 'FECHA_RECEPCION',
+    'DEVUELTO_POR', 'FECHA_DEVOLUCION', 'ESTADO'
+  ]]);
+  deriv.getRange('A1:J1').setFontWeight('bold').setBackground('#FFF3E0');
+  deriv.setFrozenRows(1);
 
   // HISTORIAL — audit trail
   let hist = ss.getSheetByName('HISTORIAL');
   if (!hist) {
     hist = ss.insertSheet('HISTORIAL');
-    hist.getRange('A1:G1').setValues([[
-      'ID', 'DOCUMENTO_ID', 'MOVIMIENTO_ID', 'ACCION',
-      'DETALLES', 'REALIZADO_POR', 'FECHA'
-    ]]);
-    hist.getRange('A1:G1').setFontWeight('bold').setBackground('#F3E5F5');
-    hist.setFrozenRows(1);
   }
+  hist.getRange('A1:G1').setValues([[
+    'ID', 'DOCUMENTO_ID', 'MOVIMIENTO_ID', 'ACCION',
+    'DETALLES', 'REALIZADO_POR', 'FECHA'
+  ]]);
+  hist.getRange('A1:G1').setFontWeight('bold').setBackground('#F3E5F5');
+  hist.setFrozenRows(1);
 
   return { doc, mov, deriv, hist };
 }
@@ -236,11 +237,12 @@ function derivar(data) {
     const movId = nextId(mov);
     const numero = nextNumero(mov, tipoMov.replace(' ', ''));
 
-    mov.getRange(movId + 1, 1, 1, 8).setValues([[
+    mov.getRange(movId + 1, 1, 1, 9).setValues([[
       movId, docId, tipoMov, numero, ts,
       data.contenido || '',
       area,
-      data.creado_por || ''
+      data.creado_por || '',
+      data.n_doc_ref || ''
     ]]);
 
     movIds.push(movId);
@@ -331,11 +333,12 @@ function devolver(data) {
       const movId = nextId(mov);
       const numero = nextNumero(mov, 'DEV');
 
-      mov.getRange(movId + 1, 1, 1, 8).setValues([[
+      mov.getRange(movId + 1, 1, 1, 9).setValues([[
         movId, docId, 'DEVOLUCION', numero, ts,
         data.contenido || '',
         'MESA DE PARTES',  // Devuelve a Mesa
-        data.devuelto_por || ''
+        data.devuelto_por || '',
+        ''  // n_doc_ref no aplica para devoluciones
       ]]);
 
       // Actualizar derivación
@@ -373,11 +376,12 @@ function cerrar(data) {
       const movId = nextId(mov);
       const numero = nextNumero(mov, 'RES');
 
-      mov.getRange(movId + 1, 1, 1, 8).setValues([[
+      mov.getRange(movId + 1, 1, 1, 9).setValues([[
         movId, docId, 'RESOLUCION', numero, ts,
         data.contenido || '',
         '',  // Sin área destino (es cierre)
-        data.creado_por || ''
+        data.creado_por || '',
+        ''  // n_doc_ref no aplica para resoluciones
       ]]);
 
       // Cerrar documento
@@ -464,7 +468,8 @@ function listar(data) {
       const m = {
         id: r[0], documento_id: r[1], tipo_mov: r[2],
         numero: r[3], fecha: r[4], contenido: r[5],
-        area_destino: r[6], creado_por: r[7]
+        area_destino: r[6], creado_por: r[7],
+        n_doc_ref: r[8] || ''
       };
       const doc = documentos.find(x => x.id === m.documento_id);
       if (doc) doc.movimientos.push(m);
@@ -604,7 +609,8 @@ function bandeja(data) {
         doc.movimientos.push({
           id: r[0], documento_id: r[1], tipo_mov: r[2],
           numero: r[3], fecha: r[4], contenido: r[5],
-          area_destino: r[6], creado_por: r[7]
+          area_destino: r[6], creado_por: r[7],
+          n_doc_ref: r[8] || ''
         });
       }
     }

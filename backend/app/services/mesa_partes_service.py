@@ -55,28 +55,104 @@ class MesaPartesService:
             return []
     
     async def _read_documentos(self) -> list[dict]:
-        """Read all documents from DOCUMENTOS sheet."""
+        """Read all documents from DOCUMENTOS sheet.
+        Dynamically detects column headers and maps them to fields.
+        Works with ANY header structure.
+        """
         rows = await self._read_sheet("DOCUMENTOS")
         if not rows or len(rows) < 2:
             return []
+        
+        # Read header row and build column map
+        header = [str(h).strip().upper() for h in rows[0]]
+        
+        # Map known header variations to our field names
+        HEADER_MAP = {
+            # ID
+            'ID': 'id', 'N': 'id', 'NRO': 'id', 'NUM': 'id', '#': 'id',
+            # NUMERO
+            'NUMERO': 'numero', 'NÚMERO': 'numero', 'NUM': 'numero',
+            # FECHA_REGISTRO / FECHA
+            'FECHA_REGISTRO': 'fecha_registro', 'FECHA REGISTRO': 'fecha_registro',
+            'FECHA': 'fecha_registro', 'FECHA ALTA': 'fecha_registro',
+            # TIPO_DOC
+            'TIPO_DOC': 'tipo_doc', 'TIPO DOC': 'tipo_doc', 'TIPO DOC.': 'tipo_doc',
+            'TIPO DE DOC.': 'tipo_doc', 'TIPO DE DOC': 'tipo_doc',
+            'TIPO_DOCUMENTO': 'tipo_doc',
+            # N_DOC_ORIGEN
+            'N_DOC_ORIGEN': 'n_doc_origen', 'N DOC. ORIGEN': 'n_doc_origen',
+            'N DOC ORIGEN': 'n_doc_origen', 'N° DOC. ORIGEN': 'n_doc_origen',
+            'N° DOC ORIGEN': 'n_doc_origen', 'DOC ORIGEN': 'n_doc_origen',
+            # FECHA_DOC
+            'FECHA_DOC': 'fecha_doc', 'FECHA DOC': 'fecha_doc', 'FECHA DOC.': 'fecha_doc',
+            'FECHA DE DOC': 'fecha_doc', 'FECHA DOCUMENTO': 'fecha_doc',
+            # PROCEDENCIA
+            'PROCEDENCIA': 'procedencia', 'ORIGEN': 'procedencia',
+            'DEPARTAMENTO ORIGEN': 'procedencia',
+            # ASUNTO
+            'ASUNTO': 'asunto', 'RESUMEN': 'asunto', 'DESCRIPCION': 'asunto',
+            # CONTENIDO
+            'CONTENIDO': 'contenido', 'DETALLE': 'contenido', 'OBSERVACIONES': 'contenido',
+            'DESCRIPCION DEL CONTENIDO': 'contenido',
+            # FUENTE
+            'FUENTE': 'fuente', 'ORIGEN DOC': 'fuente', 'TIPO ORIGEN': 'fuente',
+            # CREADO_POR
+            'CREADO_POR': 'creado_por', 'CREADO POR': 'creado_por',
+            'USUARIO': 'creado_por', 'REGISTRADO POR': 'creado_por',
+            'USER': 'creado_por',
+            # ESTADO
+            'ESTADO': 'estado', 'STATUS': 'estado', 'SITUACION': 'estado',
+            # DOC DE TRAMITE (legacy)
+            'DOC. DE TRAMITE': 'doc_tramite', 'DOC DE TRAMITE': 'doc_tramite',
+            'DOC. DE TRÁMITE': 'doc_tramite', 'DOC DE TRÁMITE': 'doc_tramite',
+            # N DOC TRAMITADO (legacy)
+            'N DOC. TRAMITADO': 'n_doc_tramitado', 'N DOC TRAMITADO': 'n_doc_tramitado',
+            'N° DE DOC. TRAMITADO': 'n_doc_tramitado', 'N DE DOC. TRAMITADO': 'n_doc_tramitado',
+            # AREA ENTREGADA (legacy)
+            'AREA ENTREGADA': 'area_entregada', 'ÁREA ENTREGADA': 'area_entregada',
+            'AREA': 'area_entregada',
+            # DESCARGO (legacy)
+            'DESCARGO': 'descargo',
+            # N DESCARGO (legacy)
+            'N DESCARGO': 'n_descargo', 'N° DESCARGO': 'n_descargo',
+            # HT (legacy)
+            'HT': 'ht',
+        }
+        
+        # Build index map: field_name -> column_index
+        col_map = {}
+        for i, h in enumerate(header):
+            field = HEADER_MAP.get(h)
+            if field:
+                col_map[field] = i
+        
+        # Helper to safely get value
+        def get(row, field, default=""):
+            idx = col_map.get(field)
+            if idx is not None and idx < len(row):
+                val = row[idx]
+                return val if val else default
+            return default
+        
         documentos = []
         for r in rows[1:]:
             documentos.append({
-                "id": r[0] if len(r) > 0 else "",
-                "numero": r[1] if len(r) > 1 else "",
-                "fecha_registro": r[2] if len(r) > 2 else "",
-                "tipo_doc": r[3] if len(r) > 3 else "",
-                "n_doc_origen": r[4] if len(r) > 4 else "",
-                "fecha_doc": r[5] if len(r) > 5 else "",
-                "procedencia": r[6] if len(r) > 6 else "",
-                "asunto": r[7] if len(r) > 7 else "",
-                "contenido": r[8] if len(r) > 8 else "",
-                "fuente": r[9] if len(r) > 9 else "fisico",
-                "creado_por": r[10] if len(r) > 10 else "",
-                "estado": r[11] if len(r) > 11 else "REGISTRADO",
+                "id": get(r, 'id'),
+                "numero": get(r, 'numero'),
+                "fecha_registro": get(r, 'fecha_registro'),
+                "tipo_doc": get(r, 'tipo_doc'),
+                "n_doc_origen": get(r, 'n_doc_origen'),
+                "fecha_doc": get(r, 'fecha_doc'),
+                "procedencia": get(r, 'procedencia'),
+                "asunto": get(r, 'asunto'),
+                "contenido": get(r, 'contenido'),
+                "fuente": get(r, 'fuente', 'fisico'),
+                "creado_por": get(r, 'creado_por'),
+                "estado": get(r, 'estado', 'REGISTRADO'),
                 "movimientos": [],
                 "derivaciones": []
             })
+        
         documentos.sort(key=lambda d: int(d["id"]) if str(d["id"]).isdigit() else 0, reverse=True)
         return documentos
     
@@ -95,7 +171,8 @@ class MesaPartesService:
                 "fecha": r[4] if len(r) > 4 else "",
                 "contenido": r[5] if len(r) > 5 else "",
                 "area_destino": r[6] if len(r) > 6 else "",
-                "creado_por": r[7] if len(r) > 7 else ""
+                "creado_por": r[7] if len(r) > 7 else "",
+                "n_doc_ref": r[8] if len(r) > 8 else ""
             })
         return movimientos
     
@@ -269,12 +346,13 @@ class MesaPartesService:
             "creado_por": user_name
         })
     
-    async def derivar(self, doc_id: int, areas: list[str], tipo_mov: str = "PASE", contenido: str = "", user_name: str = "") -> dict:
+    async def derivar(self, doc_id: int, areas: list[str], tipo_mov: str = "PASE", n_doc_ref: str = "", contenido: str = "", user_name: str = "") -> dict:
         """Derive a document to one or more areas with a movement document."""
         return await self._apps_script_action("derivar", {
             "documento_id": doc_id,
             "areas": areas,
             "tipo_mov": tipo_mov,
+            "n_doc_ref": n_doc_ref,
             "contenido": contenido,
             "creado_por": user_name
         })

@@ -34,6 +34,7 @@ class DerivarDoc(BaseModel):
     documento_id: int
     areas: list[str] = Field(..., min_length=1)
     tipo_mov: Optional[str] = "PASE"
+    n_doc_ref: Optional[str] = ""
     contenido: Optional[str] = ""
 
 class RecibirDoc(BaseModel):
@@ -187,6 +188,7 @@ async def derivar_documento(
         data.documento_id,
         data.areas,
         tipo_mov=data.tipo_mov,
+        n_doc_ref=data.n_doc_ref,
         contenido=data.contenido,
         user_name=current_user.nombre
     )

@@ -7,6 +7,7 @@ import Dropdown from '../ui/Dropdown';
 
 const ModalDerivarDocumento = ({ documento, onClose, onActualizado }) => {
   const [tipoMov, setTipoMov] = useState('PASE');
+  const [nDocRef, setNDocRef] = useState('');
   const [contenido, setContenido] = useState('');
   const [areas, setAreas] = useState(['']);
   const [guardando, setGuardando] = useState(false);
@@ -35,6 +36,7 @@ const ModalDerivarDocumento = ({ documento, onClose, onActualizado }) => {
         documento_id: documento.id,
         areas: areasValidas,
         tipo_mov: tipoMov,
+        n_doc_ref: nDocRef,
         contenido: contenido
       });
       onActualizado?.();
@@ -88,6 +90,20 @@ const ModalDerivarDocumento = ({ documento, onClose, onActualizado }) => {
               onChange={v => setTipoMov(v)}
               placeholder="Seleccionar tipo"
               searchable
+            />
+          </div>
+
+          {/* N° Documento de referencia */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+              N° Documento de referencia
+            </label>
+            <input
+              type="text"
+              value={nDocRef}
+              onChange={e => setNDocRef(e.target.value)}
+              placeholder="Ej: 123/2026 (opcional, se genera automatico)"
+              className="w-full px-3 py-2.5 border border-gray-200/60 rounded-xl text-sm text-gray-700 placeholder:text-gray-400 outline-none transition-all bg-white focus:border-gray-400"
             />
           </div>
 

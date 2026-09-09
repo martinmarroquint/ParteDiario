@@ -118,7 +118,8 @@ const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolve
                           <div className="grid grid-cols-2 gap-2 text-xs">
                             <div><span className="text-gray-400">Creado por:</span> <span className="font-medium">{m.creado_por}</span></div>
                             <div><span className="text-gray-400">Fecha:</span> <span className="font-medium">{m.fecha}</span></div>
-                            {m.area_destino && <div className="col-span-2"><span className="text-gray-400">Area destino:</span> <span className="font-medium">{m.area_destino}</span></div>}
+                            {m.n_doc_ref && <div><span className="text-gray-400">N° Ref:</span> <span className="font-medium">{m.n_doc_ref}</span></div>}
+                            {m.area_destino && <div><span className="text-gray-400">Area destino:</span> <span className="font-medium">{m.area_destino}</span></div>}
                           </div>
                           {m.contenido && (
                             <div className="bg-white rounded-lg p-2.5">
