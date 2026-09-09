@@ -286,14 +286,35 @@ class MesaPartesService:
         """Get dropdown options from config sheets and existing data."""
         # Tipos de documento desde hoja TIPO DOC (columna A)
         tipos_doc = []
+        
+        # Intentar leer de múltiples fuentes
+        sheet_ids_to_try = []
         if self._is_configured():
-            rows = await self._read_sheet("TIPO DOC")
-            if rows:
-                tipos_doc = sorted([
-                    str(row[0]).strip()
-                    for row in rows
-                    if row and row[0] and str(row[0]).strip()
-                ])
+            sheet_ids_to_try.append(self.sheet_id)
+        # También intentar desde el sheet principal si TIPO DOC no está en el de Mesa de Partes
+        from app.config import settings
+        if settings.GOOGLE_SHEETS_ID and settings.GOOGLE_SHEETS_ID not in sheet_ids_to_try:
+            sheet_ids_to_try.append(settings.GOOGLE_SHEETS_ID)
+        
+        # Nombres posibles de la hoja
+        sheet_names_to_try = ["TIPO DOC", "TIPO_DOC", "TIPODOC", "BD"]
+        
+        for sid in sheet_ids_to_try:
+            if tipos_doc:
+                break
+            for sheet_name in sheet_names_to_try:
+                rows = await self._read_sheet_from(sid, sheet_name)
+                if rows and len(rows) > 0:
+                    # Saltar header si la primera fila parece header
+                    data_rows = rows[1:] if self._looks_like_header(rows[0]) else rows
+                    tipos = sorted(set(
+                        str(row[0]).strip()
+                        for row in data_rows
+                        if row and row[0] and str(row[0]).strip()
+                    ))
+                    if tipos:
+                        tipos_doc = tipos
+                        break
         
         # Procedencias y áreas de datos existentes
         documentos = await self._read_documentos()
@@ -312,3 +333,21 @@ class MesaPartesService:
             "procedencias": procedencias,
             "areas": areas
         }
+    
+    def _looks_like_header(self, row) -> bool:
+        """Check if a row looks like a header (contains common header words)."""
+        text = ' '.join(str(c).lower() for c in row if c)
+        header_words = ['tipo', 'documento', 'nombre', 'codigo', 'code', 'id', 'nro']
+        return sum(1 for w in header_words if w in text) >= 1
+    
+    async def _read_sheet_from(self, sheet_id: str, range_name: str) -> list[list]:
+        """Read from a specific sheet ID."""
+        url = f"{self.BASE_URL}/{sheet_id}/values/{range_name}"
+        params = {"key": self.api_key, "majorDimension": "ROWS"}
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                return response.json().get("values", [])
+        except Exception as e:
+            return []
