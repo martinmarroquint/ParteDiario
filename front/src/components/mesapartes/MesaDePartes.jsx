@@ -44,7 +44,13 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
     setError(null);
     try {
       const result = await apiClient.get(API_ENDPOINTS.documentos);
-      setDocumentos(result.documentos || []);
+      // Ordenar por ID descendente (más reciente primero)
+      const docs = (result.documentos || []).sort((a, b) => {
+        const idA = parseInt(a.id) || 0;
+        const idB = parseInt(b.id) || 0;
+        return idB - idA;
+      });
+      setDocumentos(docs);
     } catch (err) {
       setError(err.message || 'Error al cargar');
     } finally { setCargando(false); }

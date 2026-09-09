@@ -79,6 +79,8 @@ class MesaPartesService:
                 "fecha_cierre": r[13] if len(r) > 13 else "",
                 "derivaciones": []
             })
+        # Ordenar por ID descendente (más reciente primero)
+        documentos.sort(key=lambda d: int(d["id"]) if str(d["id"]).isdigit() else 0, reverse=True)
         return documentos
     
     async def _read_derivaciones(self) -> list[dict]:

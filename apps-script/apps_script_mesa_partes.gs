@@ -215,6 +215,13 @@ function listar(data) {
     }
   }
 
+  // Ordenar por ID descendente (más recientes primero)
+  documentos.sort((a, b) => {
+    const idA = parseInt(a.id) || 0;
+    const idB = parseInt(b.id) || 0;
+    return idB - idA;
+  });
+
   return { success: true, documentos: documentos };
 }
 
