@@ -8,22 +8,21 @@ logger = logging.getLogger(__name__)
 
 
 class MesaPartesService:
-    """Service for Mesa de Partes document management.
+    """Mesa de Partes v5.0 — Document management with full traceability.
     
-    3 Sheets:
-      DOCUMENTOS: ID, NUMERO, FECHA_REGISTRO, TIPO_DOC, N_DOC_ORIGEN,
-                  FECHA_DOC, PROCEDENCIA, ASUNTO, CONTENIDO, FUENTE,
-                  ESTADO, CREADO_POR, ESTADO_FINAL, FECHA_CIERRE
-      DERIVACIONES: ID, DOCUMENTO_ID, AREA_DESTINO, PASE_NUMERO,
-                    DERIVADO_POR, FECHA_DERIVACION, RECIBIDO_POR,
-                    FECHA_RECEPCION, ESTADO, DEVUELTO_POR,
-                    FECHA_RESPUESTA, DESCARGO, N_DESCARGO, HT
-      HISTORIAL: ID, DOCUMENTO_ID, DERIVACION_ID, ACCION,
-                 ESTADO_ANTERIOR, ESTADO_NUEVO, DETALLES,
-                 REALIZADO_POR, FECHA
+    Sheets (Google Sheets via API read, Apps Script write):
+      DOCUMENTOS   — Original registered documents (immutable after creation)
+      MOVIMIENTOS  — Pases, devoluciones, resoluciones (derived documents)
+      DERIVACIONES — Delivery status per area
+      HISTORIAL    — Audit trail: who did what, when
+      BD           — Catalogs: Col A=TipoDoc, Col B=TipoMov, Col C=Areas
     
-    Flow: REGISTRADO → DERIVADO → TRAMITADO → CERRADO
-    Derivaciones: DERIVADO → RECIBIDO → DEVUELTO
+    Flow:
+      1. Registrar  → DOCUMENTO (REGISTRADO)
+      2. Derivar    → MOVIMIENTO + DERIVACIÓN (DERIVADO)
+      3. Recibir    → DERIVACIÓN (RECIBIDO)
+      4. Devolver   → MOVIMIENTO DEVOLUCIÓN + DERIVACIÓN (DEVUELTO)
+      5. Cerrar     → MOVIMIENTO RESOLUCIÓN + DOCUMENTO (CERRADO)
     """
     
     BASE_URL = "https://sheets.googleapis.com/v4/spreadsheets"
@@ -61,9 +60,9 @@ class MesaPartesService:
         if not rows or len(rows) < 2:
             return []
         documentos = []
-        for i, r in enumerate(rows[1:], start=1):
+        for r in rows[1:]:
             documentos.append({
-                "id": r[0] if len(r) > 0 else i,
+                "id": r[0] if len(r) > 0 else "",
                 "numero": r[1] if len(r) > 1 else "",
                 "fecha_registro": r[2] if len(r) > 2 else "",
                 "tipo_doc": r[3] if len(r) > 3 else "",
@@ -73,15 +72,32 @@ class MesaPartesService:
                 "asunto": r[7] if len(r) > 7 else "",
                 "contenido": r[8] if len(r) > 8 else "",
                 "fuente": r[9] if len(r) > 9 else "fisico",
-                "estado": r[10] if len(r) > 10 else "REGISTRADO",
-                "creado_por": r[11] if len(r) > 11 else "",
-                "estado_final": r[12] if len(r) > 12 else "",
-                "fecha_cierre": r[13] if len(r) > 13 else "",
+                "creado_por": r[10] if len(r) > 10 else "",
+                "estado": r[11] if len(r) > 11 else "REGISTRADO",
+                "movimientos": [],
                 "derivaciones": []
             })
-        # Ordenar por ID descendente (más reciente primero)
         documentos.sort(key=lambda d: int(d["id"]) if str(d["id"]).isdigit() else 0, reverse=True)
         return documentos
+    
+    async def _read_movimientos(self) -> list[dict]:
+        """Read all movements from MOVIMIENTOS sheet."""
+        rows = await self._read_sheet("MOVIMIENTOS")
+        if not rows or len(rows) < 2:
+            return []
+        movimientos = []
+        for r in rows[1:]:
+            movimientos.append({
+                "id": r[0] if len(r) > 0 else "",
+                "documento_id": r[1] if len(r) > 1 else "",
+                "tipo_mov": r[2] if len(r) > 2 else "",
+                "numero": r[3] if len(r) > 3 else "",
+                "fecha": r[4] if len(r) > 4 else "",
+                "contenido": r[5] if len(r) > 5 else "",
+                "area_destino": r[6] if len(r) > 6 else "",
+                "creado_por": r[7] if len(r) > 7 else ""
+            })
+        return movimientos
     
     async def _read_derivaciones(self) -> list[dict]:
         """Read all derivations from DERIVACIONES sheet."""
@@ -89,44 +105,20 @@ class MesaPartesService:
         if not rows or len(rows) < 2:
             return []
         derivaciones = []
-        for i, r in enumerate(rows[1:], start=1):
+        for r in rows[1:]:
             derivaciones.append({
-                "id": r[0] if len(r) > 0 else i,
+                "id": r[0] if len(r) > 0 else "",
                 "documento_id": r[1] if len(r) > 1 else "",
-                "area_destino": r[2] if len(r) > 2 else "",
-                "pase_numero": r[3] if len(r) > 3 else "",
-                "derivado_por": r[4] if len(r) > 4 else "",
-                "fecha_derivacion": r[5] if len(r) > 5 else "",
-                "recibido_por": r[6] if len(r) > 6 else "",
-                "fecha_recepcion": r[7] if len(r) > 7 else "",
-                "estado": r[8] if len(r) > 8 else "DERIVADO",
-                "devuelto_por": r[9] if len(r) > 9 else "",
-                "fecha_respuesta": r[10] if len(r) > 10 else "",
-                "descargo": r[11] if len(r) > 11 else "",
-                "n_descargo": r[12] if len(r) > 12 else "",
-                "ht": r[13] if len(r) > 13 else ""
+                "movimiento_id": r[2] if len(r) > 2 else "",
+                "area_destino": r[3] if len(r) > 3 else "",
+                "fecha_derivacion": r[4] if len(r) > 4 else "",
+                "recibido_por": r[5] if len(r) > 5 else "",
+                "fecha_recepcion": r[6] if len(r) > 6 else "",
+                "devuelto_por": r[7] if len(r) > 7 else "",
+                "fecha_devolucion": r[8] if len(r) > 8 else "",
+                "estado": r[9] if len(r) > 9 else "DERIVADO"
             })
         return derivaciones
-    
-    async def _read_historial(self) -> list[dict]:
-        """Read all history from HISTORIAL sheet."""
-        rows = await self._read_sheet("HISTORIAL")
-        if not rows or len(rows) < 2:
-            return []
-        historial = []
-        for i, r in enumerate(rows[1:], start=1):
-            historial.append({
-                "id": r[0] if len(r) > 0 else i,
-                "documento_id": r[1] if len(r) > 1 else "",
-                "derivacion_id": r[2] if len(r) > 2 else "",
-                "accion": r[3] if len(r) > 3 else "",
-                "estado_anterior": r[4] if len(r) > 4 else "",
-                "estado_nuevo": r[5] if len(r) > 5 else "",
-                "detalles": r[6] if len(r) > 6 else "",
-                "realizado_por": r[7] if len(r) > 7 else "",
-                "fecha": r[8] if len(r) > 8 else ""
-            })
-        return historial
     
     # ============================================
     # WRITE OPERATIONS (via Apps Script)
@@ -176,12 +168,14 @@ class MesaPartesService:
     # ============================================
     
     async def get_documentos(self, estado: Optional[str] = None, busqueda: Optional[str] = None, area: Optional[str] = None) -> list[dict]:
-        """Get all documents with derivaciones attached."""
+        """Get all documents with movements and derivations attached."""
         documentos = await self._read_documentos()
+        movimientos = await self._read_movimientos()
         derivaciones = await self._read_derivaciones()
         
-        # Attach derivaciones to documents
+        # Attach movimientos and derivaciones to documents
         for doc in documentos:
+            doc["movimientos"] = [m for m in movimientos if str(m["documento_id"]) == str(doc["id"])]
             doc["derivaciones"] = [d for d in derivaciones if str(d["documento_id"]) == str(doc["id"])]
         
         # Apply filters
@@ -208,20 +202,59 @@ class MesaPartesService:
         return documentos
     
     async def get_documento(self, doc_id: int) -> Optional[dict]:
-        """Get a single document with its derivaciones."""
+        """Get a single document with its movements and derivations."""
         documentos = await self._read_documentos()
+        movimientos = await self._read_movimientos()
         derivaciones = await self._read_derivaciones()
         
         for doc in documentos:
             if int(doc["id"]) == doc_id:
+                doc["movimientos"] = [m for m in movimientos if str(m["documento_id"]) == str(doc_id)]
                 doc["derivaciones"] = [d for d in derivaciones if str(d["documento_id"]) == str(doc_id)]
                 return doc
         return None
     
+    async def get_bandeja(self, area: str) -> list[dict]:
+        """Get documents derived to a specific area (bandeja)."""
+        documentos = await self._read_documentos()
+        derivaciones = await self._read_derivaciones()
+        movimientos = await self._read_movimientos()
+        
+        # Filter derivations for this area
+        area_derivs = [d for d in derivaciones if d["area_destino"].upper() == area.upper()]
+        doc_ids = set(d["documento_id"] for d in area_derivs)
+        
+        # Filter documents
+        result = []
+        for doc in documentos:
+            if str(doc["id"]) in doc_ids:
+                doc["derivaciones"] = [d for d in area_derivs if str(d["documento_id"]) == str(doc["id"])]
+                doc["movimientos"] = [m for m in movimientos if str(m["documento_id"]) == str(doc["id"])]
+                result.append(doc)
+        
+        result.sort(key=lambda d: int(d["id"]) if str(d["id"]).isdigit() else 0, reverse=True)
+        return result
+    
     async def get_historial(self, doc_id: int) -> list[dict]:
         """Get history for a document."""
-        historial = await self._read_historial()
-        return [h for h in historial if str(h["documento_id"]) == str(doc_id)]
+        if not self._is_configured():
+            return []
+        rows = await self._read_sheet("HISTORIAL")
+        if not rows or len(rows) < 2:
+            return []
+        historial = []
+        for r in rows[1:]:
+            if str(r[1] if len(r) > 1 else "") == str(doc_id):
+                historial.append({
+                    "id": r[0] if len(r) > 0 else "",
+                    "documento_id": r[1] if len(r) > 1 else "",
+                    "movimiento_id": r[2] if len(r) > 2 else "",
+                    "accion": r[3] if len(r) > 3 else "",
+                    "detalles": r[4] if len(r) > 4 else "",
+                    "realizado_por": r[5] if len(r) > 5 else "",
+                    "fecha": r[6] if len(r) > 6 else ""
+                })
+        return historial
     
     async def registrar(self, data: dict, user_name: str = "") -> dict:
         """Register a new document."""
@@ -236,12 +269,14 @@ class MesaPartesService:
             "creado_por": user_name
         })
     
-    async def derivar(self, doc_id: int, areas: list[str], user_name: str = "", pase_numero: str = "") -> dict:
-        """Derive a document to one or more areas."""
+    async def derivar(self, doc_id: int, areas: list[str], tipo_mov: str = "PASE", contenido: str = "", user_name: str = "") -> dict:
+        """Derive a document to one or more areas with a movement document."""
         return await self._apps_script_action("derivar", {
             "documento_id": doc_id,
             "areas": areas,
-            "derivado_por": user_name
+            "tipo_mov": tipo_mov,
+            "contenido": contenido,
+            "creado_por": user_name
         })
     
     async def recibir(self, derivacion_id: int, user_name: str = "") -> dict:
@@ -252,29 +287,21 @@ class MesaPartesService:
         })
     
     async def devolver(self, derivacion_id: int, data: dict, user_name: str = "") -> dict:
-        """Area returns document with response."""
+        """Area returns document with devolution document."""
         return await self._apps_script_action("devolver", {
             "derivacion_id": derivacion_id,
-            "devuelto_por": user_name,
-            "descargo": data.get("descargo", ""),
+            "contenido": data.get("contenido", ""),
             "n_descargo": data.get("n_descargo", ""),
-            "ht": data.get("ht", "")
+            "devuelto_por": user_name
         })
     
-    async def tramitar(self, doc_id: int, user_name: str = "", observaciones: str = "") -> dict:
-        """Mesa processes the returned document."""
-        return await self._apps_script_action("tramitar", {
-            "documento_id": doc_id,
-            "realizado_por": user_name,
-            "observaciones": observaciones
-        })
-    
-    async def cerrar(self, doc_id: int, user_name: str = "", estado_final: str = "RESUELTO") -> dict:
-        """Mesa closes the document."""
+    async def cerrar(self, doc_id: int, data: dict, user_name: str = "") -> dict:
+        """Mesa closes document with resolution document."""
         return await self._apps_script_action("cerrar", {
             "documento_id": doc_id,
-            "realizado_por": user_name,
-            "estado_final": estado_final
+            "contenido": data.get("contenido", ""),
+            "estado_final": data.get("estado_final", "RESUELTO"),
+            "creado_por": user_name
         })
     
     async def eliminar(self, doc_id: int) -> dict:
@@ -285,63 +312,47 @@ class MesaPartesService:
         })
     
     async def get_opciones(self) -> dict:
-        """Get dropdown options from Mesa de Partes sheet BD.
+        """Get dropdown options from BD sheet.
         
         BD sheet structure:
-          Col A (0) = TIPO DOC.
-          Col B (1) = DOC. DE TRAMITE
-          Col C (2) = AREA ENTREGADA
+          Col A (0) = TIPO DOC. (registration types)
+          Col B (1) = DOC. DE TRAMITE (movement types: PASE, DECRETO, etc.)
+          Col C (2) = AREA ENTREGADA (destination areas)
         """
-        tipos_doc = []
-        areas_desde_bd = []
+        if not self._is_configured():
+            return {"tipos_doc": [], "tipos_mov": [], "areas": []}
         
-        # SOLO leer del sheet de Mesa de Partes (NUNCA del de OCR)
-        if self._is_configured():
-            rows = await self._read_sheet_from(self.sheet_id, "BD")
-            if rows and len(rows) > 1:
-                # Saltar header (fila 1: TIPO DOC. | DOC. DE TRAMITE | AREA ENTREGADA)
-                data_rows = rows[1:]
-                
-                # Col A (índice 0) = Tipos de documento
-                tipos_doc = sorted(set(
-                    str(row[0]).strip()
-                    for row in data_rows
-                    if row and len(row) > 0 and row[0] and str(row[0]).strip()
-                ))
-                
-                # Col C (índice 2) = Áreas de destino
-                for row in data_rows:
-                    if len(row) > 2 and row[2] and str(row[2]).strip():
-                        val = str(row[2]).strip()
-                        if val.upper() not in ("AREA ENTREGADA", "AREA"):
-                            areas_desde_bd.append(val)
+        rows = await self._read_sheet("BD")
+        if not rows or len(rows) < 2:
+            return {"tipos_doc": [], "tipos_mov": [], "areas": []}
         
-        # Áreas de derivaciones existentes (del sheet de Mesa de Partes)
-        derivaciones = await self._read_derivaciones()
-        areas_existentes = [d["area_destino"] for d in derivaciones if d["area_destino"]]
+        tipos_doc = set()
+        tipos_mov = set()
+        areas = []
         
-        # Combinar: BD column C + derivaciones, sin duplicados
-        todas_las_areas = sorted(set(areas_desde_bd + areas_existentes))
+        data_rows = rows[1:]  # Skip header
+        
+        for row in data_rows:
+            # Col A = Tipo documento (registro)
+            if row and len(row) > 0 and row[0] and str(row[0]).strip():
+                val = str(row[0]).strip()
+                if val.upper() not in ("TIPO DOC.", "TIPO DOC", "TIPO"):
+                    tipos_doc.add(val)
+            
+            # Col B = Tipo movimiento (pase/decreto/etc)
+            if row and len(row) > 1 and row[1] and str(row[1]).strip():
+                val = str(row[1]).strip()
+                if val.upper() not in ("DOC. DE TRAMITE", "DOC DE TRAMITE", "DOC DE TRAMITES"):
+                    tipos_mov.add(val)
+            
+            # Col C = Áreas
+            if row and len(row) > 2 and row[2] and str(row[2]).strip():
+                val = str(row[2]).strip()
+                if val.upper() not in ("AREA ENTREGADA", "AREA", "AREAS"):
+                    areas.append(val)
         
         return {
-            "tipos_doc": tipos_doc,
-            "areas": todas_las_areas
+            "tipos_doc": sorted(tipos_doc),
+            "tipos_mov": sorted(tipos_mov),
+            "areas": areas  # Mantener orden del sheet
         }
-    
-    def _looks_like_header(self, row) -> bool:
-        """Check if a row looks like a header (contains common header words)."""
-        text = ' '.join(str(c).lower() for c in row if c)
-        header_words = ['tipo', 'documento', 'nombre', 'codigo', 'code', 'id', 'nro']
-        return sum(1 for w in header_words if w in text) >= 1
-    
-    async def _read_sheet_from(self, sheet_id: str, range_name: str) -> list[list]:
-        """Read from a specific sheet ID."""
-        url = f"{self.BASE_URL}/{sheet_id}/values/{range_name}"
-        params = {"key": self.api_key, "majorDimension": "ROWS"}
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                return response.json().get("values", [])
-        except Exception as e:
-            return []

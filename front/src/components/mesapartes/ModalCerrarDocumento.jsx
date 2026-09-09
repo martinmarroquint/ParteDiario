@@ -1,28 +1,27 @@
-// src/components/mesapartes/ModalDevolverDocumento.jsx
+// src/components/mesapartes/ModalCerrarDocumento.jsx
 import React, { useState } from 'react';
-import { X, ArrowLeft, Loader2 } from 'lucide-react';
+import { X, CheckCircle, Loader2 } from 'lucide-react';
 import apiClient from '../ocr/services/apiClient';
 import { API_ENDPOINTS } from './constantes';
 
-const ModalDevolverDocumento = ({ derivacion, documento, onClose, onActualizado }) => {
-  const [form, setForm] = useState({ contenido: '', nDescargo: '' });
+const ModalCerrarDocumento = ({ documento, onClose, onActualizado }) => {
+  const [form, setForm] = useState({ contenido: '', estadoFinal: 'RESUELTO' });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
 
-  const handleDevolver = async () => {
-    if (!form.contenido.trim()) return;
+  const handleCerrar = async () => {
     setGuardando(true);
     setError(null);
     try {
-      await apiClient.post(API_ENDPOINTS.devolver, {
-        derivacion_id: derivacion.id,
+      await apiClient.post(API_ENDPOINTS.cerrar, {
+        documento_id: documento.id,
         contenido: form.contenido,
-        n_descargo: form.nDescargo
+        estado_final: form.estadoFinal
       });
       onActualizado?.();
       onClose();
     } catch(e) {
-      setError(e.message || 'Error al devolver');
+      setError(e.message || 'Error al cerrar');
     } finally { setGuardando(false); }
   };
 
@@ -33,10 +32,10 @@ const ModalDevolverDocumento = ({ derivacion, documento, onClose, onActualizado 
         <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
           <div>
             <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <ArrowLeft className="w-4 h-4 text-emerald-500" strokeWidth={1.5} />
-              Devolver a Mesa de Partes
+              <CheckCircle className="w-4 h-4 text-emerald-500" strokeWidth={1.5} />
+              Cerrar Documento
             </h3>
-            <p className="text-xs text-gray-400 mt-0.5">Registre la respuesta del area</p>
+            <p className="text-xs text-gray-400 mt-0.5">Registrar resolucion y cerrar</p>
           </div>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
             <X className="w-4 h-4" strokeWidth={2} />
@@ -45,7 +44,7 @@ const ModalDevolverDocumento = ({ derivacion, documento, onClose, onActualizado 
 
         <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
           <p className="text-sm font-medium text-gray-700 truncate">{documento?.asunto || documento?.contenido}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{documento?.numero} · Pase: {derivacion?.movimiento_id}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{documento?.numero}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -55,46 +54,65 @@ const ModalDevolverDocumento = ({ derivacion, documento, onClose, onActualizado 
             </div>
           )}
 
+          {/* Estado final */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">Estado final</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setForm(p => ({...p, estadoFinal: 'RESUELTO'}))}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-all ${
+                  form.estadoFinal === 'RESUELTO'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Resuelto
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm(p => ({...p, estadoFinal: 'NO_RESUELTO'}))}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-all ${
+                  form.estadoFinal === 'NO_RESUELTO'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                No Resuelto
+              </button>
+            </div>
+          </div>
+
+          {/* Contenido de la resolucion */}
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">
-              Contenido de la devolucion <span className="text-red-400">*</span>
+              Documento de resolucion
             </label>
-            <textarea 
-              value={form.contenido} 
-              onChange={e => setForm(p => ({...p, contenido: e.target.value}))} 
-              placeholder="Describa las acciones realizadas y la respuesta al documento recibido..."
-              rows={5}
+            <textarea
+              value={form.contenido}
+              onChange={e => setForm(p => ({...p, contenido: e.target.value}))}
+              placeholder="Describa con que documento o accion se resolvio..."
+              rows={4}
               className="w-full px-3 py-2.5 border border-gray-200/60 rounded-xl text-sm text-gray-700 placeholder:text-gray-400 outline-none transition-all bg-white focus:border-gray-400 resize-none"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">N de Descargo (opcional)</label>
-            <input 
-              type="text" 
-              value={form.nDescargo} 
-              onChange={e => setForm(p => ({...p, nDescargo: e.target.value}))} 
-              placeholder="Ej: DEV-001/2026"
-              className="w-full px-3 py-2.5 border border-gray-200/60 rounded-xl text-sm text-gray-700 placeholder:text-gray-400 outline-none transition-all bg-white focus:border-gray-400" 
             />
           </div>
 
           <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-xl">
             <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
             <p className="text-xs text-emerald-700">
-              Se creara un documento de devolucion con numeracion correlativa y la fecha actual
+              Se creara un documento de resolucion con numeracion correlativa y el documento quedara <span className="font-medium">CERRADO</span>
             </p>
           </div>
 
           <button 
-            onClick={handleDevolver} 
-            disabled={guardando || !form.contenido.trim()}
+            onClick={handleCerrar} 
+            disabled={guardando}
             className="w-full py-2.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-40 bg-emerald-600 hover:bg-emerald-700"
           >
             {guardando ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Procesando...</>
             ) : (
-              <><ArrowLeft className="w-4 h-4" /> Devolver a Mesa de Partes</>
+              <><CheckCircle className="w-4 h-4" /> Cerrar Documento</>
             )}
           </button>
         </div>
@@ -103,4 +121,4 @@ const ModalDevolverDocumento = ({ derivacion, documento, onClose, onActualizado 
   );
 };
 
-export default ModalDevolverDocumento;
+export default ModalCerrarDocumento;

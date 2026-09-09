@@ -1,9 +1,9 @@
 // src/components/mesapartes/MesaDePartes.jsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  ArrowLeft, Search, Plus, Send, FileCheck, Calendar, User, Inbox,
+  ArrowLeft, Search, Plus, Send, Calendar, User, Inbox,
   X, SlidersHorizontal, ChevronLeft, ChevronRight, FileText,
-  ArrowUpRight, ArrowDownRight, CheckCircle, Clock, History, Mail, File
+  CheckCircle, Clock, Mail, File, ArrowDownLeft, CheckSquare
 } from 'lucide-react';
 import apiClient from '../ocr/services/apiClient';
 import { COLOR_PRIMARIO, API_ENDPOINTS, ESTADOS, ESTADOS_DERIVACION, FUENTES } from './constantes';
@@ -12,6 +12,7 @@ import ModalVerDocumento from './ModalVerDocumento';
 import ModalDerivarDocumento from './ModalDerivarDocumento';
 import ModalRecibirDocumento from './ModalRecibirDocumento';
 import ModalDevolverDocumento from './ModalDevolverDocumento';
+import ModalCerrarDocumento from './ModalCerrarDocumento';
 
 const REGISTROS_POR_PAGINA = 20;
 const norm = (t) => (t || '').toLowerCase().trim();
@@ -29,12 +30,15 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
   const [filtroFecha, setFiltroFecha] = useState('');
   const [pagina, setPagina] = useState(1);
   const [stats, setStats] = useState({ total: 0, pendientes: 0, hoy: 0 });
+  const [vistaActiva, setVistaActiva] = useState('general'); // 'general' o 'bandeja'
+  const [areaBandeja, setAreaBandeja] = useState(userAreas[0] || '');
 
   // Modals
   const [docVer, setDocVer] = useState(null);
   const [docDerivar, setDocDerivar] = useState(null);
-  const [docRecibir, setDocRecibir] = useState(null); // { derivacion, documento }
-  const [docDevolver, setDocDevolver] = useState(null); // { derivacion, documento }
+  const [docRecibir, setDocRecibir] = useState(null);
+  const [docDevolver, setDocDevolver] = useState(null);
+  const [docCerrar, setDocCerrar] = useState(null);
 
   // ============================================
   // CARGAR DOCUMENTOS
@@ -43,8 +47,12 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
     setCargando(true);
     setError(null);
     try {
-      const result = await apiClient.get(API_ENDPOINTS.documentos);
-      // Ordenar por ID descendente (más reciente primero)
+      let result;
+      if (vistaActiva === 'bandeja' && areaBandeja) {
+        result = await apiClient.get(API_ENDPOINTS.bandeja(areaBandeja));
+      } else {
+        result = await apiClient.get(API_ENDPOINTS.documentos);
+      }
       const docs = (result.documentos || []).sort((a, b) => {
         const idA = parseInt(a.id) || 0;
         const idB = parseInt(b.id) || 0;
@@ -54,24 +62,20 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
     } catch (err) {
       setError(err.message || 'Error al cargar');
     } finally { setCargando(false); }
-  }, []);
+  }, [vistaActiva, areaBandeja]);
 
   useEffect(() => { cargarDocumentos(); }, [cargarDocumentos]);
-  useEffect(() => { setPagina(1); }, [busqueda, filtroFecha, filtroEstado]);
+  useEffect(() => { setPagina(1); }, [busqueda, filtroFecha, filtroEstado, vistaActiva]);
 
   // Stats
   useEffect(() => {
-    const filtrados = documentos.filter(d => {
-      if (filtroFecha && d.fecha_registro && !d.fecha_registro.startsWith(filtroFecha)) return false;
-      return true;
-    });
     const hoy = new Date().toISOString().split('T')[0];
     setStats({
-      total: filtrados.length,
-      pendientes: filtrados.filter(d => d.estado === 'REGISTRADO').length,
-      hoy: filtrados.filter(d => d.fecha_registro && d.fecha_registro.startsWith(hoy)).length
+      total: documentos.length,
+      pendientes: documentos.filter(d => d.estado === 'REGISTRADO').length,
+      hoy: documentos.filter(d => d.fecha_registro && d.fecha_registro.startsWith(hoy)).length
     });
-  }, [documentos, filtroFecha]);
+  }, [documentos]);
 
   const handleActualizado = useCallback(() => cargarDocumentos(), [cargarDocumentos]);
 
@@ -95,7 +99,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
   const docsPaginados = docsFiltrados.slice((pagina - 1) * REGISTROS_POR_PAGINA, pagina * REGISTROS_POR_PAGINA);
 
   // ============================================
-  // ACCIONES RÁPIDAS
+  // ACCIONES
   // ============================================
   const handleRecibir = useCallback((derivacion, documento) => {
     setDocVer(null);
@@ -105,6 +109,11 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
   const handleDevolver = useCallback((derivacion, documento) => {
     setDocVer(null);
     setDocDevolver({ derivacion, documento });
+  }, []);
+
+  const handleCerrar = useCallback((documento) => {
+    setDocVer(null);
+    setDocCerrar(documento);
   }, []);
 
   // ============================================
@@ -127,10 +136,32 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                 {canManage ? 'MESA DE PARTES' : 'BANDEJA DE DOCUMENTOS'}
               </h1>
               <p className="text-xs text-gray-500">
-                {canManage ? 'Gestión documental' : `Documentos derivados a: ${(userAreas).join(', ')}`}
+                {canManage ? 'Gestion documental' : `Documentos derivados a: ${userAreas.join(', ')}`}
               </p>
             </div>
           </div>
+          {canManage && (
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setVistaActiva('general')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  vistaActiva === 'general' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                General
+              </button>
+              {userAreas.length > 0 && (
+                <button
+                  onClick={() => setVistaActiva('bandeja')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    vistaActiva === 'bandeja' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Mi Bandeja
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -138,8 +169,8 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
       <main className="flex-1 flex flex-col min-h-0">
         <div className="max-w-3xl mx-auto w-full flex flex-col flex-1 min-h-0 px-4">
 
-          {/* Stats */}
-          {canManage && (
+          {/* Stats - solo en vista general para tramite/admin */}
+          {canManage && vistaActiva === 'general' && (
             <div className="flex-shrink-0 grid grid-cols-3 gap-3 pt-4">
               <div className="bg-white rounded-lg p-3 border border-gray-200/60">
                 <div className="flex items-center gap-1.5 mb-1">
@@ -161,6 +192,27 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                   <span className="text-[10px] text-gray-500 font-medium uppercase">Hoy</span>
                 </div>
                 <p className="text-xl font-semibold text-gray-900">{stats.hoy}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Bandeja selector */}
+          {vistaActiva === 'bandeja' && userAreas.length > 1 && (
+            <div className="flex-shrink-0 pt-4">
+              <div className="flex gap-1.5 flex-wrap">
+                {userAreas.map(area => (
+                  <button
+                    key={area}
+                    onClick={() => setAreaBandeja(area)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
+                      areaBandeja === area
+                        ? 'bg-gray-900 text-white border border-gray-900'
+                        : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {area}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -189,7 +241,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
               >
                 <SlidersHorizontal className="w-4 h-4" strokeWidth={1.5} />
               </button>
-              {canManage && (
+              {canManage && vistaActiva === 'general' && (
                 <button
                   onClick={() => setDocVer('nuevo')}
                   className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-900 text-white hover:bg-gray-800 flex items-center gap-1.5"
@@ -237,15 +289,18 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
               ) : docsFiltrados.length === 0 ? (
                 <div className="text-center py-20">
                   <Inbox className="w-10 h-10 text-gray-200 mx-auto mb-3" strokeWidth={1} />
-                  <p className="text-sm text-gray-400">No hay documentos</p>
+                  <p className="text-sm text-gray-400">
+                    {vistaActiva === 'bandeja' ? 'No hay documentos en su bandeja' : 'No hay documentos'}
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-1.5 pb-2">
                   {docsPaginados.map((doc) => {
                     const style = ESTADOS[doc.estado] || ESTADOS.REGISTRADO;
                     const derivaciones = doc.derivaciones || [];
+                    const movimientos = doc.movimientos || [];
                     const todasDevueltas = derivaciones.length > 0 && derivaciones.every(d => d.estado === 'DEVUELTO');
-                    const algunaRecibida = derivaciones.some(d => d.estado === 'RECIBIDO' || d.estado === 'DEVUELTO');
+                    const algunaPendiente = derivaciones.some(d => d.estado === 'DERIVADO');
 
                     return (
                       <div
@@ -253,6 +308,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                         className="bg-white rounded-lg px-4 py-3 border border-gray-200/60 hover:border-gray-300/80 cursor-pointer transition-colors"
                         onClick={() => setDocVer(doc)}
                       >
+                        {/* Header: numero + estado */}
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className="text-[11px] font-semibold" style={{ color: COLOR_PRIMARIO }}>{doc.numero}</span>
                           <span className="text-[11px] text-gray-500">{doc.fecha_registro?.split(' ')[0]}</span>
@@ -271,20 +327,22 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                           </span>
                         </div>
 
+                        {/* Asunto */}
                         <p className="text-sm font-medium text-gray-800 truncate mb-1.5">{doc.asunto || doc.contenido || 'Sin asunto'}</p>
 
+                        {/* Creado por */}
                         <div className="flex items-center gap-3 text-[11px] text-gray-400 flex-wrap">
-                          {doc.procedencia && (
+                          {doc.creado_por && (
                             <span className="flex items-center gap-1 truncate">
-                              <User className="w-3 h-3 flex-shrink-0" strokeWidth={1.5} />{doc.procedencia}
+                              <User className="w-3 h-3 flex-shrink-0" strokeWidth={1.5} />{doc.creado_por}
                             </span>
                           )}
                           {derivaciones.length > 0 && (
                             <span className="flex items-center gap-1">
                               <Send className="w-3 h-3" strokeWidth={1.5} />
-                              {derivaciones.length} área{derivaciones.length > 1 ? 's' : ''}
-                              {todasDevueltas && <span className="text-emerald-500">✓</span>}
-                              {!todasDevueltas && algunaRecibida && <span className="text-amber-500">●</span>}
+                              {derivaciones.length} area{derivaciones.length > 1 ? 's' : ''}
+                              {todasDevueltas && <span className="text-emerald-500 ml-0.5"><CheckSquare className="w-3 h-3" /></span>}
+                              {!todasDevueltas && algunaPendiente && <span className="text-blue-500 ml-0.5"><Clock className="w-3 h-3" /></span>}
                             </span>
                           )}
                         </div>
@@ -297,10 +355,12 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                               return (
                                 <div key={d.id} className="flex items-center gap-2 text-[11px] bg-gray-50 rounded-lg px-2.5 py-1.5" onClick={e => e.stopPropagation()}>
                                   <span className="font-medium text-gray-600 truncate flex-1">{d.area_destino}</span>
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: dStyle.bg, color: dStyle.color }}>{dStyle.label}</span>
-                                  {d.pase_numero && <span className="text-gray-400">{d.pase_numero}</span>}
-                                  
-                                  {/* Acciones para el área */}
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: dStyle.bg, color: dStyle.color }}>
+                                    {dStyle.dot && <span className="w-1 h-1 rounded-full" style={{ backgroundColor: dStyle.dot }} />}
+                                    {dStyle.label}
+                                  </span>
+                                  {d.recibido_por && <span className="text-gray-400 text-[10px]">{d.recibido_por}</span>}
+                                  {/* Acciones */}
                                   {d.estado === 'DERIVADO' && userAreas.includes(d.area_destino) && (
                                     <button onClick={() => handleRecibir(d, doc)} className="text-[10px] px-2 py-0.5 rounded bg-amber-500 text-white hover:bg-amber-600">Recibir</button>
                                   )}
@@ -370,6 +430,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
           onDerivar={(d) => { setDocVer(null); setDocDerivar(d); }}
           onRecibir={handleRecibir}
           onDevolver={handleDevolver}
+          onCerrar={handleCerrar}
           userAreas={userAreas}
           canManage={canManage}
         />
@@ -401,6 +462,15 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
           documento={docDevolver.documento}
           onClose={() => setDocDevolver(null)}
           onActualizado={() => { setDocDevolver(null); handleActualizado(); }}
+        />
+      )}
+
+      {/* Cerrar */}
+      {docCerrar && (
+        <ModalCerrarDocumento
+          documento={docCerrar}
+          onClose={() => setDocCerrar(null)}
+          onActualizado={() => { setDocCerrar(null); handleActualizado(); }}
         />
       )}
     </div>

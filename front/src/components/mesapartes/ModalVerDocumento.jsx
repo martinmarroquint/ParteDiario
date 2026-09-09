@@ -1,24 +1,22 @@
 // src/components/mesapartes/ModalVerDocumento.jsx
-import React, { useState, useEffect } from 'react';
-import { X, Calendar, FileText, Send, FileCheck, ArrowLeft, History, Clock, Loader2, Mail, File } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Calendar, FileText, Send, CheckCircle, ArrowLeft, History, Clock, Loader2, Mail, File, ChevronDown, ChevronUp } from 'lucide-react';
 import { COLOR_PRIMARIO, ESTADOS, ESTADOS_DERIVACION } from './constantes';
 import apiClient from '../ocr/services/apiClient';
 import { API_ENDPOINTS } from './constantes';
 
-const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolver, userAreas, canManage }) => {
+const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolver, onCerrar, userAreas, canManage }) => {
   const [historial, setHistorial] = useState([]);
   const [cargandoHist, setCargandoHist] = useState(false);
   const [showHist, setShowHist] = useState(false);
-  const [tramitando, setTramitando] = useState(false);
-  const [cerrando, setCerrando] = useState(false);
-  const [estadoFinal, setEstadoFinal] = useState('RESUELTO');
+  const [expandedMov, setExpandedMov] = useState(null);
 
   const estadoStyle = ESTADOS[documento.estado] || ESTADOS.REGISTRADO;
   const derivaciones = documento.derivaciones || [];
+  const movimientos = documento.movimientos || [];
   const todasDevueltas = derivaciones.length > 0 && derivaciones.every(d => d.estado === 'DEVUELTO');
   const puedeDerivar = canManage && (documento.estado === 'REGISTRADO');
-  const puedeTramitar = canManage && (documento.estado === 'DERIVADO') && todasDevueltas;
-  const puedeCerrar = canManage && documento.estado === 'TRAMITADO';
+  const puedeCerrar = canManage && documento.estado === 'DERIVADO' && todasDevueltas;
 
   const cargarHistorial = async () => {
     if (showHist) { setShowHist(false); return; }
@@ -29,26 +27,6 @@ const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolve
       setShowHist(true);
     } catch(e) { console.error(e); }
     finally { setCargandoHist(false); }
-  };
-
-  const handleTramitar = async () => {
-    setTramitando(true);
-    try {
-      await apiClient.post(API_ENDPOINTS.tramitar, { documento_id: documento.id });
-      onClose();
-      window.location.reload();
-    } catch(e) { alert('Error: ' + e.message); }
-    finally { setTramitando(false); }
-  };
-
-  const handleCerrar = async () => {
-    setCerrando(true);
-    try {
-      await apiClient.post(API_ENDPOINTS.cerrar, { documento_id: documento.id, estado_final: estadoFinal });
-      onClose();
-      window.location.reload();
-    } catch(e) { alert('Error: ' + e.message); }
-    finally { setCerrando(false); }
   };
 
   return (
@@ -80,16 +58,16 @@ const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolve
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           
-          {/* Recepción */}
+          {/* Documento Original */}
           <div>
             <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
               <div className="w-1 h-1 rounded-full bg-amber-400" />
-              Recepción
+              Documento Original
             </h4>
             <div className="grid grid-cols-2 gap-3">
               <InfoField label="Fecha registro" value={documento.fecha_registro} />
               <InfoField label="Tipo" value={documento.tipo_doc} />
-              <InfoField label="N° Doc." value={documento.n_doc_origen} mono />
+              <InfoField label="N Doc." value={documento.n_doc_origen} mono />
               <InfoField label="Fecha Doc." value={documento.fecha_doc} />
               <InfoField label="Fuente" value={documento.fuente === 'digital' ? 'Digital' : 'Fisico'} />
               <InfoField label="Creado por" value={documento.creado_por} />
@@ -106,6 +84,56 @@ const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolve
               </div>
             )}
           </div>
+
+          {/* Movimientos (pases, devoluciones, resoluciones) */}
+          {movimientos.length > 0 && (
+            <div className="pt-5 border-t border-gray-100">
+              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-blue-400" />
+                Documentos Generados ({movimientos.length})
+              </h4>
+              <div className="space-y-2">
+                {movimientos.map(m => {
+                  const isExpanded = expandedMov === m.id;
+                  const tipoColor = m.tipo_mov === 'DEVOLUCION' ? '#047857' : m.tipo_mov === 'RESOLUCION' ? '#7C3AED' : '#1D4ED8';
+                  return (
+                    <div key={m.id} className="bg-gray-50 rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => setExpandedMov(isExpanded ? null : m.id)}
+                        className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-gray-100/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: `${tipoColor}15`, color: tipoColor }}>
+                            {m.tipo_mov}
+                          </span>
+                          <span className="text-sm font-medium text-gray-800 truncate">{m.numero}</span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[11px] text-gray-400">{m.fecha?.split(' ')[0]}</span>
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                        </div>
+                      </button>
+                      {isExpanded && (
+                        <div className="px-3.5 pb-3 space-y-2 border-t border-gray-200/50 pt-2">
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div><span className="text-gray-400">Creado por:</span> <span className="font-medium">{m.creado_por}</span></div>
+                            <div><span className="text-gray-400">Fecha:</span> <span className="font-medium">{m.fecha}</span></div>
+                            {m.area_destino && <div className="col-span-2"><span className="text-gray-400">Area destino:</span> <span className="font-medium">{m.area_destino}</span></div>}
+                          </div>
+                          {m.contenido && (
+                            <div className="bg-white rounded-lg p-2.5">
+                              <p className="text-[10px] text-gray-400 uppercase mb-1">Contenido</p>
+                              <p className="text-xs text-gray-700 whitespace-pre-wrap">{m.contenido}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Derivaciones */}
           {derivaciones.length > 0 && (
@@ -124,35 +152,15 @@ const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolve
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: ds.bg, color: ds.color }}>{ds.label}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div><span className="text-gray-400">Pase:</span> <span className="font-medium">{d.pase_numero}</span></div>
-                        <div><span className="text-gray-400">Derivado:</span> <span className="font-medium">{d.fecha_derivacion?.split(' ')[1] || d.fecha_derivacion}</span></div>
+                        <div><span className="text-gray-400">Derivado:</span> <span className="font-medium">{d.fecha_derivacion}</span></div>
                         {d.recibido_por && <div><span className="text-gray-400">Recibido por:</span> <span className="font-medium">{d.recibido_por}</span></div>}
-                        {d.fecha_recepcion && <div><span className="text-gray-400">Recibido:</span> <span className="font-medium">{d.fecha_recepcion?.split(' ')[1]}</span></div>}
+                        {d.fecha_recepcion && <div><span className="text-gray-400">Recibido:</span> <span className="font-medium">{d.fecha_recepcion}</span></div>}
+                        {d.devuelto_por && <div><span className="text-gray-400">Devuelto por:</span> <span className="font-medium">{d.devuelto_por}</span></div>}
+                        {d.fecha_devolucion && <div><span className="text-gray-400">Devolucion:</span> <span className="font-medium">{d.fecha_devolucion}</span></div>}
                       </div>
-                      {d.estado === 'DEVUELTO' && (
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs text-gray-500 mb-1">Respuesta:</p>
-                          <p className="text-sm text-gray-700">{d.descargo}</p>
-                          {d.n_descargo && <p className="text-xs text-gray-400 mt-1">N° {d.n_descargo}</p>}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
-              </div>
-            </div>
-          )}
-
-          {/* Cierre */}
-          {documento.estado_final && (
-            <div className="pt-5 border-t border-gray-100">
-              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <div className="w-1 h-1 rounded-full bg-emerald-400" />
-                Cierre
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <InfoField label="Estado final" value={documento.estado_final} />
-                <InfoField label="Fecha cierre" value={documento.fecha_cierre} />
               </div>
             </div>
           )}
@@ -174,9 +182,9 @@ const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolve
                     <div className="flex-1 pb-2">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-700">{h.accion}</span>
-                        <span className="text-gray-400">→ {h.estado_nuevo}</span>
                       </div>
                       <p className="text-gray-400 mt-0.5">{h.realizado_por} · {h.fecha}</p>
+                      {h.detalles && <p className="text-gray-400 mt-0.5 text-[10px]">{h.detalles}</p>}
                     </div>
                   </div>
                 ))}
@@ -192,23 +200,10 @@ const ModalVerDocumento = ({ documento, onClose, onDerivar, onRecibir, onDevolve
               <Send className="w-3.5 h-3.5" /> Derivar
             </button>
           )}
-          {puedeTramitar && (
-            <button onClick={handleTramitar} disabled={tramitando} className="flex-1 py-2.5 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-xl transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50">
-              {tramitando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileCheck className="w-3.5 h-3.5" />}
-              Tramitar
-            </button>
-          )}
           {puedeCerrar && (
-            <div className="flex-1 flex gap-2">
-              <select value={estadoFinal} onChange={e => setEstadoFinal(e.target.value)} className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2">
-                <option value="RESUELTO">Resuelto</option>
-                <option value="NO_RESUELTO">No Resuelto</option>
-              </select>
-              <button onClick={handleCerrar} disabled={cerrando} className="flex-1 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50">
-                {cerrando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
-                Cerrar
-              </button>
-            </div>
+            <button onClick={() => onCerrar?.(documento)} className="flex-1 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors flex items-center justify-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5" /> Cerrar
+            </button>
           )}
           <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-200/60 rounded-xl transition-colors">
             Cerrar
