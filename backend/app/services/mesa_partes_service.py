@@ -318,7 +318,21 @@ class MesaPartesService:
                         tipos_doc = tipos
                         break
         
-        # Procedencias y áreas de datos existentes
+        # ÁREAS desde hoja BD columna E (AREA)
+        areas_desde_bd = []
+        for sid in sheet_ids_to_try:
+            rows = await self._read_sheet_from(sid, "BD")
+            if rows and len(rows) > 1:
+                # Columna E = índice 4 (AREA)
+                for row in rows[1:]:
+                    if len(row) > 4 and row[4] and str(row[4]).strip():
+                        val = str(row[4]).strip()
+                        if val.upper() != "AREA":  # skip header
+                            areas_desde_bd.append(val)
+                if areas_desde_bd:
+                    break
+        
+        # Áreas de derivaciones existentes
         documentos = await self._read_documentos()
         derivaciones = await self._read_derivaciones()
         
@@ -326,14 +340,15 @@ class MesaPartesService:
             d["procedencia"] for d in documentos if d["procedencia"]
         )))
         
-        areas = sorted(list(set(
-            d["area_destino"] for d in derivaciones if d["area_destino"]
-        )))
+        areas_existentes = [d["area_destino"] for d in derivaciones if d["area_destino"]]
+        
+        # Combinar áreas de BD + derivaciones existentes, sin duplicados
+        todas_las_areas = sorted(set(areas_desde_bd + areas_existentes))
         
         return {
             "tipos_doc": tipos_doc,
             "procedencias": procedencias,
-            "areas": areas
+            "areas": todas_las_areas
         }
     
     def _looks_like_header(self, row) -> bool:
