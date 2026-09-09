@@ -216,8 +216,6 @@ const PanelOCRContent = () => {
       console.log('⚠️ [OCR] Modo: PRUEBA (sin backend)');
       console.log('💡 [OCR] Configura VITE_API_URL en .env para usar el backend real');
     }
-    // Cargar turnos dinámicos desde BD sheet
-    initTurnosDinamicos();
   }, []);
 
   // ============================================================
@@ -246,6 +244,8 @@ const PanelOCRContent = () => {
           setIsJefe([1, 2, 3].includes(maxRol));
           setIsUsuario(maxRol === 0);
           setRolSeleccionado(freshUser.rol);
+          // Cargar turnos dinámicos desde BD sheet (sesión restaurada)
+          initTurnosDinamicos();
         }
       } catch (e) {
         console.warn('Backend no disponible, usando datos locales:', e.message);
@@ -334,6 +334,9 @@ const PanelOCRContent = () => {
           localStorage.setItem('ocr_auth_token', result.token);
           localStorage.setItem('ocr_user_data', JSON.stringify(normalizedUser));
           
+          // Cargar turnos dinámicos desde BD sheet (después del login)
+          initTurnosDinamicos();
+          
           setLoading(false);
           return true;
         } else {
@@ -378,6 +381,9 @@ const PanelOCRContent = () => {
       // GUARDAR en localStorage para persistir recarga (modo prueba)
       localStorage.setItem('ocr_auth_token', 'modo_prueba_token');
       localStorage.setItem('ocr_user_data', JSON.stringify(userData));
+      
+      // Cargar turnos dinámicos desde BD sheet (modo prueba)
+      initTurnosDinamicos();
       
       setLoading(false);
       return true;
