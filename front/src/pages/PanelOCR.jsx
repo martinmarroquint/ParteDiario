@@ -184,6 +184,7 @@ const PanelOCRContent = () => {
   const guardandoVacaciones = useRef(false);
   const [mostrarCambiosTurno, setMostrarCambiosTurno] = useState(false);
   const [pendingSolicitudesCount, setPendingSolicitudesCount] = useState(0);
+  const [pendingMesaPartesCount, setPendingMesaPartesCount] = useState(0);
   const prevCountRef = useRef(0);
   
   // ============================================================
@@ -279,6 +280,40 @@ const PanelOCRContent = () => {
     const it = setInterval(contarPendientes, 60000);
     return () => clearInterval(it);
   }, [isAuthenticated, user, config]);
+
+  // ============================================================
+  // POLLING: Contar notificaciones Mesa de Partes cada 60 segundos
+  // ============================================================
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    const userAreas = user?.areas || (user?.area ? [user.area] : []);
+    if (userAreas.length === 0) return;
+
+    const contarMesaPartes = async () => {
+      try {
+        let total = 0;
+        for (const area of userAreas) {
+          try {
+            const result = await apiClient.get(`/mesa-partes/bandeja?area=${encodeURIComponent(area)}`);
+            const docs = result.documentos || [];
+            for (const doc of docs) {
+              const derivs = doc.derivaciones || [];
+              for (const d of derivs) {
+                if (d.estado === 'DERIVADO' && d.area_destino && d.area_destino.toUpperCase() === area.toUpperCase()) {
+                  total++;
+                }
+              }
+            }
+          } catch { /* ignore per area */ }
+        }
+        setPendingMesaPartesCount(total);
+      } catch { /* ignore */ }
+    };
+
+    contarMesaPartes();
+    const it = setInterval(contarMesaPartes, 60000);
+    return () => clearInterval(it);
+  }, [isAuthenticated, user]);
 
   // ============================================================
   // FUNCIÓN: Login (backend real o modo prueba)
@@ -745,6 +780,7 @@ const PanelOCRContent = () => {
           user={user}
           medicos={medicosSistema}
           pendingSolicitudesCount={pendingSolicitudesCount}
+          pendingMesaPartesCount={pendingMesaPartesCount}
           esTramite={esTramite}
           onAbrirMesaPartes={abrirMesaPartes}
         />

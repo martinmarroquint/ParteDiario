@@ -3,8 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Search, Plus, Send, Calendar, User, Inbox,
   X, SlidersHorizontal, ChevronLeft, ChevronRight, FileText,
-  CheckCircle, Clock, Mail, File, ArrowDownLeft, CheckSquare,
-  Bell
+  CheckCircle, Clock, Mail, File, ArrowDownLeft, CheckSquare
 } from 'lucide-react';
 import apiClient from '../ocr/services/apiClient';
 import { COLOR_PRIMARIO, API_ENDPOINTS, ESTADOS, ESTADOS_DERIVACION, FUENTES } from './constantes';
@@ -41,10 +40,6 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
   const [docDevolver, setDocDevolver] = useState(null);
   const [docCerrar, setDocCerrar] = useState(null);
 
-  // Notificaciones por area (derivaciones pendientes)
-  const [notificaciones, setNotificaciones] = useState({});
-  const totalNotificaciones = Object.values(notificaciones).reduce((sum, n) => sum + n, 0);
-
   // ============================================
   // CARGAR DOCUMENTOS
   // ============================================
@@ -72,44 +67,6 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
   useEffect(() => { cargarDocumentos(); }, [cargarDocumentos]);
   useEffect(() => { setPagina(1); }, [busqueda, filtroFecha, filtroEstado, vistaActiva]);
 
-  // Cargar notificaciones por area (derivaciones pendientes de recibir)
-  const cargarNotificaciones = useCallback(async () => {
-    if (userAreas.length === 0) return;
-    const counts = {};
-    try {
-      const promises = userAreas.map(async (area) => {
-        try {
-          const result = await apiClient.get(API_ENDPOINTS.bandeja(area));
-          const docs = result.documentos || [];
-          // Contar derivaciones con estado DERIVADO (pendientes de recibir)
-          let pendientes = 0;
-          for (const doc of docs) {
-            const derivs = doc.derivaciones || [];
-            for (const d of derivs) {
-              if (d.estado === 'DERIVADO' && d.area_destino && d.area_destino.toUpperCase() === area.toUpperCase()) {
-                pendientes++;
-              }
-            }
-          }
-          counts[area] = pendientes;
-        } catch {
-          counts[area] = 0;
-        }
-      });
-      await Promise.all(promises);
-      setNotificaciones(counts);
-    } catch {
-      // silently ignore
-    }
-  }, [userAreas]);
-
-  useEffect(() => { cargarNotificaciones(); }, [cargarNotificaciones]);
-  // Refrescar notificaciones cada 60 segundos
-  useEffect(() => {
-    const interval = setInterval(cargarNotificaciones, 60000);
-    return () => clearInterval(interval);
-  }, [cargarNotificaciones]);
-
   // Stats
   useEffect(() => {
     const hoy = new Date().toISOString().split('T')[0];
@@ -120,10 +77,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
     });
   }, [documentos]);
 
-  const handleActualizado = useCallback(() => {
-    cargarDocumentos();
-    cargarNotificaciones();
-  }, [cargarDocumentos, cargarNotificaciones]);
+  const handleActualizado = useCallback(() => cargarDocumentos(), [cargarDocumentos]);
 
   // ============================================
   // FILTRADO
@@ -177,63 +131,35 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                 <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
               </button>
             )}
-            <div className="relative">
+            <div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
                 {canManage ? 'MESA DE PARTES' : 'BANDEJA DE DOCUMENTOS'}
               </h1>
               <p className="text-xs text-gray-500">
                 {canManage ? 'Gestion documental' : `Documentos derivados a: ${userAreas.join(', ')}`}
               </p>
-              {!canManage && totalNotificaciones > 0 && (
-                <span className="absolute -top-1 -right-6 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 leading-none animate-pulse">
-                  {totalNotificaciones > 99 ? '99+' : totalNotificaciones}
-                </span>
-              )}
             </div>
           </div>
           {canManage && (
-            <div className="flex items-center gap-2">
-              {/* Notificaciones */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setVistaActiva('general')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  vistaActiva === 'general' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                General
+              </button>
               {userAreas.length > 0 && (
                 <button
                   onClick={() => setVistaActiva('bandeja')}
-                  className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                  title="Notificaciones"
-                >
-                  <Bell className="w-5 h-5 text-gray-500" strokeWidth={1.5} />
-                  {totalNotificaciones > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 leading-none">
-                      {totalNotificaciones > 99 ? '99+' : totalNotificaciones}
-                    </span>
-                  )}
-                </button>
-              )}
-              {/* Selector General/Bandeja */}
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                <button
-                  onClick={() => setVistaActiva('general')}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                    vistaActiva === 'general' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    vistaActiva === 'bandeja' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  General
+                  Mi Bandeja
                 </button>
-                {userAreas.length > 0 && (
-                  <button
-                    onClick={() => setVistaActiva('bandeja')}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all relative ${
-                      vistaActiva === 'bandeja' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Mi Bandeja
-                    {totalNotificaciones > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-0.5 leading-none">
-                        {totalNotificaciones > 99 ? '99+' : totalNotificaciones}
-                      </span>
-                    )}
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -274,29 +200,19 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
           {vistaActiva === 'bandeja' && userAreas.length > 1 && (
             <div className="flex-shrink-0 pt-4">
               <div className="flex gap-1.5 flex-wrap">
-                {userAreas.map(area => {
-                  const pendientes = notificaciones[area] || 0;
-                  return (
-                    <button
-                      key={area}
-                      onClick={() => setAreaBandeja(area)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all relative ${
-                        areaBandeja === area
-                          ? 'bg-gray-900 text-white border border-gray-900'
-                          : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      {area}
-                      {pendientes > 0 && (
-                        <span className={`absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] flex items-center justify-center text-[9px] font-bold rounded-full px-0.5 leading-none ${
-                          areaBandeja === area ? 'bg-red-500 text-white' : 'bg-red-500 text-white'
-                        }`}>
-                          {pendientes > 99 ? '99+' : pendientes}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                {userAreas.map(area => (
+                  <button
+                    key={area}
+                    onClick={() => setAreaBandeja(area)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
+                      areaBandeja === area
+                        ? 'bg-gray-900 text-white border border-gray-900'
+                        : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {area}
+                  </button>
+                ))}
               </div>
             </div>
           )}

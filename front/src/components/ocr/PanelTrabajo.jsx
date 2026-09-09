@@ -80,7 +80,8 @@ const PanelTrabajo = ({
   esJefe = false,
   esUsuario = false,
   user = null,
-  pendingSolicitudesCount = 0
+  pendingSolicitudesCount = 0,
+  pendingMesaPartesCount = 0
 }) => {
   const [config, setConfig] = useState(DEFAULT_GOOGLE_CONFIG);
   const [mostrarConfig, setMostrarConfig] = useState(false);
@@ -1385,6 +1386,7 @@ const PanelTrabajo = ({
         rolGuardado={rolGuardado}
         onVistaPrevia={null}
         pendingSolicitudesCount={pendingSolicitudesCount}
+        pendingMesaPartesCount={pendingMesaPartesCount}
       />
 
       {mensaje && <div className={`px-4 py-3 text-center text-sm font-medium print:hidden flex items-center justify-center gap-2 ${mensaje.tipo === 'success' ? 'bg-emerald-50 text-emerald-700 border-b border-emerald-200' : mensaje.tipo === 'error' ? 'bg-red-50 text-red-700 border-b border-red-200' : mensaje.tipo === 'warning' ? 'bg-amber-50 text-amber-700 border-b border-amber-200' : 'bg-blue-50 text-blue-700 border-b border-blue-200'}`}>{mensaje.tipo === 'success' && <CheckCircle2 className="w-4 h-4" />}{mensaje.tipo === 'error' && <XCircle className="w-4 h-4" />}{mensaje.tipo === 'warning' && <AlertTriangle className="w-4 h-4" />}{mensaje.tipo === 'info' && <Loader2 className="w-4 h-4 animate-spin" />}{mensaje.texto}</div>}

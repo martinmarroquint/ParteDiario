@@ -118,6 +118,7 @@ const Encabezado = ({
   user = null,
   areaSeleccionadaJefe = null,
   pendingSolicitudesCount = 0,
+  pendingMesaPartesCount = 0,
   onAreaChangeJefe = null,
   areasDisponiblesJefe = [],
   areaSeleccionadaAdmin = null,
@@ -426,10 +427,15 @@ const Encabezado = ({
           {onAbrirMesaPartes && (
             <button 
               onClick={onAbrirMesaPartes} 
-              className={btnBase} 
+              className={`${btnBase} relative`} 
               title="Mesa de Partes"
             >
               <FileText className="w-4 h-4" />
+              {pendingMesaPartesCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                  {pendingMesaPartesCount > 99 ? '99+' : pendingMesaPartesCount}
+                </span>
+              )}
             </button>
           )}
 
