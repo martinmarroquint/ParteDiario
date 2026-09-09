@@ -1,45 +1,24 @@
 // src/components/mesapartes/MesaDePartes.jsx
-// Mesa de Partes - Layout original restaurado + Backend FastAPI
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  ArrowLeft, Search, Plus, Edit2,
-  Send, FileCheck, Calendar, User, Inbox,
-  X, SlidersHorizontal, ChevronLeft, ChevronRight, FileText
+  ArrowLeft, Search, Plus, Send, FileCheck, Calendar, User, Inbox,
+  X, SlidersHorizontal, ChevronLeft, ChevronRight, FileText,
+  ArrowUpRight, ArrowDownRight, CheckCircle, Clock, History
 } from 'lucide-react';
 import apiClient from '../ocr/services/apiClient';
-import { COLOR_PRIMARIO, API_ENDPOINTS, ESTADOS } from './constantes';
+import { COLOR_PRIMARIO, API_ENDPOINTS, ESTADOS, ESTADOS_DERIVACION, FUENTES } from './constantes';
 import RegistroDocumento from './RegistroDocumento';
 import ModalVerDocumento from './ModalVerDocumento';
-import ModalEditarDocumento from './ModalEditarDocumento';
-import ModalEntregarDocumento from './ModalEntregarDocumento';
-import ModalDescargarDocumento from './ModalDescargarDocumento';
+import ModalDerivarDocumento from './ModalDerivarDocumento';
+import ModalRecibirDocumento from './ModalRecibirDocumento';
+import ModalDevolverDocumento from './ModalDevolverDocumento';
 
 const REGISTROS_POR_PAGINA = 20;
-const normalizarTexto = (t) => (t || '').toLowerCase().trim();
-
-// Abreviaturas para tipos de documento
-const ABREV_TIPOS = {
-  'OFICIO SIMPLE': 'O/S',
-  'OFICIO MULTIPLPE': 'O/M',
-  'MEMORANDUM MULTIPLE': 'M/M',
-  'CARTAS': 'C',
-  'SOLICITUDES': 'S',
-  'DESCARGOS': 'D',
-  'COMUNICACION TELEFONICA': 'C/T',
-  'COMUNICACION ELECTRONICA': 'C/E',
-  'ORDEN TELEFONICA': 'O/T',
-  'ELEVACIONES': 'E',
-  'PARTES': 'P',
-  'DISPOSICION DE COMANDO': 'D/C',
-};
-
-const abreviarTipo = (tipo) => {
-  if (!tipo) return '';
-  return ABREV_TIPOS[tipo] || tipo.substring(0, 6);
-};
+const norm = (t) => (t || '').toLowerCase().trim();
 
 const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
-  const canRegister = esAdmin || esTramite;
+  const canManage = esAdmin || esTramite;
+  const userAreas = user?.areas || [];
 
   const [documentos, setDocumentos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -49,12 +28,13 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
   const [filtroAvanzado, setFiltroAvanzado] = useState(false);
   const [filtroFecha, setFiltroFecha] = useState('');
   const [pagina, setPagina] = useState(1);
-  const [stats, setStats] = useState({ total: 0, hoy: 0, pendientes: 0 });
+  const [stats, setStats] = useState({ total: 0, pendientes: 0, hoy: 0 });
 
+  // Modals
   const [docVer, setDocVer] = useState(null);
-  const [docEditar, setDocEditar] = useState(null);
-  const [docEntregar, setDocEntregar] = useState(null);
-  const [docDescargar, setDocDescargar] = useState(null);
+  const [docDerivar, setDocDerivar] = useState(null);
+  const [docRecibir, setDocRecibir] = useState(null); // { derivacion, documento }
+  const [docDevolver, setDocDevolver] = useState(null); // { derivacion, documento }
 
   // ============================================
   // CARGAR DOCUMENTOS
@@ -64,60 +44,30 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
     setError(null);
     try {
       const result = await apiClient.get(API_ENDPOINTS.documentos);
-      const docs = result.documentos || [];
-      setDocumentos(docs);
+      setDocumentos(result.documentos || []);
     } catch (err) {
-      console.error('Error cargando documentos:', err);
-      setError(err.message || 'Error al cargar documentos');
-    } finally {
-      setCargando(false);
-    }
+      setError(err.message || 'Error al cargar');
+    } finally { setCargando(false); }
   }, []);
 
   useEffect(() => { cargarDocumentos(); }, [cargarDocumentos]);
-
   useEffect(() => { setPagina(1); }, [busqueda, filtroFecha, filtroEstado]);
 
-  const handleRegistrado = useCallback(() => {
-    setTimeout(() => cargarDocumentos(), 800);
-  }, [cargarDocumentos]);
-
-  const handleActualizado = useCallback(() => {
-    cargarDocumentos();
-  }, [cargarDocumentos]);
-
+  // Stats
   useEffect(() => {
-    const docsFiltrados = documentos.filter(d => {
-      if (filtroFecha && d.fecha !== filtroFecha && d.fecha_doc !== filtroFecha) return false;
+    const filtrados = documentos.filter(d => {
+      if (filtroFecha && d.fecha_registro && !d.fecha_registro.startsWith(filtroFecha)) return false;
       return true;
     });
     const hoy = new Date().toISOString().split('T')[0];
     setStats({
-      total: docsFiltrados.length,
-      hoy: docsFiltrados.filter(d => d.fecha === hoy).length,
-      pendientes: docsFiltrados.filter(d => d.estado === 'PENDIENTE').length
+      total: filtrados.length,
+      pendientes: filtrados.filter(d => d.estado === 'REGISTRADO').length,
+      hoy: filtrados.filter(d => d.fecha_registro && d.fecha_registro.startsWith(hoy)).length
     });
   }, [documentos, filtroFecha]);
 
-  const handleDevolver = useCallback(async (doc) => {
-    if (!window.confirm(`¿Devolver documento ${doc.numero} a estado PENDIENTE?`)) return;
-    try {
-      await apiClient.put(API_ENDPOINTS.devolver(doc.id));
-      cargarDocumentos();
-    } catch (e) {
-      alert('Error al devolver: ' + (e.message || e));
-    }
-  }, [cargarDocumentos]);
-
-  const handleEliminar = useCallback(async (doc) => {
-    if (!window.confirm(`¿Eliminar permanentemente el documento ${doc.numero}? Esta acción no se puede deshacer.`)) return;
-    try {
-      await apiClient.delete(API_ENDPOINTS.eliminar(doc.id));
-      cargarDocumentos();
-    } catch (e) {
-      alert('Error al eliminar: ' + (e.message || e));
-    }
-  }, [cargarDocumentos]);
+  const handleActualizado = useCallback(() => cargarDocumentos(), [cargarDocumentos]);
 
   // ============================================
   // FILTRADO
@@ -126,11 +76,11 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
     return documentos.filter(d => {
       if (filtroEstado !== 'TODOS' && d.estado !== filtroEstado) return false;
       if (busqueda.trim()) {
-        const t = normalizarTexto(busqueda);
-        if (![d.contenido, d.procedencia, d.tipo_doc, d.n_doc_origen, d.numero, d.area_entregada, d.fecha]
-          .some(v => normalizarTexto(v).includes(t))) return false;
+        const t = norm(busqueda);
+        if (![d.asunto, d.contenido, d.tipo_doc, d.procedencia, d.numero, d.n_doc_origen, d.fecha_registro]
+          .some(v => norm(v).includes(t))) return false;
       }
-      if (filtroFecha && d.fecha !== filtroFecha && d.fecha_doc !== filtroFecha) return false;
+      if (filtroFecha && d.fecha_registro && !d.fecha_registro.startsWith(filtroFecha)) return false;
       return true;
     });
   }, [documentos, busqueda, filtroFecha, filtroEstado]);
@@ -139,12 +89,21 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
   const docsPaginados = docsFiltrados.slice((pagina - 1) * REGISTROS_POR_PAGINA, pagina * REGISTROS_POR_PAGINA);
 
   // ============================================
-  // VISTA REGISTRO
+  // ACCIONES RÁPIDAS
   // ============================================
-  if (docVer === null && docEditar === null && docEntregar === null && docDescargar === null && documentos.length === 0 && !cargando && !error) {
-    // Si no hay documentos y no estamos en ningún modal, mostramos la vista normal
-  }
+  const handleRecibir = useCallback((derivacion, documento) => {
+    setDocVer(null);
+    setDocRecibir({ derivacion, documento });
+  }, []);
 
+  const handleDevolver = useCallback((derivacion, documento) => {
+    setDocVer(null);
+    setDocDevolver({ derivacion, documento });
+  }, []);
+
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <div className="h-screen flex flex-col bg-[#F8F9FA]">
 
@@ -159,10 +118,10 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
             )}
             <div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-                {canRegister ? 'MESA DE PARTES' : 'BANDEJA DE DOCUMENTOS'}
+                {canManage ? 'MESA DE PARTES' : 'BANDEJA DE DOCUMENTOS'}
               </h1>
               <p className="text-xs text-gray-500">
-                {canRegister ? 'Recepción de Documentos' : 'Documentos derivados a su área'}
+                {canManage ? 'Gestión documental' : `Documentos derivados a: ${(userAreas).join(', ')}`}
               </p>
             </div>
           </div>
@@ -173,107 +132,91 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
       <main className="flex-1 flex flex-col min-h-0">
         <div className="max-w-3xl mx-auto w-full flex flex-col flex-1 min-h-0 px-4">
 
-          {/* Stats + Filtros */}
-          <div className="flex-shrink-0 space-y-4 pt-4">
-            {/* Stats */}
-            {canRegister && (
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-white rounded-lg p-3 border border-gray-200/60">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Inbox className="w-3.5 h-3.5 text-gray-400" strokeWidth={1.5} />
-                    <span className="text-[10px] text-gray-500 font-medium uppercase">Total</span>
-                  </div>
-                  <p className="text-xl font-semibold text-gray-900">{stats.total}</p>
+          {/* Stats */}
+          {canManage && (
+            <div className="flex-shrink-0 grid grid-cols-3 gap-3 pt-4">
+              <div className="bg-white rounded-lg p-3 border border-gray-200/60">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Inbox className="w-3.5 h-3.5 text-gray-400" strokeWidth={1.5} />
+                  <span className="text-[10px] text-gray-500 font-medium uppercase">Total</span>
                 </div>
-                <div className="bg-white rounded-lg p-3 border border-gray-200/60">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-[10px] text-gray-500 font-medium uppercase">Pendientes</span>
-                  </div>
-                  <p className="text-xl font-semibold text-gray-900">{stats.pendientes}</p>
-                </div>
-                <div className="bg-white rounded-lg p-3 border border-gray-200/60">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLOR_PRIMARIO }} />
-                    <span className="text-[10px] text-gray-500 font-medium uppercase">Hoy</span>
-                  </div>
-                  <p className="text-xl font-semibold text-gray-900">{stats.hoy}</p>
-                </div>
+                <p className="text-xl font-semibold text-gray-900">{stats.total}</p>
               </div>
-            )}
-
-            {/* Search + Filters */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" strokeWidth={1.5} />
-                  <input
-                    type="text"
-                    value={busqueda}
-                    onChange={e => setBusqueda(e.target.value)}
-                    placeholder="Buscar..."
-                    className="w-full pl-9 pr-9 py-2 bg-white text-sm rounded-lg outline-none border border-gray-200/60 focus:border-gray-300"
-                  />
-                  {busqueda && (
-                    <button onClick={() => setBusqueda('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400">
-                      <X className="w-3.5 h-3.5" strokeWidth={2} />
-                    </button>
-                  )}
+              <div className="bg-white rounded-lg p-3 border border-gray-200/60">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
+                  <span className="text-[10px] text-gray-500 font-medium uppercase">Pendientes</span>
                 </div>
-                <button
-                  onClick={() => setFiltroAvanzado(!filtroAvanzado)}
-                  className={`p-2 rounded-lg border ${filtroAvanzado || filtroFecha ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200/60 text-gray-400'}`}
-                >
-                  <SlidersHorizontal className="w-4 h-4" strokeWidth={1.5} />
-                </button>
-                {canRegister && (
-                  <button
-                    onClick={() => setDocVer('nuevo')}
-                    className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-900 text-white hover:bg-gray-800 flex items-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Nuevo
+                <p className="text-xl font-semibold text-gray-900">{stats.pendientes}</p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-gray-200/60">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLOR_PRIMARIO }} />
+                  <span className="text-[10px] text-gray-500 font-medium uppercase">Hoy</span>
+                </div>
+                <p className="text-xl font-semibold text-gray-900">{stats.hoy}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Search + Filters */}
+          <div className="flex-shrink-0 space-y-2 pt-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" strokeWidth={1.5} />
+                <input
+                  type="text"
+                  value={busqueda}
+                  onChange={e => setBusqueda(e.target.value)}
+                  placeholder="Buscar..."
+                  className="w-full pl-9 pr-9 py-2 bg-white text-sm rounded-lg outline-none border border-gray-200/60 focus:border-gray-300"
+                />
+                {busqueda && (
+                  <button onClick={() => setBusqueda('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400">
+                    <X className="w-3.5 h-3.5" strokeWidth={2} />
                   </button>
                 )}
               </div>
-
-              {/* Estado filters */}
-              <div className="flex gap-1.5">
-                {Object.entries(ESTADOS).map(([key, style]) => {
-                  const activo = filtroEstado === key;
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => setFiltroEstado(key)}
-                      className={`px-2.5 py-1 text-[10px] font-medium rounded-full transition-all ${
-                        activo ? 'bg-gray-900 text-white border border-gray-900' : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
-                      }`}
-                      style={!activo && key !== 'TODOS' ? { borderColor: style.color + '40' } : {}}
-                    >
-                      {style.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Filtro avanzado fecha */}
-              {filtroAvanzado && (
-                <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200/60 p-2">
-                  <Calendar className="w-4 h-4 text-gray-400" strokeWidth={1.5} />
-                  <input
-                    type="date"
-                    value={filtroFecha}
-                    onChange={e => setFiltroFecha(e.target.value)}
-                    className="flex-1 text-xs outline-none bg-transparent"
-                  />
-                  {filtroFecha && (
-                    <button onClick={() => setFiltroFecha('')} className="text-xs text-gray-400 px-2 py-1">Limpiar</button>
-                  )}
-                </div>
+              <button
+                onClick={() => setFiltroAvanzado(!filtroAvanzado)}
+                className={`p-2 rounded-lg border ${filtroAvanzado || filtroFecha ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200/60 text-gray-400'}`}
+              >
+                <SlidersHorizontal className="w-4 h-4" strokeWidth={1.5} />
+              </button>
+              {canManage && (
+                <button
+                  onClick={() => setDocVer('nuevo')}
+                  className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-900 text-white hover:bg-gray-800 flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Nuevo
+                </button>
               )}
             </div>
+
+            <div className="flex gap-1.5">
+              {Object.entries(ESTADOS).map(([key, style]) => (
+                <button
+                  key={key}
+                  onClick={() => setFiltroEstado(key)}
+                  className={`px-2.5 py-1 text-[10px] font-medium rounded-full transition-all ${
+                    filtroEstado === key ? 'bg-gray-900 text-white border border-gray-900' : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {style.label}
+                </button>
+              ))}
+            </div>
+
+            {filtroAvanzado && (
+              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200/60 p-2">
+                <Calendar className="w-4 h-4 text-gray-400" strokeWidth={1.5} />
+                <input type="date" value={filtroFecha} onChange={e => setFiltroFecha(e.target.value)} className="flex-1 text-xs outline-none bg-transparent" />
+                {filtroFecha && <button onClick={() => setFiltroFecha('')} className="text-xs text-gray-400 px-2 py-1">Limpiar</button>}
+              </div>
+            )}
           </div>
 
-          {/* Lista de documentos - SCROLL AQUÍ */}
+          {/* Document List */}
           <div className="flex-1 min-h-0 mt-3">
             <div className="h-full overflow-y-auto">
               {cargando ? (
@@ -283,22 +226,21 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
               ) : error ? (
                 <div className="text-center py-20">
                   <p className="text-sm text-gray-400">{error}</p>
-                  <button onClick={cargarDocumentos} className="mt-3 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200">
-                    Reintentar
-                  </button>
+                  <button onClick={cargarDocumentos} className="mt-3 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200">Reintentar</button>
                 </div>
               ) : docsFiltrados.length === 0 ? (
                 <div className="text-center py-20">
                   <Inbox className="w-10 h-10 text-gray-200 mx-auto mb-3" strokeWidth={1} />
                   <p className="text-sm text-gray-400">No hay documentos</p>
-                  <p className="text-xs text-gray-300 mt-1">
-                    {busqueda || filtroEstado !== 'TODOS' || filtroFecha ? 'Intente con otros filtros' : 'Registre su primer documento'}
-                  </p>
                 </div>
               ) : (
                 <div className="space-y-1.5 pb-2">
                   {docsPaginados.map((doc) => {
-                    const style = ESTADOS[doc.estado] || ESTADOS.PENDIENTE;
+                    const style = ESTADOS[doc.estado] || ESTADOS.REGISTRADO;
+                    const derivaciones = doc.derivaciones || [];
+                    const todasDevueltas = derivaciones.length > 0 && derivaciones.every(d => d.estado === 'DEVUELTO');
+                    const algunaRecibida = derivaciones.some(d => d.estado === 'RECIBIDO' || d.estado === 'DEVUELTO');
+
                     return (
                       <div
                         key={doc.id}
@@ -306,53 +248,24 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                         onClick={() => setDocVer(doc)}
                       >
                         <div className="flex items-center gap-2 mb-1.5">
-                          {doc.numero && (
-                            <span className="text-[11px] font-semibold" style={{ color: COLOR_PRIMARIO }}>{doc.numero}</span>
-                          )}
-                          {doc.numero && <span className="text-gray-300">-</span>}
-                          <span className="text-[11px] text-gray-500">
-                            {doc.fecha}
-                          </span>
+                          <span className="text-[11px] font-semibold" style={{ color: COLOR_PRIMARIO }}>{doc.numero}</span>
+                          <span className="text-[11px] text-gray-500">{doc.fecha_registro?.split(' ')[0]}</span>
                           {doc.tipo_doc && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
-                              {abreviarTipo(doc.tipo_doc)}
-                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">{doc.tipo_doc}</span>
                           )}
-
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: doc.fuente === 'digital' ? '#EFF6FF' : '#FEF3C7', color: doc.fuente === 'digital' ? '#1D4ED8' : '#B45309' }}>
+                            {doc.fuente === 'digital' ? '📧' : '📄'}
+                          </span>
                           <span
                             className="text-[10px] font-semibold px-2 py-0.5 rounded-full ml-auto inline-flex items-center gap-1.5"
-                            style={{ backgroundColor: style.bg, color: style.color, border: `1.5px solid ${style.color}30` }}
+                            style={{ backgroundColor: style.bg, color: style.color }}
                           >
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: style.color }} />
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: style.dot }} />
                             {style.label}
                           </span>
-
-                          {/* Acciones - stopPropagation para que no abra el modal */}
-                          <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-                            {canRegister && doc.estado === 'PENDIENTE' && (
-                              <>
-                                <button onClick={() => setDocEditar(doc)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg" title="Editar">
-                                  <Edit2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                </button>
-                                <button onClick={() => setDocEntregar(doc)} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Entregar">
-                                  <Send className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                </button>
-                              </>
-                            )}
-                            {doc.estado === 'ENTREGADO' && (
-                              <button onClick={() => setDocDescargar(doc)} className="p-1.5 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Descargar">
-                                <FileCheck className="w-3.5 h-3.5" strokeWidth={1.5} />
-                              </button>
-                            )}
-                            {esAdmin && (
-                              <button onClick={() => handleEliminar(doc)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Eliminar">
-                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                              </button>
-                            )}
-                          </div>
                         </div>
 
-                        <p className="text-sm font-medium text-gray-800 truncate mb-1.5">{doc.contenido || 'Sin contenido'}</p>
+                        <p className="text-sm font-medium text-gray-800 truncate mb-1.5">{doc.asunto || doc.contenido || 'Sin asunto'}</p>
 
                         <div className="flex items-center gap-3 text-[11px] text-gray-400 flex-wrap">
                           {doc.procedencia && (
@@ -360,11 +273,39 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                               <User className="w-3 h-3 flex-shrink-0" strokeWidth={1.5} />{doc.procedencia}
                             </span>
                           )}
-                          {doc.area_entregada && <span className="truncate">→ {doc.area_entregada}</span>}
-                          {doc.doc_tramite && (
-                            <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{doc.doc_tramite}</span>
+                          {derivaciones.length > 0 && (
+                            <span className="flex items-center gap-1">
+                              <Send className="w-3 h-3" strokeWidth={1.5} />
+                              {derivaciones.length} área{derivaciones.length > 1 ? 's' : ''}
+                              {todasDevueltas && <span className="text-emerald-500">✓</span>}
+                              {!todasDevueltas && algunaRecibida && <span className="text-amber-500">●</span>}
+                            </span>
                           )}
                         </div>
+
+                        {/* Derivaciones inline */}
+                        {derivaciones.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {derivaciones.map(d => {
+                              const dStyle = ESTADOS_DERIVACION[d.estado] || ESTADOS_DERIVACION.DERIVADO;
+                              return (
+                                <div key={d.id} className="flex items-center gap-2 text-[11px] bg-gray-50 rounded-lg px-2.5 py-1.5" onClick={e => e.stopPropagation()}>
+                                  <span className="font-medium text-gray-600 truncate flex-1">{d.area_destino}</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: dStyle.bg, color: dStyle.color }}>{dStyle.label}</span>
+                                  {d.pase_numero && <span className="text-gray-400">{d.pase_numero}</span>}
+                                  
+                                  {/* Acciones para el área */}
+                                  {d.estado === 'DERIVADO' && userAreas.includes(d.area_destino) && (
+                                    <button onClick={() => handleRecibir(d, doc)} className="text-[10px] px-2 py-0.5 rounded bg-amber-500 text-white hover:bg-amber-600">Recibir</button>
+                                  )}
+                                  {d.estado === 'RECIBIDO' && userAreas.includes(d.area_destino) && (
+                                    <button onClick={() => handleDevolver(d, doc)} className="text-[10px] px-2 py-0.5 rounded bg-emerald-500 text-white hover:bg-emerald-600">Devolver</button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -373,7 +314,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
             </div>
           </div>
 
-          {/* Paginación */}
+          {/* Pagination */}
           {totalPaginas > 1 && (
             <div className="flex-shrink-0 flex items-center justify-center gap-3 py-3 border-t border-gray-100">
               <button onClick={() => setPagina(p => Math.max(1, p - 1))} disabled={pagina <= 1} className="p-1.5 hover:bg-gray-100 rounded-lg disabled:opacity-30">
@@ -392,68 +333,68 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
           MODALES
           ============================================ */}
 
-      {/* Modal Nuevo Documento */}
+      {/* Nuevo Documento */}
       {docVer === 'nuevo' && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-4" onClick={() => setDocVer(null)}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
+            <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
               <div>
                 <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-amber-500" strokeWidth={1.5} />
                   Nuevo Documento
                 </h3>
-                <p className="text-xs text-gray-400 mt-0.5">Etapa 1: Recepción · Estado: Pendiente</p>
+                <p className="text-xs text-gray-400 mt-0.5">Registre el documento recibido</p>
               </div>
-              <button onClick={() => setDocVer(null)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+              <button onClick={() => setDocVer(null)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
                 <X className="w-4 h-4" strokeWidth={2} />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-5">
-              <RegistroDocumento onRegistrado={() => { setDocVer(null); handleRegistrado(); }} />
+              <RegistroDocumento onRegistrado={() => { setDocVer(null); handleActualizado(); }} />
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Ver */}
+      {/* Ver Documento */}
       {docVer && docVer !== 'nuevo' && (
         <ModalVerDocumento
           documento={docVer}
           onClose={() => setDocVer(null)}
-          onEditar={(d) => { setDocVer(null); setDocEditar(d); }}
-          onEntregar={(d) => { setDocVer(null); setDocEntregar(d); }}
-          onDescargar={(d) => { setDocVer(null); setDocDescargar(d); }}
+          onDerivar={(d) => { setDocVer(null); setDocDerivar(d); }}
+          onRecibir={handleRecibir}
           onDevolver={handleDevolver}
-          onEliminar={handleEliminar}
-          esTramite={esTramite}
-          esAdmin={esAdmin}
+          userAreas={userAreas}
+          canManage={canManage}
         />
       )}
 
-      {/* Modal Editar */}
-      {docEditar && (
-        <ModalEditarDocumento
-          documento={docEditar}
-          onClose={() => setDocEditar(null)}
-          onActualizado={() => { setDocEditar(null); handleActualizado(); }}
+      {/* Derivar */}
+      {docDerivar && (
+        <ModalDerivarDocumento
+          documento={docDerivar}
+          onClose={() => setDocDerivar(null)}
+          onActualizado={() => { setDocDerivar(null); handleActualizado(); }}
         />
       )}
 
-      {/* Modal Entregar */}
-      {docEntregar && (
-        <ModalEntregarDocumento
-          documento={docEntregar}
-          onClose={() => setDocEntregar(null)}
-          onActualizado={() => { setDocEntregar(null); handleActualizado(); }}
+      {/* Recibir */}
+      {docRecibir && (
+        <ModalRecibirDocumento
+          derivacion={docRecibir.derivacion}
+          documento={docRecibir.documento}
+          onClose={() => setDocRecibir(null)}
+          onActualizado={() => { setDocRecibir(null); handleActualizado(); }}
         />
       )}
 
-      {/* Modal Descargar */}
-      {docDescargar && (
-        <ModalDescargarDocumento
-          documento={docDescargar}
-          onClose={() => setDocDescargar(null)}
-          onActualizado={() => { setDocDescargar(null); handleActualizado(); }}
+      {/* Devolver */}
+      {docDevolver && (
+        <ModalDevolverDocumento
+          derivacion={docDevolver.derivacion}
+          documento={docDevolver.documento}
+          onClose={() => setDocDevolver(null)}
+          onActualizado={() => { setDocDevolver(null); handleActualizado(); }}
         />
       )}
     </div>

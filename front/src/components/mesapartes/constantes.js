@@ -1,28 +1,34 @@
 // src/components/mesapartes/constantes.js
-// Constantes para Mesa de Partes HRPA
 export const COLOR_PRIMARIO = '#3D9972';
 
 export const ESTADOS = {
-  TODOS: { label: 'Todos', color: '#6B7280', bg: '#F3F4F6', icon: 'Inbox', dot: '#6B7280' },
-  PENDIENTE: { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB', icon: 'Clock', dot: '#F59E0B' },
-  ENTREGADO: { label: 'Derivado', color: '#1D4ED8', bg: '#EFF6FF', icon: 'Send', dot: '#3B82F6' },
-  RESUELTO: { label: 'Resuelto', color: '#047857', bg: '#ECFDF5', icon: 'CheckCircle2', dot: '#10B981' }
+  TODOS: { label: 'Todos', color: '#6B7280', bg: '#F3F4F6', dot: '#6B7280' },
+  REGISTRADO: { label: 'Registrado', color: '#B45309', bg: '#FFFBEB', dot: '#F59E0B' },
+  DERIVADO: { label: 'Derivado', color: '#1D4ED8', bg: '#EFF6FF', dot: '#3B82F6' },
+  TRAMITADO: { label: 'Tramitado', color: '#7C3AED', bg: '#F5F3FF', dot: '#8B5CF6' },
+  CERRADO: { label: 'Cerrado', color: '#047857', bg: '#ECFDF5', dot: '#10B981' }
 };
 
-// Abreviar tipo de documento para mobile
-export const abbreviateTipo = (tipo, maxLen = 18) => {
-  if (!tipo) return '';
-  if (tipo.length <= maxLen) return tipo;
-  return tipo.substring(0, maxLen) + '…';
+export const ESTADOS_DERIVACION = {
+  DERIVADO: { label: 'Derivado', color: '#1D4ED8', bg: '#EFF6FF' },
+  RECIBIDO: { label: 'Recibido', color: '#B45309', bg: '#FFFBEB' },
+  DEVUELTO: { label: 'Devuelto', color: '#047857', bg: '#ECFDF5' }
 };
 
-// Backend API endpoints
 export const API_ENDPOINTS = {
   documentos: '/mesa-partes',
   opciones: '/mesa-partes/opciones',
   documento: (id) => `/mesa-partes/${id}`,
-  entregar: (id) => `/mesa-partes/${id}/entregar`,
-  descargar: (id) => `/mesa-partes/${id}/descargar`,
-  devolver: (id) => `/mesa-partes/${id}/devolver`,
+  historial: (id) => `/mesa-partes/${id}/historial`,
+  derivar: '/mesa-partes/derivar',
+  recibir: '/mesa-partes/recibir',
+  devolver: '/mesa-partes/devolver',
+  tramitar: '/mesa-partes/tramitar',
+  cerrar: '/mesa-partes/cerrar',
   eliminar: (id) => `/mesa-partes/${id}`,
 };
+
+export const FUENTES = [
+  { value: 'digital', label: 'Digital (Correo)' },
+  { value: 'fisico', label: 'Físico (Papel)' }
+];

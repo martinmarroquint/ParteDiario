@@ -1,5 +1,6 @@
 import logging
 import httpx
+import json
 from typing import Optional
 from app.config import settings
 
@@ -9,44 +10,23 @@ logger = logging.getLogger(__name__)
 class MesaPartesService:
     """Service for Mesa de Partes document management.
     
-    Sheet: "DOCUMENTOS" (14 columns A-N)
-    Columns:
-      A=N° B=FECHA C=TIPO_DOC D=N_DOC_ORIGEN E=FECHA_DOC
-      F=PROCEDENCIA G=CONTENIDO H=ESTADO I=DOC_TRAMITE
-      J=N_DOC_TRAMITADO K=AREA_ENTREGADA L=DESCARGO M=N_DESCARGO N=HT
+    3 Sheets:
+      DOCUMENTOS: ID, NUMERO, FECHA_REGISTRO, TIPO_DOC, N_DOC_ORIGEN,
+                  FECHA_DOC, PROCEDENCIA, ASUNTO, CONTENIDO, FUENTE,
+                  ESTADO, CREADO_POR, ESTADO_FINAL, FECHA_CIERRE
+      DERIVACIONES: ID, DOCUMENTO_ID, AREA_DESTINO, PASE_NUMERO,
+                    DERIVADO_POR, FECHA_DERIVACION, RECIBIDO_POR,
+                    FECHA_RECEPCION, ESTADO, DEVUELTO_POR,
+                    FECHA_RESPUESTA, DESCARGO, N_DESCARGO, HT
+      HISTORIAL: ID, DOCUMENTO_ID, DERIVACION_ID, ACCION,
+                 ESTADO_ANTERIOR, ESTADO_NUEVO, DETALLES,
+                 REALIZADO_POR, FECHA
     
-    Flow: PENDIENTE → ENTREGADO → RESUELTO
+    Flow: REGISTRADO → DERIVADO → TRAMITADO → CERRADO
+    Derivaciones: DERIVADO → RECIBIDO → DEVUELTO
     """
     
-    SHEET_NAME = "DOCUMENTOS"  # Correct sheet name from Apps Script
     BASE_URL = "https://sheets.googleapis.com/v4/spreadsheets"
-    
-    # Column mapping (1-indexed for Google Sheets, 0-indexed for row arrays)
-    # Row array index: 0=A(N°), 1=B(FECHA), 2=C(TIPO), ...
-    COL = {
-        'numero': 0,        # A
-        'fecha': 1,         # B
-        'tipo_doc': 2,      # C
-        'n_doc_origen': 3,  # D
-        'fecha_doc': 4,     # E
-        'procedencia': 5,   # F
-        'contenido': 6,     # G
-        'estado': 7,        # H
-        'doc_tramite': 8,   # I
-        'n_doc_tramitado': 9, # J
-        'area_entregada': 10, # K
-        'descargo': 11,     # L
-        'n_descargo': 12,   # M
-        'ht': 13,           # N
-    }
-    
-    # Google Sheets column letters (1-indexed: A=1, B=2, ...)
-    COL_LETTERS = {
-        'numero': 'A', 'fecha': 'B', 'tipo_doc': 'C', 'n_doc_origen': 'D',
-        'fecha_doc': 'E', 'procedencia': 'F', 'contenido': 'G', 'estado': 'H',
-        'doc_tramite': 'I', 'n_doc_tramitado': 'J', 'area_entregada': 'K',
-        'descargo': 'L', 'n_descargo': 'M', 'ht': 'N',
-    }
     
     def __init__(self):
         self.api_key = settings.GOOGLE_SHEETS_API_KEY
@@ -56,30 +36,102 @@ class MesaPartesService:
     def _is_configured(self) -> bool:
         return bool(self.sheet_id and self.api_key)
     
-    async def _get_all_rows(self) -> list[list]:
-        """Read all rows from the DOCUMENTOS sheet."""
+    # ============================================
+    # READ OPERATIONS (Google Sheets API)
+    # ============================================
+    
+    async def _read_sheet(self, range_name: str) -> list[list]:
+        """Read all rows from a sheet range."""
         if not self._is_configured():
-            logger.warning("Mesa de Partes Google Sheets not configured")
             return []
-        
-        url = f"{self.BASE_URL}/{self.sheet_id}/values/{self.SHEET_NAME}"
+        url = f"{self.BASE_URL}/{self.sheet_id}/values/{range_name}"
         params = {"key": self.api_key, "majorDimension": "ROWS"}
-        
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 return response.json().get("values", [])
         except Exception as e:
-            logger.error(f"Error reading Mesa de Partes sheet: {e}")
+            logger.error(f"Error reading {range_name}: {e}")
             return []
     
+    async def _read_documentos(self) -> list[dict]:
+        """Read all documents from DOCUMENTOS sheet."""
+        rows = await self._read_sheet("DOCUMENTOS")
+        if not rows or len(rows) < 2:
+            return []
+        documentos = []
+        for i, r in enumerate(rows[1:], start=1):
+            documentos.append({
+                "id": r[0] if len(r) > 0 else i,
+                "numero": r[1] if len(r) > 1 else "",
+                "fecha_registro": r[2] if len(r) > 2 else "",
+                "tipo_doc": r[3] if len(r) > 3 else "",
+                "n_doc_origen": r[4] if len(r) > 4 else "",
+                "fecha_doc": r[5] if len(r) > 5 else "",
+                "procedencia": r[6] if len(r) > 6 else "",
+                "asunto": r[7] if len(r) > 7 else "",
+                "contenido": r[8] if len(r) > 8 else "",
+                "fuente": r[9] if len(r) > 9 else "fisico",
+                "estado": r[10] if len(r) > 10 else "REGISTRADO",
+                "creado_por": r[11] if len(r) > 11 else "",
+                "estado_final": r[12] if len(r) > 12 else "",
+                "fecha_cierre": r[13] if len(r) > 13 else "",
+                "derivaciones": []
+            })
+        return documentos
+    
+    async def _read_derivaciones(self) -> list[dict]:
+        """Read all derivations from DERIVACIONES sheet."""
+        rows = await self._read_sheet("DERIVACIONES")
+        if not rows or len(rows) < 2:
+            return []
+        derivaciones = []
+        for i, r in enumerate(rows[1:], start=1):
+            derivaciones.append({
+                "id": r[0] if len(r) > 0 else i,
+                "documento_id": r[1] if len(r) > 1 else "",
+                "area_destino": r[2] if len(r) > 2 else "",
+                "pase_numero": r[3] if len(r) > 3 else "",
+                "derivado_por": r[4] if len(r) > 4 else "",
+                "fecha_derivacion": r[5] if len(r) > 5 else "",
+                "recibido_por": r[6] if len(r) > 6 else "",
+                "fecha_recepcion": r[7] if len(r) > 7 else "",
+                "estado": r[8] if len(r) > 8 else "DERIVADO",
+                "devuelto_por": r[9] if len(r) > 9 else "",
+                "fecha_respuesta": r[10] if len(r) > 10 else "",
+                "descargo": r[11] if len(r) > 11 else "",
+                "n_descargo": r[12] if len(r) > 12 else "",
+                "ht": r[13] if len(r) > 13 else ""
+            })
+        return derivaciones
+    
+    async def _read_historial(self) -> list[dict]:
+        """Read all history from HISTORIAL sheet."""
+        rows = await self._read_sheet("HISTORIAL")
+        if not rows or len(rows) < 2:
+            return []
+        historial = []
+        for i, r in enumerate(rows[1:], start=1):
+            historial.append({
+                "id": r[0] if len(r) > 0 else i,
+                "documento_id": r[1] if len(r) > 1 else "",
+                "derivacion_id": r[2] if len(r) > 2 else "",
+                "accion": r[3] if len(r) > 3 else "",
+                "estado_anterior": r[4] if len(r) > 4 else "",
+                "estado_nuevo": r[5] if len(r) > 5 else "",
+                "detalles": r[6] if len(r) > 6 else "",
+                "realizado_por": r[7] if len(r) > 7 else "",
+                "fecha": r[8] if len(r) > 8 else ""
+            })
+        return historial
+    
+    # ============================================
+    # WRITE OPERATIONS (via Apps Script)
+    # ============================================
+    
     async def _apps_script_action(self, action: str, data: dict) -> dict:
-        """Call the Apps Script web app for write operations.
-        
-        Google Apps Script returns a 302 redirect on POST requests.
-        We follow redirects and parse the final JSON response.
-        """
+        """Call the Apps Script web app for write operations."""
         if not self.apps_script_url:
             logger.warning("Apps Script URL not configured for Mesa de Partes")
             return {"error": "Apps Script URL not configured"}
@@ -93,10 +145,8 @@ class MesaPartesService:
                     json=payload,
                     headers={"Content-Type": "application/json"}
                 )
+                logger.info(f"Apps Script [{action}]: status={response.status_code}")
                 
-                logger.info(f"Apps Script [{action}]: status={response.status_code}, url={response.url}")
-                
-                # Parse response
                 try:
                     return response.json()
                 except Exception:
@@ -119,203 +169,138 @@ class MesaPartesService:
             logger.error(f"Error calling Apps Script [{action}]: {e}")
             return {"error": str(e)}
     
-    def _row_to_documento(self, row: list, index: int) -> dict:
-        """Convert a sheet row (14 columns) to a document dict."""
-        def get(col_key, default=""):
-            idx = self.COL[col_key]
-            return row[idx] if len(row) > idx else default
-        
-        return {
-            "id": index + 1,  # Sheet row: header=row1, data starts at row2, index starts at 1
-            "numero": str(get('numero', str(index + 1))),
-            "fecha": str(get('fecha')),
-            "tipo_doc": str(get('tipo_doc')),
-            "n_doc_origen": str(get('n_doc_origen')),
-            "fecha_doc": str(get('fecha_doc')),
-            "procedencia": str(get('procedencia')),
-            "contenido": str(get('contenido')),
-            "estado": str(get('estado', 'PENDIENTE')),
-            "doc_tramite": str(get('doc_tramite')),
-            "n_doc_tramitado": str(get('n_doc_tramitado')),
-            "area_entregada": str(get('area_entregada')),
-            "descargo": str(get('descargo')),
-            "n_descargo": str(get('n_descargo')),
-            "ht": str(get('ht')),
-        }
+    # ============================================
+    # PUBLIC API METHODS
+    # ============================================
     
     async def get_documentos(self, estado: Optional[str] = None, busqueda: Optional[str] = None, area: Optional[str] = None) -> list[dict]:
-        """Get all documents with optional filters.
+        """Get all documents with derivaciones attached."""
+        documentos = await self._read_documentos()
+        derivaciones = await self._read_derivaciones()
         
-        Args:
-            estado: Filter by document state (PENDIENTE/ENTREGADO/RESUELTO)
-            busqueda: Search in contenido, tipo_doc, procedencia, numero
-            area: Filter by area_entregada (for jefes to see only their docs)
-        """
-        rows = await self._get_all_rows()
-        if not rows or len(rows) < 2:
-            return []
+        # Attach derivaciones to documents
+        for doc in documentos:
+            doc["derivaciones"] = [d for d in derivaciones if str(d["documento_id"]) == str(doc["id"])]
         
-        data_rows = rows[1:]  # Skip header
-        documentos = [self._row_to_documento(row, i + 1) for i, row in enumerate(data_rows)]
-        
-        # Reverse: most recent first (newest rows at bottom of sheet)
-        documentos.reverse()
-        
+        # Apply filters
         if estado:
             documentos = [d for d in documentos if d["estado"] == estado.upper()]
         
         if area:
-            # Exact match on area_entregada
-            documentos = [d for d in documentos if d["area_entregada"].upper() == area.upper()]
+            documentos = [d for d in documentos if any(
+                der["area_destino"].upper() == area.upper()
+                for der in d["derivaciones"]
+            )]
         
         if busqueda:
             term = busqueda.lower()
-            documentos = [d for d in documentos if 
+            documentos = [d for d in documentos if
+                term in d.get("asunto", "").lower() or
                 term in d.get("contenido", "").lower() or
                 term in d.get("tipo_doc", "").lower() or
-                term in d.get("n_doc_origen", "").lower() or
                 term in d.get("procedencia", "").lower() or
-                term in d.get("numero", "").lower()
+                term in d.get("numero", "").lower() or
+                term in d.get("n_doc_origen", "").lower()
             ]
         
         return documentos
     
     async def get_documento(self, doc_id: int) -> Optional[dict]:
-        """Get a document by sheet row ID."""
-        rows = await self._get_all_rows()
-        if not rows or len(rows) < 2:
-            return None
+        """Get a single document with its derivaciones."""
+        documentos = await self._read_documentos()
+        derivaciones = await self._read_derivaciones()
         
-        data_rows = rows[1:]
-        # doc_id is the sheet row number (2-indexed), array is 0-indexed
-        index = doc_id - 2
-        
-        if 0 <= index < len(data_rows):
-            return self._row_to_documento(data_rows[index], index + 1)
+        for doc in documentos:
+            if int(doc["id"]) == doc_id:
+                doc["derivaciones"] = [d for d in derivaciones if str(d["documento_id"]) == str(doc_id)]
+                return doc
         return None
     
-    async def registrar_documento(self, data: dict, user_name: str = "") -> dict:
-        """Register a new document (Etapa 1: Recepción). Estado: PENDIENTE"""
-        row_data = {
-            "accion": "registrar",
-            "tipoDoc": data.get("tipo_doc", ""),
-            "nDocOrigen": data.get("n_doc_origen", ""),
-            "fecha": data.get("fecha", ""),
-            "fechaDoc": data.get("fecha_doc", ""),
+    async def get_historial(self, doc_id: int) -> list[dict]:
+        """Get history for a document."""
+        historial = await self._read_historial()
+        return [h for h in historial if str(h["documento_id"]) == str(doc_id)]
+    
+    async def registrar(self, data: dict, user_name: str = "") -> dict:
+        """Register a new document."""
+        return await self._apps_script_action("registrar", {
+            "tipo_doc": data.get("tipo_doc", ""),
+            "n_doc_origen": data.get("n_doc_origen", ""),
+            "fecha_doc": data.get("fecha_doc", ""),
             "procedencia": data.get("procedencia", ""),
+            "asunto": data.get("asunto", ""),
             "contenido": data.get("contenido", ""),
-        }
-        
-        return await self._apps_script_action("registrar", row_data)
+            "fuente": data.get("fuente", "fisico"),
+            "creado_por": user_name
+        })
     
-    async def actualizar_documento(self, doc_id: int, data: dict) -> dict:
-        """Update document Etapa 1 fields only (B-G columns)."""
-        row_data = {
-            "accion": "actualizar",
-            "fila": doc_id,
-            "tipoDoc": data.get("tipo_doc", ""),
-            "nDocOrigen": data.get("n_doc_origen", ""),
-            "fecha": data.get("fecha", ""),
-            "fechaDoc": data.get("fecha_doc", ""),
-            "procedencia": data.get("procedencia", ""),
-            "contenido": data.get("contenido", ""),
-        }
-        
-        return await self._apps_script_action("actualizar", row_data)
+    async def derivar(self, doc_id: int, areas: list[str], user_name: str = "", pase_numero: str = "") -> dict:
+        """Derive a document to one or more areas."""
+        return await self._apps_script_action("derivar", {
+            "documento_id": doc_id,
+            "areas": areas,
+            "derivado_por": user_name
+        })
     
-    async def entregar_documento(self, doc_id: int, data: dict) -> dict:
-        """Deliver document (Etapa 2: Derivación). PENDIENTE → ENTREGADO
-        Sets: H=ENTREGADO, I=docTramite, J=nDocTramitado, K=areaEntregada
-        """
-        row_data = {
-            "accion": "entregar",
-            "fila": doc_id,
-            "docTramite": data.get("doc_tramite", ""),
-            "nDocTramitado": data.get("n_doc_tramitado", ""),
-            "areaEntregada": data.get("area_entregada", ""),
-        }
-        
-        return await self._apps_script_action("entregar", row_data)
+    async def recibir(self, derivacion_id: int, user_name: str = "") -> dict:
+        """Area confirms receipt of a derivation."""
+        return await self._apps_script_action("recibir", {
+            "derivacion_id": derivacion_id,
+            "recibido_por": user_name
+        })
     
-    async def descargar_documento(self, doc_id: int, data: dict) -> dict:
-        """Resolve document (Etapa 3: Resolución). ENTREGADO → RESUELTO
-        Sets: H=RESUELTO, L=descargo, M=nDescargo
-        """
-        row_data = {
-            "accion": "descargar",
-            "fila": doc_id,
+    async def devolver(self, derivacion_id: int, data: dict, user_name: str = "") -> dict:
+        """Area returns document with response."""
+        return await self._apps_script_action("devolver", {
+            "derivacion_id": derivacion_id,
+            "devuelto_por": user_name,
             "descargo": data.get("descargo", ""),
-            "nDescargo": data.get("n_descargo", ""),
-        }
-        
-        return await self._apps_script_action("descargar", row_data)
+            "n_descargo": data.get("n_descargo", ""),
+            "ht": data.get("ht", "")
+        })
     
-    async def devolver_documento(self, doc_id: int) -> dict:
-        """Return document to PENDIENTE (ENTREGADO → PENDIENTE).
-        Clears: H=PENDIENTE, I='', J='', K=''
-        """
-        row_data = {
-            "accion": "devolver",
-            "fila": doc_id,
-        }
-        
-        return await self._apps_script_action("devolver", row_data)
+    async def tramitar(self, doc_id: int, user_name: str = "", observaciones: str = "") -> dict:
+        """Mesa processes the returned document."""
+        return await self._apps_script_action("tramitar", {
+            "documento_id": doc_id,
+            "realizado_por": user_name,
+            "observaciones": observaciones
+        })
     
-    async def _get_bd_rows(self) -> list[list]:
-        """Read all rows from the BD sheet (catalog of document types)."""
-        if not self._is_configured():
-            return []
-        
-        url = f"{self.BASE_URL}/{self.sheet_id}/values/BD"
-        params = {"key": self.api_key, "majorDimension": "ROWS"}
-        
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                return response.json().get("values", [])
-        except Exception as e:
-            logger.error(f"Error reading BD sheet: {e}")
-            return []
+    async def cerrar(self, doc_id: int, user_name: str = "", estado_final: str = "RESUELTO") -> dict:
+        """Mesa closes the document."""
+        return await self._apps_script_action("cerrar", {
+            "documento_id": doc_id,
+            "realizado_por": user_name,
+            "estado_final": estado_final
+        })
+    
+    async def eliminar(self, doc_id: int) -> dict:
+        """Delete document and all related data."""
+        return await self._apps_script_action("eliminar", {
+            "id": doc_id,
+            "numero": doc_id
+        })
     
     async def get_opciones(self) -> dict:
-        """Get distinct values for dropdowns.
+        """Get dropdown options from existing data."""
+        documentos = await self._read_documentos()
+        derivaciones = await self._read_derivaciones()
         
-        tipo_doc: from BD sheet (catalog of document types)
-        areas, docs_tramite: from DOCUMENTOS sheet (derived from actual data)
-        """
-        # Read tipo_doc from BD sheet (catalog)
-        bd_rows = await self._get_bd_rows()
-        tipos_doc = []
-        if bd_rows and len(bd_rows) > 1:
-            tipos_doc = sorted(list(set(
-                str(row[0]) for row in bd_rows[1:] 
-                if row and len(row) > 0 and row[0]
-            )))
+        tipos_doc = sorted(list(set(
+            d["tipo_doc"] for d in documentos if d["tipo_doc"]
+        )))
         
-        # Read areas and docs_tramite from DOCUMENTOS sheet
-        rows = await self._get_all_rows()
-        areas = []
-        docs_tramite = []
-        if rows and len(rows) > 1:
-            data_rows = rows[1:]
-            areas = sorted(list(set(
-                str(row[self.COL['area_entregada']]) for row in data_rows 
-                if len(row) > self.COL['area_entregada'] and row[self.COL['area_entregada']]
-            )))
-            docs_tramite = sorted(list(set(
-                str(row[self.COL['doc_tramite']]) for row in data_rows 
-                if len(row) > self.COL['doc_tramite'] and row[self.COL['doc_tramite']]
-            )))
+        procedencias = sorted(list(set(
+            d["procedencia"] for d in documentos if d["procedencia"]
+        )))
+        
+        areas = sorted(list(set(
+            d["area_destino"] for d in derivaciones if d["area_destino"]
+        )))
         
         return {
             "tipos_doc": tipos_doc,
-            "areas": areas,
-            "docs_tramite": docs_tramite,
+            "procedencias": procedencias,
+            "areas": areas
         }
-    
-    async def eliminar_documento(self, doc_id: int) -> dict:
-        """Delete a document row (admin only).
-        Passes the doc_id as 'numero' so Apps Script can find by N° column.
-        """
-        return await self._apps_script_action("eliminar", {"fila": doc_id, "numero": doc_id})
