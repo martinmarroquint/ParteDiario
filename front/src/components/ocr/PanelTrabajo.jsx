@@ -1034,11 +1034,8 @@ const PanelTrabajo = ({
     const columna = columnaLetra(4 + dia);
     const valorTexto = valor ? (TURNO_MAP[valor]?.nombre || valor) : '';
 
-    // Obtener valor anterior del estado local (antes de que React actualice)
-    const empId = fila - 1;
-    const valorAnterior = turnosRef.current[empId]?.[dia] || '';
-
-    // 1. Guardar el cambio en Google Sheets
+    // Solo guardar en Google Sheets - NO registrar en CELDA_MODIFICADA
+    // El punto verde solo se muestra para cambios del modal y solicitudes
     fetch(config.appsScriptUrl, {
       method: 'POST',
       mode: 'no-cors',
@@ -1054,24 +1051,6 @@ const PanelTrabajo = ({
         registrarHistorial: false
       })
     }).catch(err => console.warn('Error guardando celda:', err));
-
-    // 2. Registrar en CELDA_MODIFICADA para que otros usuarios detecten el cambio
-    if (valorAnterior !== valorTexto) {
-      fetch(config.appsScriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: bodyAsciiJson({
-          accion: 'registrarCeldaModificada',
-          hoja: hojaSeleccionada,
-          fila, dia,
-          valorAnterior: valorAnterior || '',
-          valorNuevo: valorTexto || '',
-          responsable: responsable || 'ADMIN',
-          tipo: 'directo'
-        })
-      }).catch(() => {});
-    }
 
   }, [config.appsScriptUrl, hojaSeleccionada, areaAsignada, responsable]);
 
