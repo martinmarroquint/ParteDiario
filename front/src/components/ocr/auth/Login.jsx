@@ -109,7 +109,7 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    {BACKEND_DISPONIBLE ? 'DNI' : 'Usuario'}
+                    Usuario
                   </label>
                   <input
                     ref={usuarioRef}
@@ -120,7 +120,7 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
                       setError('');
                     }}
                     onKeyPress={handleKeyPress}
-                    placeholder={BACKEND_DISPONIBLE ? "Ingresa tu DNI" : "Ingresa tu usuario"}
+                    placeholder="Ingresa tu usuario"
                     disabled={isLoading}
                     autoComplete="username"
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all bg-white hover:border-gray-300 disabled:opacity-60"
@@ -140,7 +140,7 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
                         setError('');
                       }}
                       onKeyPress={handleKeyPress}
-                      placeholder={BACKEND_DISPONIBLE ? "OCR + tu DNI (ej: OCR12345678)" : "Ingresa tu contraseña"}
+                      placeholder="Ingresa tu contraseña"
                       disabled={isLoading}
                       autoComplete="current-password"
                       className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all bg-white hover:border-gray-300 disabled:opacity-60"
