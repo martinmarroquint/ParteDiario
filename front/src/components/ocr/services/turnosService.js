@@ -70,7 +70,7 @@ const FALLBACK_TURNOS = [
   { codigo: '24',  nombre: '24 X 48',                            horas: 24, color: '#C3D9FF', texto: '#1A365D' },
   { codigo: 'SC',  nombre: 'SERVICIO CONTINUO',                  horas: 24, color: '#FFD129', texto: '#22543D' },
   { codigo: 'EXT', nombre: 'EXTERNO',                            horas: 0,  color: '#E2E8F0', texto: '#2D3748' },
-  { codigo: '🎂', nombre: 'CUMPLEAÑOS 🥳',                     horas: 1,  color: '#FF6B6B', texto: '#FFFFFF' },
+  { codigo: '🎂', nombre: 'CUMPLEAÑOS 🥳🥳🥳🥳',                     horas: 1,  color: '#FF6B6B', texto: '#FFFFFF' },
   { codigo: 'R',   nombre: 'RETEN',                              horas: 6,  color: '#FEEBC8', texto: '#7B341E' },
   { codigo: 'S',   nombre: 'SERVICIO',                           horas: 24, color: '#C3D9FF', texto: '#1A365D' },
   { codigo: 'M/N', nombre: 'MAÑANA - 12 HRS N',                  horas: 18, color: '#BEE3F8', texto: '#2A4365' },

@@ -430,7 +430,12 @@ const MobileRolView = ({
         const te = {}; 
         for (let d = 0; d < totalDiasMes; d++) {
           const val = (cols[5+d]||'').trim();
-          te[d+1] = (TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val]) || '';
+          let codigo = TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val];
+          if (!codigo && val) {
+            const valNormalizado = val.replace(/🥳|🎂/g, '').trim().toUpperCase();
+            if (valNormalizado.includes('CUMPLEAÑOS') || valNormalizado.includes('CUMPLEANOS')) codigo = '🎂';
+          }
+          te[d+1] = codigo || '';
         }
         tObj[i] = te;
       }

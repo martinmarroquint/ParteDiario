@@ -453,7 +453,15 @@ const PanelTrabajo = ({
           const val = (cols[5+d]||'').trim();
           // Si el valor es un código corto que ya existe en TURNO_MAP, usarlo directo
           // Si es nombre completo, mapear a código
-          te[d+1] = (TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val]) || '';
+          let codigo = TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val];
+          // Fallback: buscar por nombre sin emojis para cumpleaños y otros con emojis variables
+          if (!codigo && val) {
+            const valNormalizado = val.replace(/🥳|🎂/g, '').trim().toUpperCase();
+            if (valNormalizado.includes('CUMPLEAÑOS') || valNormalizado.includes('CUMPLEANOS')) {
+              codigo = '🎂';
+            }
+          }
+          te[d+1] = codigo || '';
         }
         tObj[i] = te; cObj[i] = af;
       }

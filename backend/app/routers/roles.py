@@ -137,7 +137,10 @@ async def get_turnos(current_user: User = Depends(get_current_user)):
         '24 X 48': '24',
         'SERVICIO CONTINUO': 'SC',
         'EXTERNO': 'EXT',
+        'CUMPLEAÑOS 🥳': '🎂',
         'CUMPLEAÑOS 🥳🥳🥳🥳': '🎂',
+        'CUMPLEANOS': '🎂',
+        'CUMPLEAÑOS': '🎂',
         'RETEN': 'R',
         'SERVICIO': 'S',
         'MAÑANA - 12 HRS N': 'M/N',
@@ -172,6 +175,12 @@ async def get_turnos(current_user: User = Depends(get_current_user)):
         
         nombre_upper = nombre.upper().strip()
         code = NAME_TO_CODE.get(nombre_upper)
+        
+        # Fallback: buscar por contenido para nombres con emojis variables
+        if not code:
+            nombre_sin_emojis = nombre_upper.replace('🥳', '').replace('🎂', '').strip()
+            if 'CUMPLEAÑOS' in nombre_sin_emojis or 'CUMPLEANOS' in nombre_sin_emojis:
+                code = '🎂'
         
         if code:
             found_codes.add(code)
