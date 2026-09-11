@@ -3,19 +3,21 @@
 // v2.1 - Z-INDEX CORREGIDO: no interfiere con dropdowns del Encabezado
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Square, CheckSquare, Clock, ChevronDown, Check, Search, X } from 'lucide-react';
 import { DIAS_SEMANA, TURNO_MAP, MESES } from './constantes';
 
 const FILAS_POR_PAGINA = 20;
 
 // ============================================================
-// SELECT DE ÁREA CON BÚSQUEDA
+// SELECT DE ÁREA CON BÚSQUEDA + PORTAL
 // ============================================================
 const SelectArea = ({ value, opciones, onChange, disabled }) => {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const ref = useRef(null);
   const inputRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setAbierto(false); };
@@ -25,6 +27,13 @@ const SelectArea = ({ value, opciones, onChange, disabled }) => {
 
   useEffect(() => {
     if (abierto && inputRef.current) inputRef.current.focus();
+  }, [abierto]);
+
+  useEffect(() => {
+    if (abierto && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      setPos({ top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX, width: Math.max(r.width, 200) });
+    }
   }, [abierto]);
 
   const filtradas = busqueda.trim()
@@ -39,42 +48,45 @@ const SelectArea = ({ value, opciones, onChange, disabled }) => {
         type="button"
         onClick={() => !disabled && setAbierto(!abierto)}
         disabled={disabled}
-        className={`w-full text-left h-7 flex items-center gap-1 px-2 text-xs rounded-lg border transition-all truncate ${
+        className={`w-full text-left h-8 flex items-center gap-1.5 px-2.5 text-xs rounded-lg border transition-all truncate ${
           disabled
             ? 'border-gray-100 text-gray-400 cursor-not-allowed bg-gray-50'
-            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 cursor-pointer'
+            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:shadow-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300'
         }`}
-        style={{ maxWidth: '140px' }}
+        style={{ maxWidth: '150px' }}
       >
-        <span className="flex-1 truncate">{seleccionado || 'Sin área'}</span>
-        {!disabled && <ChevronDown className={`w-3 h-3 text-gray-400 flex-shrink-0 transition-transform ${abierto ? 'rotate-180' : ''}`} />}
+        <span className="flex-1 truncate font-medium">{seleccionado || 'Sin área'}</span>
+        {!disabled && <ChevronDown className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform ${abierto ? 'rotate-180' : ''}`} />}
       </button>
 
-      {abierto && !disabled && (
-        <div className="absolute top-full mt-1 left-0 bg-white border border-gray-200 rounded-xl shadow-xl z-[9999] min-w-[180px] w-max max-h-64 overflow-hidden"
-          onClick={(e) => e.stopPropagation()}>
-          <div className="p-1.5 border-b border-gray-100">
+      {abierto && !disabled && createPortal(
+        <div
+          className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
+          style={{ position: 'absolute', top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 99999 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-2 border-b border-gray-100 bg-gray-50/50">
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
               <input
                 ref={inputRef}
                 type="text"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 placeholder="Buscar área..."
-                className="w-full h-6 pl-6 pr-6 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+                className="w-full h-8 pl-8 pr-8 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-200 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               />
               {busqueda && (
-                <button onClick={() => setBusqueda('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <X className="w-3 h-3" />
+                <button onClick={() => setBusqueda('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           </div>
-          <div className="overflow-y-auto max-h-48">
+          <div className="overflow-y-auto max-h-52">
             {filtradas.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-gray-400 text-center">Sin resultados</div>
+              <div className="px-3 py-3 text-xs text-gray-400 text-center">Sin resultados</div>
             ) : (
               filtradas.map((opcion) => {
                 const sel = opcion === value;
@@ -82,18 +94,19 @@ const SelectArea = ({ value, opciones, onChange, disabled }) => {
                   <button
                     key={opcion}
                     onClick={() => { onChange(opcion); setAbierto(false); setBusqueda(''); }}
-                    className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between gap-2 ${
-                      sel ? 'bg-gray-50 text-gray-800 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between gap-2 ${
+                      sel ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'
                     }`}
                   >
                     <span className="truncate">{opcion}</span>
-                    {sel && <Check className="w-3 h-3 text-gray-500 flex-shrink-0" />}
+                    {sel && <Check className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />}
                   </button>
                 );
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
