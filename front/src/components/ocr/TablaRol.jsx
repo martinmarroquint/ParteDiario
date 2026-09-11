@@ -16,11 +16,16 @@ const SelectArea = ({ value, opciones, onChange, disabled }) => {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const ref = useRef(null);
+  const dropdownRef = useRef(null);
   const inputRef = useRef(null);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setAbierto(false); };
+    const h = (e) => {
+      const clickDentroTrigger = ref.current && ref.current.contains(e.target);
+      const clickDentroDropdown = dropdownRef.current && dropdownRef.current.contains(e.target);
+      if (!clickDentroTrigger && !clickDentroDropdown) setAbierto(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -61,9 +66,9 @@ const SelectArea = ({ value, opciones, onChange, disabled }) => {
 
       {abierto && !disabled && createPortal(
         <div
+          ref={dropdownRef}
           className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
           style={{ position: 'absolute', top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 99999 }}
-          onClick={(e) => e.stopPropagation()}
         >
           <div className="p-2 border-b border-gray-100 bg-gray-50/50">
             <div className="relative">
