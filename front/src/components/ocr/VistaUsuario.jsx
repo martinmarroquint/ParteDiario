@@ -1,7 +1,7 @@
 // src/components/ocr/VistaUsuario.jsx
 // VISTA PARA USUARIO BASE — Con separación entre celdas
 
-import React, { useMemo, useCallback, useState, useRef } from 'react';
+import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { User, ChevronLeft, ChevronRight, Calendar, Clock } from 'lucide-react';
 import { TURNO_MAP, MESES, DIAS_SEMANA } from './constantes';
 
