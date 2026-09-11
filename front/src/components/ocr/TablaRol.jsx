@@ -3,10 +3,101 @@
 // v2.1 - Z-INDEX CORREGIDO: no interfiere con dropdowns del Encabezado
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Square, CheckSquare, Clock } from 'lucide-react';
+import { Square, CheckSquare, Clock, ChevronDown, Check, Search, X } from 'lucide-react';
 import { DIAS_SEMANA, TURNO_MAP, MESES } from './constantes';
 
 const FILAS_POR_PAGINA = 20;
+
+// ============================================================
+// SELECT DE ÁREA CON BÚSQUEDA
+// ============================================================
+const SelectArea = ({ value, opciones, onChange, disabled }) => {
+  const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setAbierto(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  useEffect(() => {
+    if (abierto && inputRef.current) inputRef.current.focus();
+  }, [abierto]);
+
+  const filtradas = busqueda.trim()
+    ? opciones.filter(o => o.toLowerCase().includes(busqueda.toLowerCase()))
+    : opciones;
+
+  const seleccionado = value || '';
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => !disabled && setAbierto(!abierto)}
+        disabled={disabled}
+        className={`w-full text-left h-7 flex items-center gap-1 px-2 text-xs rounded-lg border transition-all truncate ${
+          disabled
+            ? 'border-gray-100 text-gray-400 cursor-not-allowed bg-gray-50'
+            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 cursor-pointer'
+        }`}
+        style={{ maxWidth: '140px' }}
+      >
+        <span className="flex-1 truncate">{seleccionado || 'Sin área'}</span>
+        {!disabled && <ChevronDown className={`w-3 h-3 text-gray-400 flex-shrink-0 transition-transform ${abierto ? 'rotate-180' : ''}`} />}
+      </button>
+
+      {abierto && !disabled && (
+        <div className="absolute top-full mt-1 left-0 bg-white border border-gray-200 rounded-xl shadow-xl z-[9999] min-w-[180px] w-max max-h-64 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}>
+          <div className="p-1.5 border-b border-gray-100">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar área..."
+                className="w-full h-6 pl-6 pr-6 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+                onClick={(e) => e.stopPropagation()}
+              />
+              {busqueda && (
+                <button onClick={() => setBusqueda('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="overflow-y-auto max-h-48">
+            {filtradas.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-gray-400 text-center">Sin resultados</div>
+            ) : (
+              filtradas.map((opcion) => {
+                const sel = opcion === value;
+                return (
+                  <button
+                    key={opcion}
+                    onClick={() => { onChange(opcion); setAbierto(false); setBusqueda(''); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between gap-2 ${
+                      sel ? 'bg-gray-50 text-gray-800 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="truncate">{opcion}</span>
+                    {sel && <Check className="w-3 h-3 text-gray-500 flex-shrink-0" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const TablaRol = ({
   personalFiltrado, DIAS, turnos, cambiosArea, rolHabilitado, esAdmin,
@@ -197,16 +288,12 @@ const TablaRol = ({
                       style={{ backgroundColor: rowBg }}
                     >
                       {rolHabilitado ? (
-                        <select 
-                          value={cambiosArea[emp.id] || emp.area} 
-                          onChange={(e) => onCambiarArea(emp.id, e.target.value)}
-                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 cursor-pointer hover:border-gray-300 transition-colors truncate"
-                          style={{ maxWidth: '130px' }}
-                        >
-                          {todasLasAreas.map(a => (
-                            <option key={a} value={a}>{a}</option>
-                          ))}
-                        </select>
+                        <SelectArea
+                          value={cambiosArea[emp.id] || emp.area}
+                          opciones={todasLasAreas}
+                          onChange={(val) => onCambiarArea(emp.id, val)}
+                          disabled={!rolHabilitado}
+                        />
                       ) : (
                         <span className="text-gray-600 text-xs">{emp.area}</span>
                       )}
