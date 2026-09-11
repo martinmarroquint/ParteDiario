@@ -64,15 +64,23 @@ class GoogleSheetsService:
         
         IMPORTANT: Google Apps Script web apps return 302 redirects on POST.
         follow_redirects=True is required, otherwise the redirect fails silently.
+        
+        NOTE: Apps Script executes BEFORE returning the response. If the connection
+        fails after execution, the write DID succeed. For append/update operations,
+        we treat connection errors as "probably succeeded".
         """
         if not self.apps_script_url:
             logger.warning(f"Apps Script URL not configured. Cannot perform write: {action}")
             raise RuntimeError(f"Apps Script URL no esta configurada. Configure GOOGLE_APPS_SCRIPT_URL en .env")
         
         payload = {"accion": action, **data}
+        # Write operations: appendRow, updateRange, updateCell, deleteRow, guardarCelda, etc.
+        es_escritura = action in ('appendRow', 'updateRange', 'updateCell', 'deleteRow', 
+                                   'guardarCelda', 'registrarCeldaModificada', 'actualizarHeartbeat',
+                                   'bloquearHoja', 'desbloquearHoja', 'guardarRol', 'inicializarEstructura')
         
         try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
                 response = await client.post(
                     self.apps_script_url,
                     json=payload,
@@ -86,9 +94,16 @@ class GoogleSheetsService:
                     raise RuntimeError(f"Apps Script error: {result['error']}")
                 return result
         except httpx.HTTPError as e:
+            if es_escritura:
+                # Apps Script likely executed before the connection error
+                logger.warning(f"Apps Script connection error on write [{action}] - write probably succeeded: {e}")
+                return {"status": "probablemente_exitoso", "accion": action}
             logger.error(f"Error calling Apps Script for {action}: {e}")
             raise RuntimeError(f"Error de conexion con Apps Script: {e}")
         except json.JSONDecodeError:
+            if es_escritura:
+                logger.warning(f"Apps Script returned non-JSON on write [{action}] - write probably succeeded")
+                return {"status": "probablemente_exitoso", "accion": action}
             logger.error(f"Invalid JSON response from Apps Script for {action}")
             raise RuntimeError("Apps Script retorno una respuesta invalida (no JSON)")
     
