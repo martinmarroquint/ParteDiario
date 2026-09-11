@@ -167,8 +167,14 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   // ============================================================
   const personalConUsuario = useMemo(() => {
     return personal.map(emp => {
-      // Match por DNI (el campo "usuario" en USUARIOS_OCR es el DNI)
-      const usuario = usuarios.find(u => u.usuario === emp.dni && emp.dni);
+      // Match inteligente: primero por DNI, luego por nombre (compatibilidad con usuarios viejos)
+      let usuario = null;
+      if (emp.dni) {
+        usuario = usuarios.find(u => u.usuario === emp.dni);
+      }
+      if (!usuario) {
+        usuario = usuarios.find(u => u.nombre === emp.nombre);
+      }
       return {
         ...emp,
         usuario: usuario || null,
@@ -213,7 +219,10 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
 
   const estadisticas = useMemo(() => {
     const total = personal.length;
-    const conUsuario = personal.filter(p => usuarios.some(u => u.usuario === p.dni && p.dni)).length;
+    const conUsuario = personal.filter(p => {
+      if (p.dni && usuarios.some(u => u.usuario === p.dni)) return true;
+      return usuarios.some(u => u.nombre === p.nombre);
+    }).length;
     const sinUsuario = total - conUsuario;
     
     const porRol = {};
