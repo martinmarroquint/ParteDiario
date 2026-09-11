@@ -60,15 +60,19 @@ class GoogleSheetsService:
         })
     
     async def _apps_script_action(self, action: str, data: dict) -> dict:
-        """Call the Apps Script web app for write operations."""
+        """Call the Apps Script web app for write operations.
+        
+        IMPORTANT: Google Apps Script web apps return 302 redirects on POST.
+        follow_redirects=True is required, otherwise the redirect fails silently.
+        """
         if not self.apps_script_url:
             logger.warning(f"Apps Script URL not configured. Cannot perform write: {action}")
-            return {"error": "Apps Script URL not configured"}
+            raise RuntimeError(f"Apps Script URL no esta configurada. Configure GOOGLE_APPS_SCRIPT_URL en .env")
         
         payload = {"accion": action, **data}
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 response = await client.post(
                     self.apps_script_url,
                     json=payload,
@@ -76,13 +80,17 @@ class GoogleSheetsService:
                 )
                 response.raise_for_status()
                 result = response.json()
+                # Check if Apps Script returned an error in the response body
+                if isinstance(result, dict) and result.get("error"):
+                    logger.error(f"Apps Script returned error for {action}: {result['error']}")
+                    raise RuntimeError(f"Apps Script error: {result['error']}")
                 return result
         except httpx.HTTPError as e:
             logger.error(f"Error calling Apps Script for {action}: {e}")
-            return {"error": str(e)}
+            raise RuntimeError(f"Error de conexion con Apps Script: {e}")
         except json.JSONDecodeError:
             logger.error(f"Invalid JSON response from Apps Script for {action}")
-            return {"error": "Invalid response from Apps Script"}
+            raise RuntimeError("Apps Script retorno una respuesta invalida (no JSON)")
     
     async def _get_sheet_ids(self) -> dict:
         """Get sheet names and their GIDs."""

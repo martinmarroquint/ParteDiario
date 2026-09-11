@@ -64,6 +64,8 @@ async def create_user(
         return User(**user_dict)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=f"Error al escribir en Google Sheets: {e}")
 
 
 @router.put("/{user_id}", response_model=User)
@@ -80,6 +82,8 @@ async def update_user(
         return User(**user_dict)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=f"Error al escribir en Google Sheets: {e}")
 
 
 @router.delete("/{user_id}", response_model=MessageResponse)

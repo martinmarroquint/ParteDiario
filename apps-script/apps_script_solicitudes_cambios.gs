@@ -210,6 +210,22 @@ function doPost(e) {
         resultado = { success: false, error: 'Accion no reconocida: ' + data.accion };
     }
 
+    // --- ACTUALIZAR HEARTBEAT (detectar cambios en tiempo real) ---
+    // Solo para ACCIONES DE ESCRITURA (no para lecturas ni ping)
+    const writeActions = [
+      'guardarCelda', 'guardarLote', 'guardarIndividual', 'guardarLoteCeldas',
+      'appendRow', 'updateCell', 'updateRange', 'deleteRow',
+      'admin_crearUsuario', 'admin_actualizarUsuario', 'admin_resetearPassword', 'admin_toggleActivo',
+      'cambiarPassword', 'registrarDescansoMedico', 'registrarVacaciones',
+      'marcarFinalizado', 'desmarcarFinalizado', 'marcarLoteFinalizado', 'desmarcarLoteFinalizado',
+      'guardarConfigGlobal', 'inicializarEstructura',
+      'registrarSolicitudCambio', 'actualizarSolicitudCambio',
+      'registrarCeldaModificada', 'limpiarCeldasModificadas'
+    ];
+    if (writeActions.includes(data.accion)) {
+      actualizarHeartbeat();
+    }
+
     // --- RETORNAR RESPUESTA ---
     return crearRespuesta(resultado);
 
@@ -244,6 +260,8 @@ function doGet(e) {
         return crearRespuesta(obtenerEstado(data));
       case 'obtenerUsuarios':
         return crearRespuesta(adminObtenerUsuarios(data));
+      case 'obtenerHeartbeat':
+        return crearRespuesta(obtenerHeartbeat(data));
       case 'ping':
         return crearRespuesta({ success: true, status: 'ok', timestamp: new Date().toISOString(), version: '13.0' });
       default:
@@ -907,6 +925,40 @@ function guardarConfiguracionGlobal(data) {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.toString() };
+  }
+}
+
+// ============================================
+// HEARTBEAT - Deteccion de cambios en tiempo real
+// ============================================
+// Se escribe en CONFIG!F2 cada vez que alguien modifica datos.
+// El frontend lee esta celda cada 30s. Si cambió → refresca datos.
+
+function actualizarHeartbeat() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('CONFIG');
+    if (!sheet) {
+      sheet = ss.insertSheet('CONFIG');
+      sheet.getRange('A1:F1').setValues([['hojaActiva', 'mes', 'anio', 'actualizadoPor', 'timestamp', 'heartbeat']]);
+    }
+    // Escribir timestamp actual en F2
+    sheet.getRange('F2').setValue(new Date().toISOString());
+  } catch (e) {
+    // Silencioso - no fallar por heartbeat
+  }
+}
+
+function obtenerHeartbeat(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('CONFIG');
+    if (!sheet) return { success: true, heartbeat: null };
+    
+    var heartbeat = String(sheet.getRange('F2').getValue() || '');
+    return { success: true, heartbeat: heartbeat };
+  } catch (error) {
+    return { success: false, heartbeat: null };
   }
 }
 

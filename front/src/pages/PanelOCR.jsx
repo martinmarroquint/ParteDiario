@@ -277,8 +277,16 @@ const PanelOCRContent = () => {
     };
 
     contarPendientes();
-    const it = setInterval(contarPendientes, 60000);
-    return () => clearInterval(it);
+    // Refrescar al volver a la pestaña + cada 90s si visible
+    const handleVis = () => { if (document.visibilityState === 'visible') contarPendientes(); };
+    document.addEventListener('visibilitychange', handleVis);
+    const it = setInterval(() => {
+      if (document.visibilityState === 'visible') contarPendientes();
+    }, 90000);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVis);
+      clearInterval(it);
+    };
   }, [isAuthenticated, user, config]);
 
   // ============================================================
@@ -311,8 +319,16 @@ const PanelOCRContent = () => {
     };
 
     contarMesaPartes();
-    const it = setInterval(contarMesaPartes, 60000);
-    return () => clearInterval(it);
+    // Refrescar al volver a la pestaña + cada 90s si visible
+    const handleVis = () => { if (document.visibilityState === 'visible') contarMesaPartes(); };
+    document.addEventListener('visibilitychange', handleVis);
+    const it = setInterval(() => {
+      if (document.visibilityState === 'visible') contarMesaPartes();
+    }, 90000);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVis);
+      clearInterval(it);
+    };
   }, [isAuthenticated, user]);
 
   // ============================================================

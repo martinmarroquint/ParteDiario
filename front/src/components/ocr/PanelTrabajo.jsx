@@ -536,17 +536,118 @@ const PanelTrabajo = ({
     }
   }, [hojaSeleccionada, config.sheetId, cargarDatosIniciales]);
 
-  // Auto-refresh: recargar datos cada 30 segundos si ya se cargó
-  useEffect(() => {
-    if (!cargadoRef.current) return;
-    const interval = setInterval(() => {
-      if (!cargandoRef.current) {
-        cargadoRef.current = false;
-        cargarDatosIniciales();
+  // Sincronización delta inteligente: solo actualiza celdas que cambiaron
+  const heartbeatRef = useRef('');
+  const turnosRef = useRef(turnos);
+  
+  // Mantener turnosRef sincronizado con turnos
+  useEffect(() => { turnosRef.current = turnos; }, [turnos]);
+  
+  // Función para aplicar solo los cambios (delta sync)
+  const aplicarDelta = useCallback(async () => {
+    if (!config.sheetId || !hojaSeleccionada || !cargadoRef.current) return;
+    if (cargandoRef.current) return;
+    
+    try {
+      // 1. Obtener heartbeat actual
+      const hbUrl = `${config.appsScriptUrl}?accion=obtenerHeartbeat&ts=${Date.now()}`;
+      const hbRes = await fetch(hbUrl, { method: 'GET', cache: 'no-store' });
+      const hbData = await hbRes.json();
+      const nuevoHeartbeat = hbData.heartbeat || '';
+      
+      // 2. Si no hay cambio, no hacer nada
+      if (!nuevoHeartbeat || nuevoHeartbeat === heartbeatRef.current) return;
+      heartbeatRef.current = nuevoHeartbeat;
+      
+      // 3. Obtener solo las celdas modificadas (delta)
+      const modUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/CELDA_MODIFICADA!A:H?key=${config.apiKey}`;
+      const modRes = await fetch(modUrl);
+      if (!modRes.ok) return;
+      const modData = await modRes.json();
+      const rowsMod = modData.values || [];
+      
+      // 4. Procesar modificaciones de esta hoja
+      const celdasNuevas = new Map();
+      const empIdsAActualizar = new Set();
+      
+      for (let m = 1; m < rowsMod.length; m++) {
+        const row = rowsMod[m];
+        if (String(row[0] || '') !== hojaSeleccionada) continue;
+        
+        const fila = parseInt(row[1]);
+        const dia = parseInt(row[2]);
+        const valorAnterior = String(row[3] || '').trim();
+        const valorNuevo = String(row[4] || '').trim();
+        const responsable = String(row[5] || '');
+        const fecha = row[6] || '';
+        const tipo = String(row[7] || 'directo');
+        
+        if (!fila || !dia) continue;
+        
+        const empId = fila - 1;
+        celdasNuevas.set(`${empId}-${dia}`, {
+          valorAnterior, valorNuevo, responsable, fecha, tipo
+        });
+        empIdsAActualizar.add(empId);
       }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [cargarDatosIniciales, hojaSeleccionada]);
+      
+      // 5. Aplicar cambios usando functional update (evita race conditions)
+      let hayCambios = false;
+      setTurnos(prev => {
+        const next = { ...prev };
+        for (const empId of empIdsAActualizar) {
+          if (!next[empId]) continue;
+          for (const [key, mod] of celdasNuevas) {
+            const [idStr, diaStr] = key.split('-');
+            if (parseInt(idStr) !== empId) continue;
+            const dia = parseInt(diaStr);
+            const valorActual = next[empId][dia] || '';
+            if (valorActual !== mod.valorNuevo) {
+              next[empId] = { ...next[empId], [dia]: mod.valorNuevo };
+              hayCambios = true;
+            }
+          }
+        }
+        return next;
+      });
+      
+      // 6. Actualizar indicadores visuales (celdasModificadas)
+      if (hayCambios) {
+        setCeldasModificadas(prev => {
+          const next = new Map(prev);
+          for (const [key, mod] of celdasNuevas) {
+            next.set(key, mod);
+          }
+          return next;
+        });
+        // NO actualizar turnosBackup aquí - solo se actualiza en guardado explícito
+      }
+      
+    } catch (e) {
+      // Silencioso - no molestar al usuario
+    }
+  }, [config.sheetId, config.apiKey, config.appsScriptUrl, hojaSeleccionada]);
+
+  // Effect: heartbeat delta sync cada 10 segundos (casi tiempo real)
+  useEffect(() => {
+    if (!cargadoRef.current || !config.appsScriptUrl) return;
+
+    // Verificar cambios cada 10 segundos (solo si pestaña visible)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') aplicarDelta();
+    }, 10000);
+
+    // Al volver a la pestaña: verificación inmediata
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') aplicarDelta();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [aplicarDelta, config.appsScriptUrl]);
 
   // Sync mesSeleccionado with hojaSeleccionada
   useEffect(() => {
@@ -925,6 +1026,11 @@ const PanelTrabajo = ({
     const columna = columnaLetra(4 + dia);
     const valorTexto = valor ? (TURNO_MAP[valor]?.nombre || valor) : '';
 
+    // Obtener valor anterior del estado local (antes de que React actualice)
+    const empId = fila - 1;
+    const valorAnterior = turnosRef.current[empId]?.[dia] || '';
+
+    // 1. Guardar el cambio en Google Sheets
     fetch(config.appsScriptUrl, {
       method: 'POST',
       mode: 'no-cors',
@@ -940,6 +1046,24 @@ const PanelTrabajo = ({
         registrarHistorial: false
       })
     }).catch(err => console.warn('Error guardando celda:', err));
+
+    // 2. Registrar en CELDA_MODIFICADA para que otros usuarios detecten el cambio
+    if (valorAnterior !== valorTexto) {
+      fetch(config.appsScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: bodyAsciiJson({
+          accion: 'registrarCeldaModificada',
+          hoja: hojaSeleccionada,
+          fila, dia,
+          valorAnterior: valorAnterior || '',
+          valorNuevo: valorTexto || '',
+          responsable: responsable || 'ADMIN',
+          tipo: 'directo'
+        })
+      }).catch(() => {});
+    }
 
   }, [config.appsScriptUrl, hojaSeleccionada, areaAsignada, responsable]);
 

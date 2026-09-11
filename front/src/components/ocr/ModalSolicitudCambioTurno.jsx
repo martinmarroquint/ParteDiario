@@ -79,9 +79,7 @@ const ModalSolicitudCambioTurno = ({
       setExpandida(null);
       setObservacion('');
       cargar();
-
-      const it = setInterval(cargar, 30000);
-      return () => clearInterval(it);
+      // Se elimino el polling de 30s - las solicitudes se cargan al abrir el modal
     }
   }, [isOpen, cargar, vista]);
 
