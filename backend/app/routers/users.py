@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Optional
+import logging
 
 from app.models.user import User, UserCreate, UserUpdate, UserListResponse
 from app.models.auth import TempPasswordResponse, MessageResponse
@@ -7,6 +8,8 @@ from app.services.user_service import UserService
 from app.services.auth_service import AuthService
 from app.services.sheets_service import GoogleSheetsService
 from app.middleware.auth import get_current_user, require_admin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["Usuarios"])
 
@@ -66,6 +69,9 @@ async def create_user(
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=f"Error al escribir en Google Sheets: {e}")
+    except Exception as e:
+        logger.error(f"Error inesperado creando usuario: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 @router.put("/{user_id}", response_model=User)
@@ -84,6 +90,9 @@ async def update_user(
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=f"Error al escribir en Google Sheets: {e}")
+    except Exception as e:
+        logger.error(f"Error inesperado actualizando usuario {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 @router.delete("/{user_id}", response_model=MessageResponse)

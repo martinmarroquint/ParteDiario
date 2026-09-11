@@ -59,7 +59,12 @@ app.state.limiter = limiter
 async def logging_middleware(request: Request, call_next):
     """Log all requests with timing."""
     start_time = time.time()
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error(f"Request crashed: {request.method} {request.url.path} - {e} ({round((time.time() - start_time) * 1000, 2)}ms)")
+        raise
     duration = time.time() - start_time
     log_data = {
         "method": request.method,

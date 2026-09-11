@@ -12,6 +12,7 @@ import {
   Save, UserCog, Eye, EyeOff, GraduationCap, MapPin
 } from 'lucide-react';
 import { DEFAULT_GOOGLE_CONFIG, API_CONFIG, hojaDelMesActual } from '../constantes';
+import apiClient from '../services/apiClient';
 
 // ============================================================
 // CONFIGURACIÓN
@@ -301,8 +302,6 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
       // Mapear rol string a numerico para el backend
       const ROL_MAP = { admin: 4, jefe_division: 3, jefe_departamento: 2, jefe_area: 1, usuario: 0 };
       const rolNumerico = ROL_MAP[formData.rol] || 0;
-      const token = localStorage.getItem('ocr_auth_token') || '';
-      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
 
       if (modalUsuario.accion === 'crear') {
         const payload = {
@@ -316,14 +315,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
           areas: formData.areas || [],
         };
 
-        const res = await fetch(`${API_CONFIG.baseUrl}/users`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload)
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Error al crear usuario');
+        await apiClient.createUser(payload);
       } else {
         const userId = parseInt(modalUsuario.empleado.usuario.id);
         const payload = {
@@ -334,14 +326,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
           activo: formData.activo,
         };
 
-        const res = await fetch(`${API_CONFIG.baseUrl}/users/${userId}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify(payload)
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Error al actualizar usuario');
+        await apiClient.updateUser(userId, payload);
       }
 
       setMensaje({
@@ -375,19 +360,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
     setGuardando(true);
 
     try {
-      const result = await fetch(`${API_CONFIG.baseUrl}/users/${userId}/reset-password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('ocr_auth_token') || ''}`
-        }
-      });
-
-      const data = await result.json();
-
-      if (!result.ok) {
-        throw new Error(data.detail || 'Error al resetear contraseña');
-      }
+      const data = await apiClient.resetUserPassword(userId);
 
       // Mostrar contraseña en modal dedicado
       setPasswordResetResult({
@@ -417,13 +390,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
     setGuardando(true);
 
     try {
-      await fetch(`${API_CONFIG.baseUrl}/users/${userId}/toggle`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('ocr_auth_token') || ''}`
-        }
-      });
+      await apiClient.toggleUser(userId);
 
       setMensaje({
         tipo: 'success',
