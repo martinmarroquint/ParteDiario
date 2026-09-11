@@ -79,9 +79,9 @@ class UserService:
             nombre=user_data.nombre,
             usuario=user_data.usuario,
             correo=user_data.correo,
-            grado=user_data.grado,
-            dni=user_data.dni,
-            activo=user_data.activo,
+            grado=getattr(user_data, 'grado', ''),
+            dni=getattr(user_data, 'dni', ''),
+            activo=getattr(user_data, 'activo', True),
             roles=user_data.roles,
             areas=user_data.areas,
         )
