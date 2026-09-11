@@ -818,6 +818,7 @@ const PanelOCRContent = () => {
         esUsuario={isUsuario}
         user={user}
         pendingSolicitudesCount={pendingSolicitudesCount}
+        pendingMesaPartesCount={pendingMesaPartesCount}
       />
     );
   }, [
@@ -831,7 +832,9 @@ const PanelOCRContent = () => {
     isJefe, 
     isUsuario, 
     user, 
-    medicosSistema
+    medicosSistema,
+    pendingSolicitudesCount,
+    pendingMesaPartesCount
   ]);
 
   // ============================================================
