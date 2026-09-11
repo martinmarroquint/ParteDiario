@@ -21,13 +21,27 @@ const HOJA_PERSONAL = hojaDelMesActual();
 const HOJA_USUARIOS = 'USUARIOS_OCR';
 
 const ROLES_DISPONIBLES = [
-  { value: 'admin', label: 'Administrador', nivel: 5, color: 'bg-amber-100 text-amber-700' },
-  { value: 'tramite_documentario', label: 'Trámite Documentario', nivel: 4, color: 'bg-indigo-100 text-indigo-700' },
+  { value: 'admin', label: 'Administrador', nivel: 4, color: 'bg-amber-100 text-amber-700' },
+  { value: 'tramite_documentario', label: 'Trámite Documentario', nivel: 5, color: 'bg-indigo-100 text-indigo-700' },
   { value: 'jefe_division', label: 'Jefe de División', nivel: 3, color: 'bg-purple-100 text-purple-700' },
   { value: 'jefe_departamento', label: 'Jefe de Departamento', nivel: 2, color: 'bg-blue-100 text-blue-700' },
   { value: 'jefe_area', label: 'Jefe de Área', nivel: 1, color: 'bg-emerald-100 text-emerald-700' },
   { value: 'usuario', label: 'Usuario Base', nivel: 0, color: 'bg-gray-100 text-gray-600' }
 ];
+
+// Mapeo numérico→string: el backend guarda "1","2","3","4","5","0" en columna G
+const ROL_NUM_A_STRING = {
+  '4': 'admin', 'administrador': 'admin',
+  '5': 'tramite_documentario', 'tramite': 'tramite_documentario',
+  '3': 'jefe_division', 'division': 'jefe_division',
+  '2': 'jefe_departamento', 'departamento': 'jefe_departamento', 'depto': 'jefe_departamento',
+  '1': 'jefe_area', 'area': 'jefe_area',
+  '0': 'usuario', 'user': 'usuario',
+};
+const ROL_STRING_A_NUM = {};
+Object.entries(ROL_NUM_A_STRING).forEach(([num, str]) => {
+  if (str && !ROL_STRING_A_NUM[str]) ROL_STRING_A_NUM[str] = num;
+});
 // ============================================================
 
 const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
@@ -105,22 +119,31 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
       if (usuariosRes.ok) {
         const usuariosData = await usuariosRes.json();
         const usuariosRows = usuariosData.values || [];
-        usuariosList = usuariosRows.slice(1).map((row) => ({
-          id: (row[0] || '').trim(),
-          nombre: (row[1] || '').trim(),
-          email: (row[2] || '').trim(),
-          usuario: (row[3] || '').trim(),
-          password_hash: (row[4] || '').trim(),
-          salt: (row[5] || '').trim(),
-          rol: (row[6] || 'usuario').trim(),
-          area: (row[7] || '').trim(),
-          fecha_creacion: (row[8] || '').trim(),
-          ultimo_acceso: (row[9] || '').trim(),
-          intentos_fallidos: parseInt(row[10]) || 0,
-          bloqueado_hasta: (row[11] || '').trim(),
-          activo: (row[12] || 'TRUE').toUpperCase() === 'TRUE',
-          requiere_cambio: (row[13] || 'FALSE').toUpperCase() === 'TRUE'
-        }));
+        usuariosList = usuariosRows.slice(1).map((row) => {
+          // Column G puede tener: "1", "4", "1,2", "jefe_area", etc.
+          const rolRaw = (row[6] || '0').trim();
+          // Tomar el primer rol (separado por coma)
+          const primerRol = rolRaw.split(',')[0].trim();
+          // Convertir numérico a string
+          const rolStr = ROL_NUM_A_STRING[primerRol] || primerRol || 'usuario';
+
+          return {
+            id: (row[0] || '').trim(),
+            nombre: (row[1] || '').trim(),
+            email: (row[2] || '').trim(),
+            usuario: (row[3] || '').trim(),
+            password_hash: (row[4] || '').trim(),
+            salt: (row[5] || '').trim(),
+            rol: rolStr,  // Ahora siempre es string: 'admin', 'jefe_area', etc.
+            area: (row[7] || '').trim(),
+            fecha_creacion: (row[8] || '').trim(),
+            ultimo_acceso: (row[9] || '').trim(),
+            intentos_fallidos: parseInt(row[10]) || 0,
+            bloqueado_hasta: (row[11] || '').trim(),
+            activo: (row[12] || 'TRUE').toUpperCase() === 'TRUE',
+            requiere_cambio: (row[13] || 'FALSE').toUpperCase() === 'TRUE'
+          };
+        });
       }
 
       setPersonal(personalList);
@@ -144,7 +167,8 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   // ============================================================
   const personalConUsuario = useMemo(() => {
     return personal.map(emp => {
-      const usuario = usuarios.find(u => u.nombre === emp.nombre);
+      // Match por DNI (el campo "usuario" en USUARIOS_OCR es el DNI)
+      const usuario = usuarios.find(u => u.usuario === emp.dni && emp.dni);
       return {
         ...emp,
         usuario: usuario || null,
@@ -189,7 +213,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
 
   const estadisticas = useMemo(() => {
     const total = personal.length;
-    const conUsuario = personal.filter(p => usuarios.some(u => u.nombre === p.nombre)).length;
+    const conUsuario = personal.filter(p => usuarios.some(u => u.usuario === p.dni && p.dni)).length;
     const sinUsuario = total - conUsuario;
     
     const porRol = {};
@@ -229,7 +253,8 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   };
 
   const abrirCrearUsuario = (empleado) => {
-    const usuarioBase = generarUsuario(empleado.nombre);
+    // El usuario de login es el DNI del empleado
+    const usuarioBase = empleado.dni || generarUsuario(empleado.nombre);
     setFormData({
       nombre: empleado.nombre,
       usuario: usuarioBase,
@@ -300,7 +325,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
 
     try {
       // Mapear rol string a numerico para el backend
-      const ROL_MAP = { admin: 4, jefe_division: 3, jefe_departamento: 2, jefe_area: 1, usuario: 0 };
+      const ROL_MAP = { admin: 4, tramite_documentario: 5, jefe_division: 3, jefe_departamento: 2, jefe_area: 1, usuario: 0 };
       const rolNumerico = ROL_MAP[formData.rol] || 0;
 
       if (modalUsuario.accion === 'crear') {
