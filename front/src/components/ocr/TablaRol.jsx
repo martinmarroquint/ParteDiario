@@ -247,7 +247,7 @@ const TablaRol = ({
                             className={`w-9 h-9 text-xs font-bold rounded-lg transition-all outline-none ${
                               rolHabilitado 
                                 ? 'hover:scale-110 cursor-pointer focus:ring-2 focus:ring-gray-400' 
-                                : 'cursor-default opacity-60'
+                                : 'cursor-default'
                             }`}
                             style={{ 
                               backgroundColor: turno ? t?.color : 'transparent', 
