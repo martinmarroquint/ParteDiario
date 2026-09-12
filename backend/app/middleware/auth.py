@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 
 from fastapi import Depends, HTTPException, status
@@ -8,10 +9,15 @@ from app.services.user_service import UserService
 from app.services.sheets_service import GoogleSheetsService
 from app.utils.security import decode_access_token
 
+logger = logging.getLogger(__name__)
+
 security = HTTPBearer()
 
-sheets_service = GoogleSheetsService()
-user_service = UserService(sheets_service)
+# Singleton instances — shared across ALL routers (auth, roles, solicitudes, mesa_partes).
+# Creating separate instances in each router module caused Google Sheets API connection
+# pool exhaustion on Render free tier, leading to timeouts and 401 errors.
+_sheets_service = GoogleSheetsService()
+_user_service = UserService(_sheets_service)
 
 
 async def get_current_user(
@@ -22,6 +28,7 @@ async def get_current_user(
     payload = decode_access_token(token)
     
     if payload is None:
+        logger.warning("Auth: JWT decode failed (token invalid or expired)")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido o expirado",
@@ -30,19 +37,30 @@ async def get_current_user(
     
     user_id = payload.get("sub")
     if user_id is None:
+        logger.warning("Auth: JWT payload missing 'sub' claim")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido",
         )
     
-    user = await user_service.get_user_by_id(int(user_id))
+    try:
+        user = await _user_service.get_user_by_id(int(user_id))
+    except Exception as e:
+        logger.error(f"Auth: Failed to look up user_id={user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Error al validar usuario",
+        )
+    
     if user is None:
+        logger.warning(f"Auth: user_id={user_id} not found in USUARIOS_OCR")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuario no encontrado",
         )
     
     if not user.activo:
+        logger.warning(f"Auth: user_id={user_id} is inactive")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario desactivado",

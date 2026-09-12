@@ -4,6 +4,7 @@
 // SOPORTE COMPLETO PARA TODOS LOS ROLES (Admin, Jefe Área, Jefe Departamento, Jefe División, Usuario)
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import Login from '../components/ocr/auth/Login';
 import PanelTrabajo from '../components/ocr/PanelTrabajo';
 import MobileRolView from '../components/ocr/MobileRolView';
@@ -20,6 +21,7 @@ import { rolesService } from '../components/ocr/services/rolesService';
 import { descansosService } from '../components/ocr/services/descansosService';
 import { vacacionesService } from '../components/ocr/services/vacacionesService';
 import { solicitudesService } from '../components/ocr/services/solicitudesService';
+import { invalidateTurnosCache } from '../components/ocr/services/turnosService';
 
 const STORAGE_SESION = 'ocr_sesion_activa';
 
@@ -185,6 +187,8 @@ const PanelOCRContent = () => {
   const [mostrarCambiosTurno, setMostrarCambiosTurno] = useState(false);
   const [pendingSolicitudesCount, setPendingSolicitudesCount] = useState(0);
   const [pendingMesaPartesCount, setPendingMesaPartesCount] = useState(0);
+  const [gridRefreshKey, setGridRefreshKey] = useState(0);
+  const [solicitudAplicada, setSolicitudAplicada] = useState(false);
   const prevCountRef = useRef(0);
   
   // ============================================================
@@ -257,38 +261,10 @@ const PanelOCRContent = () => {
   }, []);
 
   // ============================================================
-  // POLLING: Contar solicitudes pendientes cada 60 segundos
+  // SOLICITUDES: Badge count loaded on-demand (no polling)
+  // Loaded when modal opens, not in background.
+  // This follows the mesa_de_partes pattern: no background auth calls.
   // ============================================================
-  useEffect(() => {
-    if (!isAuthenticated || !user) return;
-    const userRol = user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0);
-    const userAreas = user?.areas || (user?.area ? [user.area] : []);
-    const userName = user?.nombre || '';
-
-    const contarPendientes = async () => {
-      try {
-        const result = await solicitudesService.getBandeja();
-        if (result.success) {
-          const pendientes = result.data.filter(s => s.estado === 'PENDIENTE').length;
-          setPendingSolicitudesCount(pendientes);
-        }
-      } catch {
-        // Silencioso - no molestar al usuario
-      }
-    };
-
-    contarPendientes();
-    // Refrescar al volver a la pestaña + cada 90s si visible
-    const handleVis = () => { if (document.visibilityState === 'visible') contarPendientes(); };
-    document.addEventListener('visibilitychange', handleVis);
-    const it = setInterval(() => {
-      if (document.visibilityState === 'visible') contarPendientes();
-    }, 90000);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVis);
-      clearInterval(it);
-    };
-  }, [isAuthenticated, user, config]);
 
   // ============================================================
   // POLLING: Contar notificaciones Mesa de Partes cada 60 segundos
@@ -766,7 +742,17 @@ const PanelOCRContent = () => {
   // ============================================================
   // MEMOIZAR CALLBACKS PARA ABRIR MODALES
   // ============================================================
-  const abrirCambiosTurno = useCallback(() => setMostrarCambiosTurno(true), []);
+  const abrirCambiosTurno = useCallback(async () => {
+    setMostrarCambiosTurno(true);
+    // Load badge count on-demand when modal opens
+    try {
+      const result = await solicitudesService.getBandeja();
+      if (result.data) {
+        const pendientes = result.data.filter(s => s.estado === 'PENDIENTE').length;
+        setPendingSolicitudesCount(pendientes);
+      }
+    } catch { /* ignore */ }
+  }, []);
   const abrirAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(true), []);
   const cerrarAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(false), []);
   const abrirMesaPartes = useCallback(() => setMostrarMesaPartes(true), []);
@@ -778,6 +764,17 @@ const PanelOCRContent = () => {
   const abrirParteDiario = useCallback(() => setMostrarParteDiario(true), []);
   const cerrarParteDiario = useCallback(() => setMostrarParteDiario(false), []);
   const cerrarCambiosTurno = useCallback(() => setMostrarCambiosTurno(false), []);
+
+  // Callback when a solicitude is approved → refresh the grid
+  const handleCambioAplicado = useCallback(() => {
+    setSolicitudAplicada(true);
+    setGridRefreshKey(prev => prev + 1);
+    // Invalidate turno cache so next load gets fresh data
+    invalidateTurnosCache();
+    initTurnosDinamicos();
+    // Auto-hide notification after 5 seconds
+    setTimeout(() => setSolicitudAplicada(false), 5000);
+  }, []);
 
   // ============================================================
   // RENDERIZADO CONDICIONAL CON useMemo PARA EVITAR REMONTES
@@ -913,6 +910,11 @@ const PanelOCRContent = () => {
       {/* ============================================================
           MODALES
           ============================================================ */}
+      {solicitudAplicada && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[400] bg-emerald-500 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-semibold animate-bounce">
+          <CheckCircle2 className="w-4 h-4" /> Cambios aplicados al rol. La grilla se actualizara al recargar.
+        </div>
+      )}
       <ModalDescansoMedico
         isOpen={mostrarDescansoMedico}
         onClose={cerrarDescansoMedico}
@@ -952,6 +954,8 @@ const PanelOCRContent = () => {
           (user?.area ? [user.area] : 
             (isAdmin ? ['TODAS'] : []))
         }
+        personal={todoElPersonal}
+        onCambioAplicado={handleCambioAplicado}
       />
 
       {isAdmin && (

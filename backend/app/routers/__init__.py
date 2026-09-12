@@ -7,4 +7,5 @@ from app.routers import (
     vacaciones,
     areas,
     estructura_jerarquica,
+    mesa_partes,
 )

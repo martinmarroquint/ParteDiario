@@ -236,11 +236,11 @@ class ApiClient {
   // ============================================
 
   async getSolicitudes(params = {}) {
-    return this.get('/solicitudes', params, { _skipAuthRedirect: true });
+    return this.get('/solicitudes', params);
   }
 
   async getSolicitud(id) {
-    return this.get(`/solicitudes/${id}`, {}, { _skipAuthRedirect: true });
+    return this.get(`/solicitudes/${id}`);
   }
 
   async crearSolicitud(data) {
@@ -248,31 +248,23 @@ class ApiClient {
   }
 
   async aprobarSolicitud(id, data = {}) {
-    return this.put(`/solicitudes/${id}/approve`, data, { _skipAuthRedirect: true });
+    return this.put(`/solicitudes/${id}/approve`, data);
   }
 
   async rechazarSolicitud(id, data) {
-    return this.put(`/solicitudes/${id}/reject`, data, { _skipAuthRedirect: true });
-  }
-
-  // ============================================
-  // SOLICITUDES ENDPOINTS (new backend)
-  // ============================================
-
-  async getSolicitudesMias() {
-    return this.get('/solicitudes', {}, { _skipAuthRedirect: true });
+    return this.put(`/solicitudes/${id}/reject`, data);
   }
 
   async getBandejaSolicitudes() {
-    return this.get('/solicitudes/bandeja', {}, { _skipAuthRedirect: true });
+    return this.get('/solicitudes/bandeja');
   }
 
   async getEstadisticasSolicitudes() {
-    return this.get('/solicitudes/estadisticas', {}, { _skipAuthRedirect: true });
+    return this.get('/solicitudes/estadisticas');
   }
 
   async cancelarSolicitud(id, data = {}) {
-    return this.put(`/solicitudes/${id}/cancel`, data, { _skipAuthRedirect: true });
+    return this.put(`/solicitudes/${id}/cancel`, data);
   }
 
   // ============================================

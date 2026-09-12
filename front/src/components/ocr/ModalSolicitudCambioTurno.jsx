@@ -1,15 +1,16 @@
 // src/components/ocr/ModalSolicitudCambioTurno.jsx
-// BANDEJA DE SOLICITUDES - FastAPI Backend
-// Vista unificada: pendientes / aprobadas / desaprobadas
-import React, { useState, useEffect, useCallback } from 'react';
+// BANDEJA DE SOLICITUDES - Rebuilt from scratch following mesa_de_partes pattern
+// No _skipAuthRedirect, no polling, no useCallback dependency loops
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X, Inbox, RefreshCw, Loader2, ChevronDown, Shield,
-  AlertCircle, Check, Ban, Calendar, User, ArrowRightLeft, FileText,
+  AlertCircle, Check, Ban, Calendar, User, ArrowRightLeft,
   UserPlus, ChevronRight, Clock, CheckCircle2, XCircle,
 } from 'lucide-react';
-import { COLOR_PRIMARIO, MESES, TURNO_MAP, hojaDelMesActual } from './constantes';
+import { COLOR_PRIMARIO, MESES, TURNO_MAP } from './constantes';
+import { apiClient } from './services/apiClient';
 import {
-  solicitudesService, ESTADOS, ESTADOS_META, getNivelLabel,
+  ESTADOS, ESTADOS_META, getNivelLabel,
 } from './services/solicitudesService';
 import SolicitudesCambioTurno from './SolicitudesCambioTurno';
 
@@ -32,20 +33,23 @@ const ModalSolicitudCambioTurno = ({
   userAreas: userAreasProp = [],
   personal = [],
   turnosMap = {},
+  onCambioAplicado = null,
 }) => {
-  const getUserFromStorage = () => {
-    try { return JSON.parse(localStorage.getItem('ocr_user_data') || '{}'); } catch { return null; }
-  };
-  const storedUser = isOpen ? getUserFromStorage() : null;
+  // Read user from localStorage (stable reference, only changes on explicit setItem)
+  const storedUserRef = useRef(null);
+  if (isOpen && !storedUserRef.current) {
+    try { storedUserRef.current = JSON.parse(localStorage.getItem('ocr_user_data') || '{}'); } catch { storedUserRef.current = {}; }
+  }
+
+  const storedUser = storedUserRef.current || {};
   const userRol = storedUser?.rol_principal ??
-    (storedUser?.roles?.length ? Math.max(...storedUser.roles) :
-      ({ admin: 4, jefe_division: 3, jefe_departamento: 2, jefe_area: 1, tramite_documentario: 5 }[storedUser?.rol] ?? userRolProp));
+    (storedUser?.roles?.length ? Math.max(...storedUser.roles) : userRolProp);
   const userAreas = storedUser?.areas?.length > 0 ? storedUser.areas :
     (storedUser?.area ? [storedUser.area] : userAreasProp);
   const esAdmin = userRol === 4;
   const userId = storedUser?.id || storedUser?.user_id || 0;
 
-  const [vista, setVista] = useState('lista'); // 'lista' | 'registro'
+  const [vista, setVista] = useState('lista');
   const [lista, setLista] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
@@ -54,31 +58,39 @@ const ModalSolicitudCambioTurno = ({
   const [observacion, setObservacion] = useState('');
   const [procesando, setProcesando] = useState(false);
 
-  // ---- Load ----
-  const cargar = useCallback(async () => {
+  // ---- Load: Simple async function, no useCallback dependency issues ----
+  const cargar = async () => {
     if (!isOpen) return;
-    setCargando(true); setError('');
+    setCargando(true);
+    setError('');
     try {
-      const [resBandeja, resMias] = await Promise.all([
-        solicitudesService.getBandeja(),
-        solicitudesService.getMisSolicitudes(),
+      // Call apiClient directly (like mesa_de_partes), no service wrapper
+      const [resBandeja, resMias] = await Promise.allSettled([
+        apiClient.getBandejaSolicitudes(),
+        apiClient.getSolicitudes(),
       ]);
 
+      const bandeja = resBandeja.status === 'fulfilled' ? (resBandeja.value.solicitudes || []) : [];
+      const mias = resMias.status === 'fulfilled' ? (resMias.value.solicitudes || []) : [];
+
       // Check if both failed due to auth
-      if (!resBandeja.success && !resMias.success &&
-          (resBandeja.error?.includes('expirada') || resMias.error?.includes('expirada'))) {
-        setError('Sesion expirada. Refresque la pagina para volver a iniciar sesion.');
-        setCargando(false);
-        return;
+      const bandejaErr = resBandeja.status === 'rejected' ? resBandeja.reason?.message : null;
+      const miasErr = resMias.status === 'rejected' ? resMias.reason?.message : null;
+      if (bandeja.length === 0 && mias.length === 0 && bandejaErr && miasErr) {
+        const errMsg = bandejaErr || miasErr;
+        if (errMsg.includes('expirada') || errMsg.includes('Sesión')) {
+          setError('Sesion expirada. Refresque la pagina para volver a iniciar sesion.');
+          setCargando(false);
+          return;
+        }
       }
 
-      // Merge: bandeja (what I can act on) + mis solicitudes (what I created)
-      const bandeja = resBandeja.success ? resBandeja.data : [];
-      const mias = resMias.success ? resMias.data : [];
+      // Merge: bandeja + mis solicitudes, deduplicate by id
       const merged = [...bandeja];
       for (const s of mias) {
         if (!merged.find(m => m.id === s.id)) merged.push(s);
       }
+
       // Tag each item
       const tagged = merged.map(s => ({
         ...s,
@@ -90,22 +102,30 @@ const ModalSolicitudCambioTurno = ({
               (s.area_solicitante === area || s.participantes?.some(p => userAreas.includes(p.area)))
             : false,
       }));
+
       setLista(tagged);
-    } catch {
-      setError('No se pudieron cargar las solicitudes.');
+    } catch (e) {
+      console.error('Error cargando solicitudes:', e);
+      setError('No se pudieron cargar las solicitudes. Intente de nuevo.');
     } finally {
       setCargando(false);
     }
-  }, [isOpen, esAdmin, userRol, userAreas, area, userId]);
+  };
 
+  // ---- Load on open (simple useEffect, no dependency on unstable function) ----
   useEffect(() => {
     if (isOpen) {
-      setVista('lista'); setTab(ESTADOS.PENDIENTE);
-      setExpandida(null); setObservacion(''); setError('');
+      setVista('lista');
+      setTab(ESTADOS.PENDIENTE);
+      setExpandida(null);
+      setObservacion('');
+      setError('');
+      storedUserRef.current = null; // Force re-read on next open
       cargar();
     }
-  }, [isOpen, cargar]);
+  }, [isOpen]); // Only re-load when isOpen changes
 
+  // Escape key
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape' && isOpen && vista === 'lista') onClose(); };
     window.addEventListener('keydown', h);
@@ -114,14 +134,14 @@ const ModalSolicitudCambioTurno = ({
 
   if (!isOpen) return null;
 
-  // ---- Registro ----
+  // ---- Registro (wizard) ----
   if (vista === 'registro') {
     return (
       <SolicitudesCambioTurno
         isOpen
         onClose={() => { setVista('lista'); cargar(); }}
         onEnviado={() => { setVista('lista'); cargar(); }}
-        hoja={hoja || hojaDelMesActual()}
+        hoja={hoja || ''}
         mes={mes} anio={anio} area={area}
         personal={personal} turnosMap={turnosMap} userName={userName}
       />
@@ -133,25 +153,29 @@ const ModalSolicitudCambioTurno = ({
     if (procesando) return;
     if (nuevoEstado === ESTADOS.DESAPROBADO && !observacion.trim()) {
       setError('Debe escribir la observacion / motivo para desaprobar.');
-      setExpandida(sol.id); return;
+      setExpandida(sol.id);
+      return;
     }
-    setProcesando(true); setError('');
+    setProcesando(true);
+    setError('');
     try {
       if (nuevoEstado === ESTADOS.APROBADO) {
-        const r = await solicitudesService.aprobarSolicitud(sol.id, observacion.trim());
-        if (!r.success) throw new Error(r.error);
-        setError('Solicitud aprobada.');
+        await apiClient.aprobarSolicitud(sol.id, { observaciones: observacion.trim() });
+        setError('Solicitud aprobada. Cambios aplicados al rol.');
+        onCambioAplicado?.();
       } else {
-        const r = await solicitudesService.rechazarSolicitud(sol.id, observacion.trim());
-        if (!r.success) throw new Error(r.error);
+        await apiClient.rechazarSolicitud(sol.id, { motivo_rechazo: observacion.trim() });
         setError('Solicitud desaprobada.');
       }
-      setObservacion(''); setExpandida(null);
+      setObservacion('');
+      setExpandida(null);
       await cargar();
       setTimeout(() => setError(''), 4000);
     } catch (e) {
       setError(e.message || 'No se pudo procesar la solicitud.');
-    } finally { setProcesando(false); }
+    } finally {
+      setProcesando(false);
+    }
   };
 
   const cancelarSolicitud = async (sol) => {
@@ -159,14 +183,15 @@ const ModalSolicitudCambioTurno = ({
     if (!confirm('Desea cancelar esta solicitud?')) return;
     setProcesando(true);
     try {
-      const r = await solicitudesService.cancelarSolicitud(sol.id);
-      if (!r.success) throw new Error(r.error);
+      await apiClient.cancelarSolicitud(sol.id, {});
       setError('Solicitud cancelada.');
       await cargar();
       setTimeout(() => setError(''), 4000);
     } catch (e) {
       setError(e.message || 'No se pudo cancelar.');
-    } finally { setProcesando(false); }
+    } finally {
+      setProcesando(false);
+    }
   };
 
   // ---- Filtered lists ----
@@ -300,7 +325,7 @@ const ModalSolicitudCambioTurno = ({
               <p className="text-xs text-gray-700">{s.motivo || '-'}</p>
             </div>
 
-            {/* Cadena de aprobación */}
+            {/* Cadena de aprobacion */}
             {cadena.length > 0 && (
               <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3">
                 <p className="text-[9px] text-blue-500 uppercase font-semibold mb-2 flex items-center gap-1">
@@ -368,7 +393,7 @@ const ModalSolicitudCambioTurno = ({
               <>
                 <div>
                   <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                    Observacion {s._puedeActuar && <span className="text-gray-40">(obligatoria al desaprobar)</span>}
+                    Observacion <span className="text-gray-40">(obligatoria al desaprobar)</span>
                   </label>
                   <textarea value={observacion} onChange={e => setObservacion(e.target.value)} rows={2}
                     placeholder="Detalle de la revision..."

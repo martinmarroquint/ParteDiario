@@ -110,13 +110,13 @@ class RoleService:
         
         for idx, row in enumerate(rows[1:] if len(rows) > 0 else [], start=2):
             if len(row) > 4 and row[4] == persona and row[3] == area:
-                col_idx = 6 + (dia - 1)  # Column G = day 1
+                col_idx = 6 + (dia - 1)  # Column G = day 1 (0-based array index)
                 from app.utils.constants import TURNOS_VALIDOS
                 if turno.upper() not in TURNOS_VALIDOS:
                     return {"error": f"Turno '{turno}' no es válido"}
                 
-                # Build cell reference (e.g., G5)
-                col_letter = chr(64 + col_idx) if col_idx <= 26 else self._get_col_letter(col_idx)
+                # Build cell reference (e.g., G5) — col_idx is 0-based, Excel is 1-based
+                col_letter = self._get_col_letter(col_idx + 1)
                 await self.sheets.update_cell(sheet_name, f"{col_letter}{idx}", turno.upper())
                 return {"message": f"Turno actualizado: {persona} día {dia} → {turno}"}
         

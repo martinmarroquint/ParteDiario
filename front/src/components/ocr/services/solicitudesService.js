@@ -1,5 +1,6 @@
 // src/components/ocr/services/solicitudesService.js
-// Servicio de solicitudes de cambio de turno - FastAPI Backend
+// Solicitudes service - thin wrapper around apiClient
+// Follows mesa_de_partes pattern: call apiClient directly, let component handle errors
 
 import { apiClient } from './apiClient';
 
@@ -36,77 +37,16 @@ export const TIPOS_CAMBIO = [
 ];
 
 export const solicitudesService = {
-  async getMisSolicitudes() {
-    try {
-      const result = await apiClient.getSolicitudesMias();
-      return { success: true, data: result.solicitudes || [], total: result.total || 0 };
-    } catch (error) {
-      return { success: false, error: error.message || 'Error al obtener solicitudes' };
-    }
-  },
-
-  async getBandeja() {
-    try {
-      const result = await apiClient.getBandejaSolicitudes();
-      return { success: true, data: result.solicitudes || [], total: result.total || 0 };
-    } catch (error) {
-      return { success: false, error: error.message || 'Error al obtener bandeja' };
-    }
-  },
-
-  async getSolicitud(id) {
-    try {
-      const result = await apiClient.getSolicitud(id);
-      return { success: true, data: result.solicitud };
-    } catch (error) {
-      return { success: false, error: error.message || 'Error al obtener solicitud' };
-    }
-  },
-
-  async crearSolicitud(data) {
-    try {
-      const result = await apiClient.crearSolicitud(data);
-      return { success: true, data: result.solicitud };
-    } catch (error) {
-      return { success: false, error: error.message || 'Error al crear solicitud' };
-    }
-  },
-
-  async aprobarSolicitud(id, observaciones = '') {
-    try {
-      const result = await apiClient.aprobarSolicitud(id, { observaciones });
-      return { success: true, data: result.solicitud };
-    } catch (error) {
-      return { success: false, error: error.message || 'Error al aprobar solicitud' };
-    }
-  },
-
-  async rechazarSolicitud(id, motivoRechazo) {
-    try {
-      const result = await apiClient.rechazarSolicitud(id, { motivo_rechazo: motivoRechazo });
-      return { success: true, data: result.solicitud };
-    } catch (error) {
-      return { success: false, error: error.message || 'Error al rechazar solicitud' };
-    }
-  },
-
-  async cancelarSolicitud(id, motivo = '') {
-    try {
-      const result = await apiClient.cancelarSolicitud(id, { motivo });
-      return { success: true, data: result.solicitud };
-    } catch (error) {
-      return { success: false, error: error.message || 'Error al cancelar solicitud' };
-    }
-  },
-
-  async getEstadisticas() {
-    try {
-      const result = await apiClient.getEstadisticasSolicitudes();
-      return { success: true, data: result };
-    } catch (error) {
-      return { success: false, error: error.message || 'Error al obtener estadisticas' };
-    }
-  },
+  // All methods delegate directly to apiClient and let errors propagate
+  // The calling component handles errors (like mesa_de_partes does)
+  getMisSolicitudes: () => apiClient.getSolicitudes(),
+  getBandeja: () => apiClient.getBandejaSolicitudes(),
+  getSolicitud: (id) => apiClient.getSolicitud(id),
+  crearSolicitud: (data) => apiClient.crearSolicitud(data),
+  aprobarSolicitud: (id, data) => apiClient.aprobarSolicitud(id, data),
+  rechazarSolicitud: (id, data) => apiClient.rechazarSolicitud(id, data),
+  cancelarSolicitud: (id, data) => apiClient.cancelarSolicitud(id, data),
+  getEstadisticas: () => apiClient.getEstadisticasSolicitudes(),
 
   getEstadoLabel(estado) {
     return ESTADOS_META[estado]?.etiqueta || estado;
