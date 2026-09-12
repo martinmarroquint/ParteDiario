@@ -1604,6 +1604,8 @@ const PanelTrabajo = ({
         anio={anioSeleccionado}
         area={esAdmin ? areaSeleccionadaAdmin : areaAsignada}
         userName={user?.nombre || responsable || 'ADMIN'}
+        personal={personal}
+        turnosMap={turnos}
       />
       
       <ImpresionRol isOpen={mostrarImpresion} onClose={() => setMostrarImpresion(false)} area={esAdmin ? areaSeleccionadaAdmin : areaAsignada} mes={mesSeleccionado} anio={anioSeleccionado} personal={personalFiltrado} turnos={turnos} responsable={responsable} totalDiasMes={totalDiasMes} />

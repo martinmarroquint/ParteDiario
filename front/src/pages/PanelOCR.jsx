@@ -19,7 +19,7 @@ import { authService } from '../components/ocr/services/authService';
 import { rolesService } from '../components/ocr/services/rolesService';
 import { descansosService } from '../components/ocr/services/descansosService';
 import { vacacionesService } from '../components/ocr/services/vacacionesService';
-import { obtenerSolicitudesCambio, filtrarSolicitudesParaUsuario } from '../components/ocr/servicioSolicitudes';
+import { solicitudesService } from '../components/ocr/services/solicitudesService';
 
 const STORAGE_SESION = 'ocr_sesion_activa';
 
@@ -267,10 +267,11 @@ const PanelOCRContent = () => {
 
     const contarPendientes = async () => {
       try {
-        const data = await obtenerSolicitudesCambio(config, null);
-        const filtradas = filtrarSolicitudesParaUsuario(data, userRol, userAreas, userName);
-        const pendientes = filtradas.filter(s => s.estado === 'PENDIENTE' && s.puedeActuar).length;
-        setPendingSolicitudesCount(pendientes);
+        const result = await solicitudesService.getBandeja();
+        if (result.success) {
+          const pendientes = result.data.filter(s => s.estado === 'PENDIENTE').length;
+          setPendingSolicitudesCount(pendientes);
+        }
       } catch {
         // Silencioso - no molestar al usuario
       }

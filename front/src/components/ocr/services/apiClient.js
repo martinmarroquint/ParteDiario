@@ -254,6 +254,26 @@ class ApiClient {
   }
 
   // ============================================
+  // SOLICITUDES ENDPOINTS (new backend)
+  // ============================================
+
+  async getSolicitudesMias() {
+    return this.get('/solicitudes');
+  }
+
+  async getBandejaSolicitudes() {
+    return this.get('/solicitudes/bandeja');
+  }
+
+  async getEstadisticasSolicitudes() {
+    return this.get('/solicitudes/estadisticas');
+  }
+
+  async cancelarSolicitud(id, data = {}) {
+    return this.put(`/solicitudes/${id}/cancel`, data);
+  }
+
+  // ============================================
   // DESCANSOS ENDPOINTS
   // ============================================
 

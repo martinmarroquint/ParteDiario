@@ -25,39 +25,16 @@ TURNOS = {
 
 TURNOS_VALIDOS = list(TURNOS.keys())
 
-# Solicitud states
-ESTADOS_SOLICITUD = {
-    "ENVIADA": "Solicitud creada, esperando revisión de área",
-    "REVISION_DEPARTAMENTO": "Esperando revisión de departamento",
-    "REVISION_DIVISION": "Esperando revisión de división",
-    "APROBADA": "Solicitud aprobada completamente",
-    "RECHAZADA": "Solicitud rechazada",
-}
+# Solicitudes de cambio de turno — states
+ESTADO_PENDIENTE = "PENDIENTE"
+ESTADO_APROBADO = "APROBADO"
+ESTADO_DESAPROBADO = "DESAPROBADO"
+ESTADO_CANCELADO = "CANCELADO"
 
-# Hierarchical levels
-NIVEL_AREA = 1
-NIVEL_DEPARTAMENTO = 2
-NIVEL_DIVISION = 3
-
-# State transitions by level
-TRANSICIONES_ESTADO = {
-    "ENVIADA": "REVISION_DEPARTAMENTO",
-    "REVISION_DEPARTAMENTO": "REVISION_DIVISION",
-    "REVISION_DIVISION": "APROBADA",
-}
-
-# Map level to initial state
-ESTADO_INICIAL_POR_NIVEL = {
-    1: "ENVIADA",
-    2: "REVISION_DEPARTAMENTO",
-    3: "REVISION_DIVISION",
-}
-
-# Map level to approval state
-ESTADO_POR_NIVEL = {
-    1: ["ENVIADA"],
-    2: ["REVISION_DEPARTAMENTO"],
-    3: ["REVISION_DIVISION"],
+# Valid state transitions
+TRANSICIONES_VALIDAS = {
+    "PENDIENTE": ["APROBADO", "DESAPROBADO", "CANCELADO"],
+    # APROBADO, DESAPROBADO, CANCELADO are terminal
 }
 
 # Months
@@ -69,10 +46,10 @@ MESES = {
 
 # Google Sheets tab names
 SHEETS_TABS = {
-    "usuarios": "Usuarios",
+    "usuarios": "USUARIOS_OCR",
     "user_roles": "UserRoles",
     "estructura_jerarquica": "EstructuraJerarquica",
-    "solicitudes": "Solicitudes",
+    "solicitudes": "SOLICITUDES",
     "descansos": "DescansosMedicos",
     "vacaciones": "Vacaciones",
     "areas": "Areas",

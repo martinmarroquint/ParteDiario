@@ -1670,6 +1670,8 @@ const MobileRolView = ({
         anio={anioSeleccionado}
         area={esAdmin ? (todasLasAreas[0] || areaAsignada) : areaAsignada}
         userName={responsable || 'ADMIN'}
+        personal={personal}
+        turnosMap={turnos}
       />
 
       <ModalDescansoMedico
