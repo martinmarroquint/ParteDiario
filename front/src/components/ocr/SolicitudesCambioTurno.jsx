@@ -277,7 +277,7 @@ const SolicitudesCambioTurno = ({
       </button>
 
       {abierto && (
-        <div className="absolute z-[600] mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto">
+        <div className="absolute z-[99999] mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto">
           {diasFuturos.map(d => {
             const diaHoy = d === diaActual;
             const turno = turnoActualMap?.[d];
@@ -346,7 +346,7 @@ const SolicitudesCambioTurno = ({
       </button>
 
       {abierto && (
-        <div className="absolute z-[600] mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-80 overflow-y-auto">
+        <div className="absolute z-[99999] mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-80 overflow-y-auto">
           <button onClick={() => { onChange(SIN_TURNO_VAL); setAbierto(false); }}
             className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-left text-sm transition-colors ${value === SIN_TURNO_VAL ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
             <span className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-[9px] font-bold text-gray-400">S/T</span>
