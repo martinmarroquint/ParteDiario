@@ -246,6 +246,36 @@ const SolicitudesCambioTurno = ({
   };
 
   // ============================================
+  // DROPDOWN PANEL (professional, no scrollbar)
+  // ============================================
+  const DropdownPanel = ({ abierto, children, className = '' }) => {
+    const ref = React.useRef(null);
+    React.useEffect(() => {
+      if (!abierto) return;
+      const handler = (e) => {
+        if (ref.current && !ref.current.contains(e.target)) {
+          // close is handled by parent
+        }
+      };
+      document.addEventListener('mousedown', handler);
+      return () => document.removeEventListener('mousedown', handler);
+    }, [abierto]);
+    if (!abierto) return null;
+    return (
+      <div ref={ref}
+        className={`absolute left-0 right-0 mt-1.5 bg-white border border-gray-100 rounded-2xl shadow-2xl overflow-hidden ${className}`}
+        style={{ zIndex: 99999 }}>
+        <div className="max-h-64 overflow-hidden">
+          <div className="max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+            <style>{`.no-scrollbar::-webkit-scrollbar { display: none; } .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
+            <div className="no-scrollbar">{children}</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================
   // CUSTOM SELECTOR: DIA
   // ============================================
   const SelectorDia = ({ diasFuturos, diaSeleccionado, onSelect, turnoActualMap, label, abierto, setAbierto }) => (
@@ -276,41 +306,39 @@ const SolicitudesCambioTurno = ({
         <ChevronRight className={`w-4 h-4 ml-auto transition-transform ${abierto ? 'rotate-90' : ''} text-gray-400`} />
       </button>
 
-      {abierto && (
-        <div className="absolute z-[99999] mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto">
-          {diasFuturos.map(d => {
-            const diaHoy = d === diaActual;
-            const turno = turnoActualMap?.[d];
-            const t = turno ? TURNO_MAP[turno] : null;
-            const esSel = diaSeleccionado === d;
-            return (
-              <button key={d} onClick={() => { onSelect(d); setAbierto(false); }}
-                className={`w-full px-3 py-2 flex items-center gap-2.5 text-left transition-colors text-sm ${
-                  esSel ? 'bg-emerald-50' : 'hover:bg-gray-50'
-                }`}>
-                <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                  diaHoy ? 'text-white' : esSel ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                }`}
-                  style={diaHoy ? { backgroundColor: COLOR_PRIMARIO } : {}}>
-                  {d}
+      <DropdownPanel abierto={abierto}>
+        {diasFuturos.map(d => {
+          const diaHoy = d === diaActual;
+          const turno = turnoActualMap?.[d];
+          const t = turno ? TURNO_MAP[turno] : null;
+          const esSel = diaSeleccionado === d;
+          return (
+            <button key={d} onClick={() => { onSelect(d); setAbierto(false); }}
+              className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-left transition-all text-sm ${
+                esSel ? 'bg-emerald-50' : 'hover:bg-gray-50'
+              }`}>
+              <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
+                diaHoy ? 'text-white shadow-md' : esSel ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+              }`}
+                style={diaHoy ? { backgroundColor: COLOR_PRIMARIO } : {}}>
+                {d}
+              </span>
+              <span className="text-[11px] text-gray-400 w-10 flex-shrink-0 font-medium">{getDiaSemana(anio, mes, d)}</span>
+              {turno && (
+                <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold border ml-auto"
+                  style={{
+                    backgroundColor: t?.color || '#f3f4f6',
+                    color: t?.texto || '#6B7280',
+                    borderColor: t?.color ? 'transparent' : '#E5E7EB',
+                  }}>
+                  {turno}
                 </span>
-                <span className="text-xs text-gray-500 w-10 flex-shrink-0">{getDiaSemana(anio, mes, d)}</span>
-                {turno && (
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold border ml-auto"
-                    style={{
-                      backgroundColor: t?.color || '#f3f4f6',
-                      color: t?.texto || '#6B7280',
-                      borderColor: t?.color ? 'transparent' : '#E5E7EB',
-                    }}>
-                    {turno}
-                  </span>
-                )}
-                {esSel && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto flex-shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
+              )}
+              {esSel && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto flex-shrink-0" />}
+            </button>
+          );
+        })}
+      </DropdownPanel>
     </ClickOutside>
   );
 
@@ -328,7 +356,7 @@ const SolicitudesCambioTurno = ({
         style={{ borderColor: value ? COLOR_PRIMARIO : '#E5E7EB' }}>
         {value && TURNO_MAP[value] ? (
           <span className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold"
+            <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-bold"
               style={{ backgroundColor: TURNO_MAP[value].color, color: TURNO_MAP[value].texto }}>
               {value}
             </span>
@@ -336,7 +364,7 @@ const SolicitudesCambioTurno = ({
           </span>
         ) : value === SIN_TURNO_VAL ? (
           <span className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center text-[8px] font-bold text-gray-400">S/T</span>
+            <span className="w-6 h-6 rounded-lg bg-gray-100 flex items-center justify-center text-[9px] font-bold text-gray-400">S/T</span>
             <span className="text-gray-500">Sin Turno</span>
           </span>
         ) : (
@@ -345,30 +373,28 @@ const SolicitudesCambioTurno = ({
         <ChevronRight className={`w-4 h-4 ml-auto transition-transform ${abierto ? 'rotate-90' : ''} text-gray-400`} />
       </button>
 
-      {abierto && (
-        <div className="absolute z-[99999] mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-80 overflow-y-auto">
-          <button onClick={() => { onChange(SIN_TURNO_VAL); setAbierto(false); }}
-            className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-left text-sm transition-colors ${value === SIN_TURNO_VAL ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
-            <span className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-[9px] font-bold text-gray-400">S/T</span>
-            <span className="text-gray-600 font-medium">Sin Turno</span>
-            {value === SIN_TURNO_VAL && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto" />}
+      <DropdownPanel abierto={abierto}>
+        <button onClick={() => { onChange(SIN_TURNO_VAL); setAbierto(false); }}
+          className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-left text-sm transition-all ${value === SIN_TURNO_VAL ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
+          <span className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-400">S/T</span>
+          <span className="text-gray-600 font-medium">Sin Turno</span>
+          {value === SIN_TURNO_VAL && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto" />}
+        </button>
+        {TURNOS.map(t => (
+          <button key={`${id}-${t.codigo}`} onClick={() => { onChange(t.codigo); setAbierto(false); }}
+            className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-left text-sm transition-all ${value === t.codigo ? 'bg-emerald-50' : 'hover:bg-gray-50'}`}>
+            <span className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+              style={{ backgroundColor: t.color, color: t.texto }}>
+              {t.codigo}
+            </span>
+            <div className="min-w-0 flex-1">
+              <span className="text-gray-700 font-medium text-[13px]">{t.nombre}</span>
+              {t.horas > 0 && <span className="text-[9px] text-gray-400 ml-1.5">{t.horas}h</span>}
+            </div>
+            {value === t.codigo && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto flex-shrink-0" />}
           </button>
-          {TURNOS.map(t => (
-            <button key={`${id}-${t.codigo}`} onClick={() => { onChange(t.codigo); setAbierto(false); }}
-              className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-left text-sm transition-colors ${value === t.codigo ? 'bg-emerald-50' : 'hover:bg-gray-50'}`}>
-              <span className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0"
-                style={{ backgroundColor: t.color, color: t.texto }}>
-                {t.codigo}
-              </span>
-              <div className="min-w-0 flex-1">
-                <span className="text-gray-700 font-medium">{t.nombre}</span>
-                {t.horas > 0 && <span className="text-[9px] text-gray-400 ml-1.5">{t.horas}h</span>}
-              </div>
-              {value === t.codigo && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto flex-shrink-0" />}
-            </button>
-          ))}
-        </div>
-      )}
+        ))}
+      </DropdownPanel>
     </ClickOutside>
     );
   };
