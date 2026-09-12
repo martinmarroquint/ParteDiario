@@ -63,7 +63,8 @@ class ApiClient {
 
       // Handle 401 - Token expired or invalid
       if (response.status === 401) {
-        // Only redirect if not doing initial session check
+        // _skipAuthRedirect: used for background/polling calls where we don't want to kill the session
+        // _onlyThrow: used when caller wants to handle the 401 themselves
         if (!options._skipAuthRedirect) {
           this.removeToken();
           window.location.href = '/';
@@ -109,10 +110,11 @@ class ApiClient {
     });
   }
 
-  async put(endpoint, data = {}) {
+  async put(endpoint, data = {}, extraOptions = {}) {
     return this.request(endpoint, {
       method: 'PUT',
       body: JSON.stringify(data),
+      ...extraOptions,
     });
   }
 
@@ -234,11 +236,11 @@ class ApiClient {
   // ============================================
 
   async getSolicitudes(params = {}) {
-    return this.get('/solicitudes', params);
+    return this.get('/solicitudes', params, { _skipAuthRedirect: true });
   }
 
   async getSolicitud(id) {
-    return this.get(`/solicitudes/${id}`);
+    return this.get(`/solicitudes/${id}`, {}, { _skipAuthRedirect: true });
   }
 
   async crearSolicitud(data) {
@@ -246,11 +248,11 @@ class ApiClient {
   }
 
   async aprobarSolicitud(id, data = {}) {
-    return this.put(`/solicitudes/${id}/approve`, data);
+    return this.put(`/solicitudes/${id}/approve`, data, { _skipAuthRedirect: true });
   }
 
   async rechazarSolicitud(id, data) {
-    return this.put(`/solicitudes/${id}/reject`, data);
+    return this.put(`/solicitudes/${id}/reject`, data, { _skipAuthRedirect: true });
   }
 
   // ============================================
@@ -258,19 +260,19 @@ class ApiClient {
   // ============================================
 
   async getSolicitudesMias() {
-    return this.get('/solicitudes');
+    return this.get('/solicitudes', {}, { _skipAuthRedirect: true });
   }
 
   async getBandejaSolicitudes() {
-    return this.get('/solicitudes/bandeja');
+    return this.get('/solicitudes/bandeja', {}, { _skipAuthRedirect: true });
   }
 
   async getEstadisticasSolicitudes() {
-    return this.get('/solicitudes/estadisticas');
+    return this.get('/solicitudes/estadisticas', {}, { _skipAuthRedirect: true });
   }
 
   async cancelarSolicitud(id, data = {}) {
-    return this.put(`/solicitudes/${id}/cancel`, data);
+    return this.put(`/solicitudes/${id}/cancel`, data, { _skipAuthRedirect: true });
   }
 
   // ============================================

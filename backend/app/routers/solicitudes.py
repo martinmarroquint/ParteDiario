@@ -47,21 +47,35 @@ def _user_max_role(user: User) -> int:
 @router.get("", response_model=SolicitudListResponse)
 async def get_mis_solicitudes(current_user: User = Depends(get_current_user)):
     """Get solicitudes created by the current user."""
-    solicitudes = await solicitud_service.get_solicitudes_propias(current_user.id)
-    return SolicitudListResponse(solicitudes=solicitudes, total=len(solicitudes))
+    try:
+        solicitudes = await solicitud_service.get_solicitudes_propias(current_user.id)
+        return SolicitudListResponse(solicitudes=solicitudes, total=len(solicitudes))
+    except Exception as e:
+        logger.exception(f"Error getting mis solicitudes for user {current_user.id}: {e}")
+        return SolicitudListResponse(solicitudes=[], total=0)
 
 
 @router.get("/bandeja", response_model=SolicitudListResponse)
 async def get_bandeja(current_user: User = Depends(get_current_user)):
     """Get solicitudes the user can act on (permission-filtered inbox)."""
-    solicitudes = await solicitud_service.get_bandeja(current_user.id)
-    return SolicitudListResponse(solicitudes=solicitudes, total=len(solicitudes))
+    try:
+        solicitudes = await solicitud_service.get_bandeja(current_user.id)
+        return SolicitudListResponse(solicitudes=solicitudes, total=len(solicitudes))
+    except Exception as e:
+        logger.exception(f"Error getting bandeja for user {current_user.id}: {e}")
+        return SolicitudListResponse(solicitudes=[], total=0)
 
 
 @router.get("/estadisticas", response_model=SolicitudStats)
 async def get_estadisticas(current_user: User = Depends(get_current_user)):
     """Get counts by status for the current user."""
-    return await solicitud_service.get_estadisticas(current_user.id)
+    try:
+        return await solicitud_service.get_estadisticas(current_user.id)
+    except Exception as e:
+        logger.exception(f"Error getting estadisticas for user {current_user.id}: {e}")
+        return SolicitudStats(
+            total_solicitudes=0, pendientes=0, aprobadas=0, desaprobadas=0, canceladas=0
+        )
 
 
 @router.get("/{solicitud_id}", response_model=SolicitudResponse)

@@ -63,6 +63,15 @@ const ModalSolicitudCambioTurno = ({
         solicitudesService.getBandeja(),
         solicitudesService.getMisSolicitudes(),
       ]);
+
+      // Check if both failed due to auth
+      if (!resBandeja.success && !resMias.success &&
+          (resBandeja.error?.includes('expirada') || resMias.error?.includes('expirada'))) {
+        setError('Sesion expirada. Refresque la pagina para volver a iniciar sesion.');
+        setCargando(false);
+        return;
+      }
+
       // Merge: bandeja (what I can act on) + mis solicitudes (what I created)
       const bandeja = resBandeja.success ? resBandeja.data : [];
       const mias = resMias.success ? resMias.data : [];
@@ -450,9 +459,19 @@ const ModalSolicitudCambioTurno = ({
 
         {error && (
           <div className="px-4 sm:px-5 pt-3 flex-shrink-0">
-            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-sm text-red-600">
+            <div className={`p-3 rounded-xl flex items-center gap-2 text-sm ${
+              error.includes('expirada')
+                ? 'bg-amber-50 border border-amber-100 text-amber-700'
+                : 'bg-red-50 border border-red-100 text-red-600'
+            }`}>
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span className="font-medium">{error}</span>
+              <span className="font-medium flex-1">{error}</span>
+              {error.includes('expirada') && (
+                <button onClick={() => window.location.reload()}
+                  className="px-3 py-1 bg-amber-100 hover:bg-amber-200 rounded-lg text-xs font-bold transition-colors">
+                  Refrescar
+                </button>
+              )}
             </div>
           </div>
         )}
