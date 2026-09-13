@@ -45,6 +45,28 @@ class User(UserBase):
     class Config:
         from_attributes = True
 
+    def to_safe_dict(self) -> dict:
+        """Return user dict without sensitive fields (password, salt)."""
+        d = self.__dict__.copy()
+        d.pop('password', None)
+        d.pop('salt', None)
+        return d
+
+
+class UserResponse(BaseModel):
+    """Safe user response — never includes password or salt."""
+    id: int
+    nombre: str
+    usuario: str
+    correo: str = ""
+    grado: str = ""
+    dni: str = ""
+    activo: bool = True
+    roles: list[int] = [0]
+    areas: list[str] = []
+    creado_en: Optional[str] = None
+    requiere_cambio_password: bool = False
+
 
 class UserRoleAssignment(BaseModel):
     user_id: int

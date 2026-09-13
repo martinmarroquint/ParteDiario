@@ -80,10 +80,27 @@ async def get_estadisticas(current_user: User = Depends(get_current_user)):
 
 @router.get("/{solicitud_id}", response_model=SolicitudResponse)
 async def get_solicitud(solicitud_id: str, current_user: User = Depends(get_current_user)):
-    """Get a single solicitud with full history."""
+    """Get a single solicitud with full history.
+    
+    Authorization: Only the requester, reviewers in the approval chain, or admins can view.
+    """
     solicitud = await solicitud_service.get_solicitud(solicitud_id)
     if not solicitud:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    
+    # Authorization check: requester, chain members, or admin
+    is_requester = solicitud.solicitante_id == current_user.id
+    is_admin = 4 in current_user.roles
+    in_chain = False
+    if solicitud.cadena:
+        for step in solicitud.cadena:
+            if step.get("user_id") == current_user.id:
+                in_chain = True
+                break
+    
+    if not is_requester and not is_admin and not in_chain:
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver esta solicitud")
+    
     return SolicitudResponse(solicitud=solicitud)
 
 

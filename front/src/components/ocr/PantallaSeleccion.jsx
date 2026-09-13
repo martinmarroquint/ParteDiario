@@ -10,6 +10,7 @@ import {
   COLOR_PRIMARIO, CLAVE_SECRETA, TURNO_MAP, MESES, 
   NOMBRE_A_CODIGO, DEFAULT_GOOGLE_CONFIG, mesDeHoja, resolverHojaActiva, soloHojasMes 
 } from './constantes';
+import apiClient from './services/apiClient';
 
 const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegistrarDescanso, onRegistrarVacaciones, onAbrirParteDiario, onAbrirCambiosTurno }) => {
   const [areaSeleccionada, setAreaSeleccionada] = useState('');
@@ -143,15 +144,21 @@ const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegist
     });
   }, [mostrarConsulta, cargarTurnosConsulta]);
 
-  const verificarClave = () => {
-    if (claveAdmin === CLAVE_SECRETA) { 
-      setMostrarModalClave(false); 
-      setClaveAdmin(''); 
-      setClaveError(''); 
-      onIngresar('ADMIN', 'Administrador', true); 
-    } else { 
-      setClaveError('Clave incorrecta'); 
-      setClaveAdmin(''); 
+  const verificarClave = async () => {
+    setClaveError('');
+    try {
+      const result = await apiClient.validateAdminKey(claveAdmin);
+      if (result.valido) {
+        setMostrarModalClave(false);
+        setClaveAdmin('');
+        onIngresar('ADMIN', 'Administrador', true);
+      } else {
+        setClaveError('Clave incorrecta');
+        setClaveAdmin('');
+      }
+    } catch {
+      setClaveError('Error de conexion');
+      setClaveAdmin('');
     }
   };
 

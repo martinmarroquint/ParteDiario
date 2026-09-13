@@ -1,9 +1,13 @@
 """Check OCR sheet for valid DNIs and existing USUARIOS_OCR entries"""
 import asyncio
 import httpx
+import os
+from dotenv import load_dotenv
 
-SHEET_ID = "1elNfbmPM5KxW0jnttJc8kGGokPT8XUoda3iZ6qdZvZA"
-API_KEY = "AIzaSyCrdStW9-jK7vz76EuB8KA7Ea_m9aVOoeI"
+load_dotenv()
+
+SHEET_ID = os.getenv("GOOGLE_SHEETS_ID", "")
+API_KEY = os.getenv("GOOGLE_SHEETS_API_KEY", "")
 
 async def main():
     async with httpx.AsyncClient(timeout=15.0) as client:

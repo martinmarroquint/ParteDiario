@@ -1,5 +1,7 @@
 import json
 import logging
+import hmac
+import hashlib
 import httpx
 from typing import Any, Optional
 from app.config import settings
@@ -71,9 +73,20 @@ class GoogleSheetsService:
         """
         if not self.apps_script_url:
             logger.warning(f"Apps Script URL not configured. Cannot perform write: {action}")
-            raise RuntimeError(f"Apps Script URL no esta configurada. Configure GOOGLE_APPS_SCRIPT_URL en .env")
+            raise RuntimeError("Servicio de escritura no disponible. Contacte al administrador.")
         
         payload = {"accion": action, **data}
+        
+        # HMAC SIGNING — Apps Script will verify this before processing
+        if settings.APPSCRIPT_HMAC_SECRET:
+            body_str = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+            signature = hmac.new(
+                settings.APPSCRIPT_HMAC_SECRET.encode('utf-8'),
+                body_str.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            payload["_signature"] = signature
+        
         # Write operations: appendRow, updateRange, updateCell, deleteRow, guardarCelda, etc.
         es_escritura = action in ('appendRow', 'updateRange', 'updateCell', 'deleteRow', 
                                    'guardarCelda', 'registrarCeldaModificada', 'actualizarHeartbeat',
@@ -91,7 +104,7 @@ class GoogleSheetsService:
                 # Check if Apps Script returned an error in the response body
                 if isinstance(result, dict) and result.get("error"):
                     logger.error(f"Apps Script returned error for {action}: {result['error']}")
-                    raise RuntimeError(f"Apps Script error: {result['error']}")
+                    raise RuntimeError("Error al procesar la solicitud. Intente nuevamente.")
                 return result
         except httpx.HTTPError as e:
             if es_escritura:
@@ -99,13 +112,13 @@ class GoogleSheetsService:
                 logger.warning(f"Apps Script connection error on write [{action}] - write probably succeeded: {e}")
                 return {"status": "probablemente_exitoso", "accion": action}
             logger.error(f"Error calling Apps Script for {action}: {e}")
-            raise RuntimeError(f"Error de conexion con Apps Script: {e}")
+            raise RuntimeError("Error de conexion. Intente nuevamente.")
         except json.JSONDecodeError:
             if es_escritura:
                 logger.warning(f"Apps Script returned non-JSON on write [{action}] - write probably succeeded")
                 return {"status": "probablemente_exitoso", "accion": action}
             logger.error(f"Invalid JSON response from Apps Script for {action}")
-            raise RuntimeError("Apps Script retorno una respuesta invalida (no JSON)")
+            raise RuntimeError("Respuesta invalida del servidor. Intente nuevamente.")
     
     async def _get_sheet_ids(self) -> dict:
         """Get sheet names and their GIDs."""

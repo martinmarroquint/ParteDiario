@@ -5,10 +5,14 @@ import hashlib
 import secrets
 import json
 import time
+import os
+from dotenv import load_dotenv
 
-SHEET_ID = "1elNfbmPM5KxW0jnttJc8kGGokPT8XUoda3iZ6qdZvZA"
-API_KEY = "AIzaSyCrdStW9-jK7vz76EuB8KA7Ea_m9aVOoeI"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwT7VtF-hscw1JWpA36oONXckIgB7AIQdGFi3DniSlG4YhtTedNnK-U4qQYhnygl8vFrg/exec"
+load_dotenv()
+
+SHEET_ID = os.getenv("GOOGLE_SHEETS_ID", "")
+API_KEY = os.getenv("GOOGLE_SHEETS_API_KEY", "")
+APPS_SCRIPT_URL = os.getenv("GOOGLE_APPS_SCRIPT_URL", "")
 
 def sha256_hash(password, salt):
     """SHA-256 hash like Apps Script: hex(sha256(password + salt))"""

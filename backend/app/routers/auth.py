@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -11,12 +12,33 @@ from app.services.auth_service import AuthService
 from app.services.sheets_service import GoogleSheetsService
 from app.middleware.auth import get_current_user
 from app.models.user import User
+from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 limiter = Limiter(key_func=get_remote_address)
 
 sheets_service = GoogleSheetsService()
 auth_service = AuthService(sheets_service)
+
+
+class AdminKeyRequest(BaseModel):
+    clave: str
+
+
+class AdminKeyResponse(BaseModel):
+    valido: bool
+
+
+@router.post("/validate-admin-key", response_model=AdminKeyResponse)
+@limiter.limit("10/minute")
+async def validate_admin_key(request: Request, data: AdminKeyRequest):
+    """Validate admin access key — server-side only.
+    
+    The frontend calls this instead of comparing CLAVE_SECRETA client-side.
+    The key is never exposed in the JS bundle.
+    """
+    is_valid = data.clave == settings.CLAVE_SECRETA and bool(settings.CLAVE_SECRETA)
+    return AdminKeyResponse(valido=is_valid)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -36,6 +58,7 @@ async def logout(current_user: User = Depends(get_current_user)):
 @router.post("/refresh")
 @limiter.limit("10/minute")
 async def refresh_token(
+    request: Request,
     data: RefreshTokenRequest,
     current_user: User = Depends(get_current_user)
 ):
@@ -47,6 +70,7 @@ async def refresh_token(
 @router.post("/change-password", response_model=MessageResponse)
 @limiter.limit("5/minute")
 async def change_password(
+    request: Request,
     data: ChangePasswordRequest,
     current_user: User = Depends(get_current_user)
 ):

@@ -18,6 +18,11 @@
 // CONFIGURACION
 // ============================================
 const CONFIG = {
+  // HMAC secret — must match APPSCRIPT_HMAC_SECRET in backend .env
+  // Set this in Google Apps Script: Project Settings > Script Properties
+  // Key: HMAC_SECRET, Value: [same value as backend APPSCRIPT_HMAC_SECRET]
+  HMAC_SECRET: PropertiesService.getScriptProperties().getProperty('HMAC_SECRET') || '',
+  
   SHEET_NAMES: {
     USUARIOS: 'USUARIOS_OCR',
     AREAS: 'AREAS_OCR',
@@ -32,6 +37,34 @@ const CONFIG = {
   MESES: ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
     'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 };
+
+// ============================================
+// HMAC VERIFICATION — Only backend can call this
+// ============================================
+function verifyHMAC(data) {
+  // If no secret configured, skip verification (migration period)
+  if (!CONFIG.HMAC_SECRET) return true;
+  
+  const signature = data._signature;
+  if (!signature) return false;
+  
+  // Remove _signature before verifying
+  const payload = Object.assign({}, data);
+  delete payload._signature;
+  
+  // Compute HMAC of the payload (must match backend: sorted keys, no spaces)
+  const bodyStr = sortedStringify(payload);
+  const expected = Utilities.computeHmacSha256Signature(bodyStr, CONFIG.HMAC_SECRET)
+    .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+  
+  return signature === expected;
+}
+
+// JSON.stringify with sorted keys (matches Python json.dumps(sort_keys=True))
+function sortedStringify(obj) {
+  const keys = Object.keys(obj).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + JSON.stringify(obj[k])).join(',') + '}';
+}
 
 // ============================================
 // MANEJADOR PRINCIPAL - POST (CORREGIDO)
@@ -59,6 +92,15 @@ function doPost(e) {
         }
       }
     }
+
+    // HMAC VERIFICATION — reject unauthorized calls
+    if (!verifyHMAC(data)) {
+      console.warn('🚫 HMAC verification failed — rejecting request');
+      return json({ success: false, error: 'Firma de seguridad invalida' });
+    }
+    
+    // Remove _signature from data after verification
+    delete data._signature;
 
     // Si no se pudo parsear como JSON, intentar con parámetros
     if (!data.accion && e && e.parameter) {

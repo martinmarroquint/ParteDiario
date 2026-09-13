@@ -1,6 +1,8 @@
 import logging
 import httpx
 import json
+import hmac
+import hashlib
 from typing import Optional
 from app.config import settings
 
@@ -208,6 +210,16 @@ class MesaPartesService:
             return {"error": "Apps Script URL not configured"}
         
         payload = {"accion": action, **data}
+        
+        # HMAC SIGNING — Apps Script will verify this before processing
+        if settings.APPSCRIPT_HMAC_SECRET:
+            body_str = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+            signature = hmac.new(
+                settings.APPSCRIPT_HMAC_SECRET.encode('utf-8'),
+                body_str.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            payload["_signature"] = signature
         
         try:
             async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:

@@ -167,6 +167,10 @@ class ApiClient {
     });
   }
 
+  async validateAdminKey(clave) {
+    return this.post('/auth/validate-admin-key', { clave });
+  }
+
   // ============================================
   // USER ENDPOINTS
   // ============================================
@@ -337,6 +341,20 @@ class ApiClient {
 
   async updateEstructura(userId, data) {
     return this.put(`/estructura-jerarquica/${userId}`, data);
+  }
+
+  // ============================================
+  // SHEETS PROXY — read Google Sheets via backend (no API key exposure)
+  // ============================================
+
+  async readSheet(sheetName, range) {
+    const params = {};
+    if (range) params.range = range;
+    return this.get(`/sheets/${sheetName}`, params);
+  }
+
+  async getSheetMetadata(sheetName) {
+    return this.get(`/sheets/metadata/${sheetName}`);
   }
 
   // ============================================

@@ -220,7 +220,7 @@ async def registrar_documento(
     )
     
     if result and result.get("error"):
-        raise HTTPException(status_code=502, detail=f"Error: {result['error']}")
+        raise HTTPException(status_code=502, detail="Error al procesar en el servidor externo")
     
     return result
 
@@ -244,7 +244,7 @@ async def derivar_documento(
     )
     
     if result and result.get("error"):
-        raise HTTPException(status_code=502, detail=f"Error: {result['error']}")
+        raise HTTPException(status_code=502, detail="Error al procesar en el servidor externo")
     
     return result
 
@@ -274,7 +274,7 @@ async def recibir_documento(
     )
     
     if result and result.get("error"):
-        raise HTTPException(status_code=502, detail=f"Error: {result['error']}")
+        raise HTTPException(status_code=502, detail="Error al procesar en el servidor externo")
     
     return result
 
@@ -305,7 +305,7 @@ async def devolver_documento(
     )
     
     if result and result.get("error"):
-        raise HTTPException(status_code=502, detail=f"Error: {result['error']}")
+        raise HTTPException(status_code=502, detail="Error al procesar en el servidor externo")
     
     return result
 
@@ -326,7 +326,7 @@ async def cerrar_documento(
     )
     
     if result and result.get("error"):
-        raise HTTPException(status_code=502, detail=f"Error: {result['error']}")
+        raise HTTPException(status_code=502, detail="Error al procesar en el servidor externo")
     
     return result
 

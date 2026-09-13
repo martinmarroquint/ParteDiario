@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
+import logging
 
 from app.services.sheets_service import GoogleSheetsService
 from app.services.user_service import UserService
@@ -7,6 +8,7 @@ from app.utils.security import (
     create_access_token,
     decode_access_token,
     hash_password,
+    hash_password_bcrypt,
     hash_password_sha256,
     verify_password,
     generate_temp_password,
@@ -14,6 +16,12 @@ from app.utils.security import (
 )
 
 from fastapi import HTTPException, status
+
+logger = logging.getLogger(__name__)
+
+# Account lockout settings
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_MINUTES = 30
 
 
 class AuthService:
@@ -38,14 +46,67 @@ class AuthService:
                 detail="Usuario desactivado. Contacte al administrador."
             )
         
+        # CHECK ACCOUNT LOCKOUT
+        intentos_fallidos = int(getattr(user, 'intentos_fallidos', 0) or 0)
+        bloqueado_hasta = getattr(user, 'bloqueado_hasta', '') or ''
+        
+        if bloqueado_hasta:
+            try:
+                lockout_time = datetime.fromisoformat(bloqueado_hasta.replace('Z', '+00:00'))
+                if datetime.now(lockout_time.tzinfo) < lockout_time:
+                    remaining = (lockout_time - datetime.now(lockout_time.tzinfo)).seconds // 60 + 1
+                    raise HTTPException(
+                        status_code=status.HTTP_423_LOCKED,
+                        detail=f"Cuenta bloqueada por multiples intentos fallidos. Intente nuevamente en {remaining} minutos."
+                    )
+                else:
+                    # Lockout expired — reset counters
+                    await self.user_service.update_user_field(user.id, "intentos_fallidos", "0")
+                    await self.user_service.update_user_field(user.id, "bloqueado_hasta", "")
+                    intentos_fallidos = 0
+            except (ValueError, TypeError):
+                # Invalid date format — clear it
+                await self.user_service.update_user_field(user.id, "bloqueado_hasta", "")
+                intentos_fallidos = 0
+        
         # Get the salt from the sheet (needed for SHA-256 format)
         salt = getattr(user, 'salt', '') or ''
         
         if not verify_password(password, user.password, salt):
+            # INCREMENT FAILED ATTEMPTS
+            intentos_fallidos += 1
+            await self.user_service.update_user_field(user.id, "intentos_fallidos", str(intentos_fallidos))
+            
+            if intentos_fallidos >= MAX_FAILED_ATTEMPTS:
+                lockout_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
+                await self.user_service.update_user_field(user.id, "bloqueado_hasta", lockout_until.isoformat())
+                logger.warning(f"Account locked for {user.usuario} after {MAX_FAILED_ATTEMPTS} failed attempts")
+                raise HTTPException(
+                    status_code=status.HTTP_423_LOCKED,
+                    detail=f"Cuenta bloqueada por multiples intentos fallidos. Intente nuevamente en {LOCKOUT_MINUTES} minutos."
+                )
+            
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Credenciales invalidas"
             )
+        
+        # SUCCESS — reset failed attempts
+        if intentos_fallidos > 0:
+            await self.user_service.update_user_field(user.id, "intentos_fallidos", "0")
+            await self.user_service.update_user_field(user.id, "bloqueado_hasta", "")
+        
+        # TRANSPARENT MIGRATION: If password is SHA-256, re-hash with bcrypt
+        # This migrates existing users without requiring a password reset
+        if not user.password.startswith('$2'):
+            try:
+                new_bcrypt_hash = hash_password_bcrypt(password)
+                await self.user_service.update_user_field(user.id, "password", new_bcrypt_hash)
+                await self.user_service.update_user_field(user.id, "salt", "")
+                logger.info(f"Password migrated to bcrypt for user {user.usuario}")
+            except Exception as e:
+                logger.warning(f"Failed to migrate password for {user.usuario}: {e}")
+                # Don't fail login if migration fails — just log it
         
         # Determine primary role (highest role)
         rol_principal = max(user.roles) if user.roles else 0
@@ -90,12 +151,12 @@ class AuthService:
                 detail="Contrasena actual incorrecta"
             )
         
-        # SHA-256+salt (compatible con Apps Script en Google Sheets)
-        new_salt = generate_salt()
-        new_hash = hash_password_sha256(new_password, new_salt)
+        # bcrypt — secure password hashing
+        new_hash = hash_password_bcrypt(new_password)
         
         await self.user_service.update_user_field(user_id, "password", new_hash)
-        await self.user_service.update_user_field(user_id, "salt", new_salt)
+        # Clear salt field since bcrypt stores it in the hash
+        await self.user_service.update_user_field(user_id, "salt", "")
         
         # Clear the "must change password" flag
         if user.requiere_cambio_password:
@@ -112,12 +173,12 @@ class AuthService:
         
         temp_password = generate_temp_password()
         
-        # SHA-256+salt (compatible con Apps Script en Google Sheets)
-        new_salt = generate_salt()
-        new_hash = hash_password_sha256(temp_password, new_salt)
+        # bcrypt — secure password hashing
+        new_hash = hash_password_bcrypt(temp_password)
         
         await self.user_service.update_user_field(user_id, "password", new_hash)
-        await self.user_service.update_user_field(user_id, "salt", new_salt)
+        # Clear salt field since bcrypt stores it in the hash
+        await self.user_service.update_user_field(user_id, "salt", "")
         
         # Marcar que debe cambiar password en el próximo login
         await self.user_service.update_user_field(user_id, "requiere_cambio_password", "TRUE")

@@ -4,6 +4,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
 from app.middleware.cors import setup_cors
@@ -19,6 +22,7 @@ from app.routers import (
     areas,
     estructura_jerarquica,
     mesa_partes,
+    sheets_proxy,
 )
 
 # Configure logging
@@ -45,13 +49,16 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
     redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
+    openapi_url="/openapi.json" if settings.ENVIRONMENT == "development" else None,
 )
 
 # Setup CORS
 setup_cors(app)
 
-# Rate limiter
+# Rate limiter — must be wired as middleware + exception handler
 app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 
 # Logging middleware
@@ -90,6 +97,7 @@ app.include_router(vacaciones.router, prefix="/api/v1")
 app.include_router(areas.router, prefix="/api/v1")
 app.include_router(estructura_jerarquica.router, prefix="/api/v1")
 app.include_router(mesa_partes.router, prefix="/api/v1")
+app.include_router(sheets_proxy.router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Root"])
@@ -118,7 +126,7 @@ async def health_check():
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler."""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    logger.error(f"Unhandled exception: {request.method} {request.url.path}")
     return JSONResponse(
         status_code=500,
         content={"detail": "Error interno del servidor"},

@@ -39,9 +39,10 @@ function columnaLetra(numero) {
 }
 
 // ============================================================
-// MODO PRUEBA - USUARIOS DE PRUEBA POR ROL (solo si backend no disponible)
+// MODO PRUEBA - DESHABILITADO por seguridad
+// Si el backend no esta disponible, se muestra error en vez de dar acceso admin
 // ============================================================
-const MODO_PRUEBA = !BACKEND_DISPONIBLE;
+const MODO_PRUEBA = false;
 
 const USUARIOS_PRUEBA = {
   admin: {
@@ -229,7 +230,7 @@ const PanelOCRContent = () => {
   useEffect(() => {
     const verificarToken = async () => {
       const storedToken = localStorage.getItem('ocr_auth_token');
-      if (!storedToken || storedToken === 'modo_prueba_token') return;
+      if (!storedToken) return;
 
       try {
         const result = await apiClient.get('/users/me', {}, { _skipAuthRedirect: true });
@@ -374,50 +375,14 @@ const PanelOCRContent = () => {
         }
       }
       
-      // Modo prueba: cualquier credencial funciona
-      const usuarioEncontrado = Object.values(USUARIOS_PRUEBA).find(
-        u => u.usuario === usuario.trim()
-      );
-
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      let userData;
-      
-      if (usuarioEncontrado) {
-        userData = { ...usuarioEncontrado };
-      } else {
-        userData = { ...USUARIOS_PRUEBA.admin };
-      }
-
-      setUser(userData);
-      setIsAuthenticated(true);
-      setIsAdmin(userData.rol === 'admin');
-      setIsJefe(['jefe_area', 'jefe_departamento', 'jefe_division'].includes(userData.rol));
-      setIsUsuario(userData.rol === 'usuario');
-      setResponsable(userData.nombre);
-      setEsAdmin(userData.rol === 'admin');
-      setEsTramite(userData.rol === 'tramite_documentario');
-      
-      if (userData.areas && userData.areas.length > 0) {
-        setAreaSeleccionada(userData.areas[0]);
-      } else if (userData.area) {
-        setAreaSeleccionada(userData.area);
-      }
-      
-      setRolSeleccionado(userData.rol);
-      
-      // GUARDAR en localStorage para persistir recarga (modo prueba)
-      localStorage.setItem('ocr_auth_token', 'modo_prueba_token');
-      localStorage.setItem('ocr_user_data', JSON.stringify(userData));
-      
-      // Cargar turnos dinámicos desde BD sheet (modo prueba)
-      initTurnosDinamicos();
-      
+      // Backend no disponible — mostrar error, NO dar acceso admin
       setLoading(false);
-      return true;
+      setError('Servidor no disponible. Verifique su conexion e intente nuevamente.');
+      return false;
     } catch (error) {
       console.error('Error en login:', error);
       setLoading(false);
+      setError('Error de conexion con el servidor.');
       return false;
     }
   }, []);

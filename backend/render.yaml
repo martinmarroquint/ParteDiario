@@ -14,12 +14,17 @@ services:
         value: "INFO"
       - key: JWT_SECRET
         generateValue: true
+      # SECURITY: Set these in the Render dashboard, not here
       - key: GOOGLE_SHEETS_API_KEY
-        value: "AIzaSyCrdStW9-jK7vz76EuB8KA7Ea_m9aVOoeI"
+        sync: false
       - key: GOOGLE_SHEETS_ID
-        value: "1elNfbmPM5KxW0jnttJc8kGGokPT8XUoda3iZ6qdZvZA"
+        sync: false
       - key: GOOGLE_APPS_SCRIPT_URL
-        value: "https://script.google.com/macros/s/AKfycbydeAColIxKHhX-lm5LMw5bd3ebYZ-YrRRZn-xnbQTRtYecG0hujpEqNfZ5107wedP9vA/exec"
+        sync: false
+      - key: MESA_PARTES_SHEET_ID
+        sync: false
+      - key: MESA_PARTES_APPS_SCRIPT_URL
+        sync: false
       - key: ALLOWED_ORIGINS
-        value: "https://rolesdeservicio.web.app,http://localhost:5173"
+        value: "https://rolesdeservicio.web.app"
     healthCheckPath: /health

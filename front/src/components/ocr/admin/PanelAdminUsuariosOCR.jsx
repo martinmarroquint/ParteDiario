@@ -11,14 +11,12 @@ import {
   AlertTriangle, Users, Building2, PlusCircle,
   Save, UserCog, Eye, EyeOff, GraduationCap, MapPin
 } from 'lucide-react';
-import { DEFAULT_GOOGLE_CONFIG, API_CONFIG, hojaDelMesActual } from '../constantes';
 import apiClient from '../services/apiClient';
+import { adminUsuariosService } from './adminUsuariosService';
 
 // ============================================================
-// CONFIGURACIÓN
+// CONFIGURACION
 // ============================================================
-const HOJA_PERSONAL = hojaDelMesActual();
-const HOJA_USUARIOS = 'USUARIOS_OCR';
 
 const ROLES_DISPONIBLES = [
   { value: 'admin', label: 'Administrador', nivel: 4, color: 'bg-amber-100 text-amber-700' },
@@ -76,75 +74,46 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   const [guardando, setGuardando] = useState(false);
   const [erroresForm, setErroresForm] = useState({});
   const [busquedaArea, setBusquedaArea] = useState('');
-
-  const config = DEFAULT_GOOGLE_CONFIG;
   // ============================================================
 
   // ============================================================
-  // CARGAR DATOS
+  // CARGAR DATOS — TODO POR EL BACKEND (sin exposicion de API key)
   // ============================================================
   const cargarDatos = useCallback(async () => {
-    if (!config.sheetId || !config.apiKey) {
-      setError('Configuración de Google Sheets no disponible');
-      return;
-    }
-
     setCargando(true);
     setError('');
     setMensaje(null);
 
     try {
-      const [personalRes, usuariosRes] = await Promise.all([
-        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${HOJA_PERSONAL}!A:E?key=${config.apiKey}`),
-        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${HOJA_USUARIOS}!A:N?key=${config.apiKey}`)
+      // Cargar personal (directorio de empleados) y usuarios desde el backend
+      const [personalList, usuariosListRaw] = await Promise.all([
+        adminUsuariosService.obtenerPersonal(),
+        adminUsuariosService.obtenerUsuarios(),
       ]);
 
-      let personalList = [];
-      let usuariosList = [];
+      // Mapear usuarios al formato esperado por el panel
+      const usuariosList = usuariosListRaw.map((u) => {
+        const rolRaw = (u.roles && u.roles.length > 0) ? String(u.roles[0]) : '0';
+        const primerRol = rolRaw.split(',')[0].trim();
+        const rolStr = ROL_NUM_A_STRING[primerRol] || primerRol || 'usuario';
 
-      if (personalRes.ok) {
-        const personalData = await personalRes.json();
-        const personalRows = personalData.values || [];
-        personalList = personalRows.slice(1).map((row, index) => ({
-          id: `p-${index + 1}`,
-          fila: index + 2,
-          dni: (row[0] || '').trim(),
-          grado: (row[1] || '').trim(),
-          nombre: (row[2] || '').trim(),
-          area: (row[3] || '').trim(),
-          esMedico: row[4] === 'TRUE' || row[4] === true
-        }));
-      }
-
-      if (usuariosRes.ok) {
-        const usuariosData = await usuariosRes.json();
-        const usuariosRows = usuariosData.values || [];
-        usuariosList = usuariosRows.slice(1).map((row) => {
-          // Column G puede tener: "1", "4", "1,2", "jefe_area", etc.
-          const rolRaw = (row[6] || '0').trim();
-          // Tomar el primer rol (separado por coma)
-          const primerRol = rolRaw.split(',')[0].trim();
-          // Convertir numérico a string
-          const rolStr = ROL_NUM_A_STRING[primerRol] || primerRol || 'usuario';
-
-          return {
-            id: (row[0] || '').trim(),
-            nombre: (row[1] || '').trim(),
-            email: (row[2] || '').trim(),
-            usuario: (row[3] || '').trim(),
-            password_hash: (row[4] || '').trim(),
-            salt: (row[5] || '').trim(),
-            rol: rolStr,  // Ahora siempre es string: 'admin', 'jefe_area', etc.
-            area: (row[7] || '').trim(),
-            fecha_creacion: (row[8] || '').trim(),
-            ultimo_acceso: (row[9] || '').trim(),
-            intentos_fallidos: parseInt(row[10]) || 0,
-            bloqueado_hasta: (row[11] || '').trim(),
-            activo: (row[12] || 'TRUE').toUpperCase() === 'TRUE',
-            requiere_cambio: (row[13] || 'FALSE').toUpperCase() === 'TRUE'
-          };
-        });
-      }
+        return {
+          id: String(u.id),
+          nombre: u.nombre || '',
+          email: u.correo || '',
+          usuario: u.usuario || '',
+          password_hash: '',  // Never exposed by backend
+          salt: '',           // Never exposed by backend
+          rol: rolStr,
+          area: Array.isArray(u.areas) ? u.areas.join(',') : (u.areas || ''),
+          fecha_creacion: u.creado_en || '',
+          ultimo_acceso: '',
+          intentos_fallidos: 0,
+          bloqueado_hasta: '',
+          activo: u.activo !== false,
+          requiere_cambio: u.requiere_cambio_password || false
+        };
+      });
 
       setPersonal(personalList);
       setUsuarios(usuariosList);
@@ -154,7 +123,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
     } finally {
       setCargando(false);
     }
-  }, [config]);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {

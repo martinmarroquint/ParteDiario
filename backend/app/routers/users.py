@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from typing import Optional
+from pydantic import BaseModel
+from typing import Optional, List
 import logging
 
 from app.models.user import User, UserCreate, UserUpdate, UserListResponse
@@ -18,6 +19,54 @@ user_service = UserService(sheets_service)
 auth_service = AuthService(sheets_service)
 
 
+# ============================================
+# MODELS FOR PERSONAL (employee directory)
+# ============================================
+
+class PersonalItem(BaseModel):
+    id: str
+    fila: int
+    dni: str
+    grado: str
+    nombre: str
+    area: str
+    es_medico: bool
+
+
+class PersonalListResponse(BaseModel):
+    personal: List[PersonalItem]
+    total: int
+
+
+# ============================================
+# PERSONAL ENDPOINT (employee directory from OCR sheet)
+# ============================================
+
+@router.get("/personal", response_model=PersonalListResponse)
+async def get_personal(
+    current_user: User = Depends(require_admin)
+):
+    """Get employee directory from OCR sheet (admin only).
+    
+    This replaces direct Google Sheets API calls from the frontend,
+    keeping the API key server-side only.
+    """
+    rows = await sheets_service.get_range("OCR")
+    personal = []
+    for idx, row in enumerate(rows[1:] if len(rows) > 0 else []):  # Skip header
+        if len(row) >= 4:
+            personal.append(PersonalItem(
+                id=f"p-{idx + 1}",
+                fila=idx + 2,
+                dni=(row[0] if len(row) > 0 else '').strip(),
+                grado=(row[1] if len(row) > 1 else '').strip(),
+                nombre=(row[2] if len(row) > 2 else '').strip(),
+                area=(row[3] if len(row) > 3 else '').strip(),
+                es_medico=(row[4] if len(row) > 4 else '').strip().upper() == 'TRUE'
+            ))
+    return PersonalListResponse(personal=personal, total=len(personal))
+
+
 @router.get("", response_model=UserListResponse)
 async def get_users(
     activo: Optional[bool] = Query(None, description="Filter by active status"),
@@ -25,10 +74,10 @@ async def get_users(
 ):
     """Get all users (admin only)."""
     users = await user_service.get_all_users(activo=activo)
-    # Remove passwords from response
+    # Remove sensitive fields from response
     for user in users:
-        if hasattr(user, 'password'):
-            user.__dict__.pop('password', None)
+        user.__dict__.pop('password', None)
+        user.__dict__.pop('salt', None)
     return UserListResponse(users=users, total=len(users))
 
 
@@ -37,6 +86,7 @@ async def get_current_user_profile(current_user: User = Depends(get_current_user
     """Get current user's profile."""
     user_dict = current_user.__dict__.copy()
     user_dict.pop('password', None)
+    user_dict.pop('salt', None)
     return User(**user_dict)
 
 
@@ -51,6 +101,7 @@ async def get_user(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     user_dict = user.__dict__.copy()
     user_dict.pop('password', None)
+    user_dict.pop('salt', None)
     return User(**user_dict)
 
 
@@ -64,6 +115,7 @@ async def create_user(
         user = await user_service.create_user(data)
         user_dict = user.__dict__.copy()
         user_dict.pop('password', None)
+        user_dict.pop('salt', None)
         return User(**user_dict)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -71,7 +123,7 @@ async def create_user(
         logger.error(f"Error de sheets creando usuario: {e}")
         raise HTTPException(status_code=502, detail="Error al guardar en el servidor. Intente nuevamente.")
     except Exception as e:
-        logger.error(f"Error inesperado creando usuario: {e}", exc_info=True)
+        logger.error(f"Error inesperado creando usuario: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -86,6 +138,7 @@ async def update_user(
         user = await user_service.update_user(user_id, data)
         user_dict = user.__dict__.copy()
         user_dict.pop('password', None)
+        user_dict.pop('salt', None)
         return User(**user_dict)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -93,7 +146,7 @@ async def update_user(
         logger.error(f"Error de sheets actualizando usuario: {e}")
         raise HTTPException(status_code=502, detail="Error al guardar en el servidor. Intente nuevamente.")
     except Exception as e:
-        logger.error(f"Error inesperado actualizando usuario {user_id}: {e}", exc_info=True)
+        logger.error(f"Error inesperado actualizando usuario {user_id}: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 

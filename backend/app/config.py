@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     GOOGLE_SHEETS_ID: str = ""
     GOOGLE_APPS_SCRIPT_URL: str = ""  # Apps Script web app URL for write operations
     
+    # Apps Script HMAC signing — prevents unauthorized direct calls
+    APPSCRIPT_HMAC_SECRET: str = ""
+    
+    # Admin access key — validated server-side, NOT in frontend
+    CLAVE_SECRETA: str = ""
+    
     # Mesa de Partes (separate sheet)
     MESA_PARTES_SHEET_ID: str = ""
     MESA_PARTES_APPS_SCRIPT_URL: str = ""

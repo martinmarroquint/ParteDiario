@@ -21,7 +21,40 @@
 //   PASE-001/2026  (tipo de movimiento de BD Col B)
 //   DEV-001/2026   (devolución)
 //   RES-001/2026   (resolución)
+//
+// SECURITY:
+//   HMAC verification — only backend can call write operations
+//   Set HMAC_SECRET in Script Properties to match backend APPSCRIPT_HMAC_SECRET
 // ================================================================
+
+// ============================================
+// HMAC VERIFICATION — Only backend can call this
+// ============================================
+function verifyHMAC(data) {
+  const secret = PropertiesService.getScriptProperties().getProperty('HMAC_SECRET') || '';
+  // If no secret configured, skip verification (migration period)
+  if (!secret) return true;
+  
+  const signature = data._signature;
+  if (!signature) return false;
+  
+  // Remove _signature before verifying
+  const payload = Object.assign({}, data);
+  delete payload._signature;
+  
+  // Compute HMAC of the payload (must match backend: sorted keys, no spaces)
+  const bodyStr = sortedStringify(payload);
+  const expected = Utilities.computeHmacSha256Signature(bodyStr, secret)
+    .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+  
+  return signature === expected;
+}
+
+// JSON.stringify with sorted keys (matches Python json.dumps(sort_keys=True))
+function sortedStringify(obj) {
+  const keys = Object.keys(obj).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + JSON.stringify(obj[k])).join(',') + '}';
+}
 
 function doPost(e) {
   try {
@@ -33,6 +66,13 @@ function doPost(e) {
       data = Object.assign(data, e.parameter);
     }
     if (!data.accion) return json({ success: false, error: 'Acción requerida' });
+
+    // HMAC VERIFICATION — reject unauthorized calls
+    if (!verifyHMAC(data)) {
+      console.warn('🚫 HMAC verification failed — rejecting request');
+      return json({ success: false, error: 'Firma de seguridad invalida' });
+    }
+    delete data._signature;
 
     switch(data.accion) {
       case 'registrar':      return json(registrar(data));
