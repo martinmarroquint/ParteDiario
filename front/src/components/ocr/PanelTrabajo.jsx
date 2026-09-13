@@ -28,6 +28,7 @@ import ModalVistaPrevia from './ModalVistaPrevia';
 import ModalSolicitudCambioTurno from './ModalSolicitudCambioTurno';
 import ModalCambiarPassword from './auth/ModalCambiarPassword';
 import ModalFrancosInvalidos from './ModalFrancosInvalidos';
+import apiClient from './services/apiClient';
 
 const STORAGE_ESTADOS = 'ocr_estados_areas';
 const STORAGE_RESPALDO_LOCAL = 'ocr_respaldo_local';
@@ -737,11 +738,10 @@ const PanelTrabajo = ({
 
   const handleCambiarPassword = async (passwordActual, passwordNueva) => {
     try {
-      // Aquí iría la llamada al servicio de cambio de contraseña
-      console.log('Cambiando contraseña:', { passwordActual, passwordNueva });
-      return { success: true };
+      const result = await apiClient.changePassword(passwordActual, passwordNueva);
+      return { success: true, message: result.message };
     } catch (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: error.message || 'Error al cambiar la contraseña' };
     }
   };
 
