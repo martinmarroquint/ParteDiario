@@ -7,7 +7,6 @@ from app.utils.security import (
     create_access_token,
     decode_access_token,
     hash_password,
-    hash_password_bcrypt,
     hash_password_sha256,
     verify_password,
     generate_temp_password,
@@ -91,12 +90,12 @@ class AuthService:
                 detail="Contrasena actual incorrecta"
             )
         
-        # SECURITY FIX: Generate new bcrypt hash instead of SHA-256
-        new_hash = hash_password_bcrypt(new_password)
+        # SHA-256+salt (compatible con Apps Script en Google Sheets)
+        new_salt = generate_salt()
+        new_hash = hash_password_sha256(new_password, new_salt)
         
         await self.user_service.update_user_field(user_id, "password", new_hash)
-        # Clear salt field since bcrypt stores it in the hash
-        await self.user_service.update_user_field(user_id, "salt", "")
+        await self.user_service.update_user_field(user_id, "salt", new_salt)
         
         # Clear the "must change password" flag
         if user.requiere_cambio_password:
@@ -113,12 +112,12 @@ class AuthService:
         
         temp_password = generate_temp_password()
         
-        # SECURITY FIX: Use bcrypt instead of SHA-256
-        new_hash = hash_password_bcrypt(temp_password)
+        # SHA-256+salt (compatible con Apps Script en Google Sheets)
+        new_salt = generate_salt()
+        new_hash = hash_password_sha256(temp_password, new_salt)
         
         await self.user_service.update_user_field(user_id, "password", new_hash)
-        # Clear salt field since bcrypt stores it in the hash
-        await self.user_service.update_user_field(user_id, "salt", "")
+        await self.user_service.update_user_field(user_id, "salt", new_salt)
         
         # Marcar que debe cambiar password en el próximo login
         await self.user_service.update_user_field(user_id, "requiere_cambio_password", "TRUE")
