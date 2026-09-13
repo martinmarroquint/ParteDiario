@@ -25,7 +25,18 @@ async def get_roles(
     area: str = Query(...),
     current_user: User = Depends(get_current_user)
 ):
-    """Get roles for a specific month, year and area."""
+    """Get roles for a specific month, year and area.
+    SECURITY: Users can only view roles for their own area unless admin/jefe.
+    """
+    # Admin and jefes can view any area
+    user_roles = current_user.roles or []
+    is_privileged = any(r in user_roles for r in [1, 2, 3, 4])  # jefes + admin
+    
+    if not is_privileged:
+        user_areas = [a.upper() for a in (current_user.areas or [])]
+        if area.upper() not in user_areas:
+            raise HTTPException(status_code=403, detail="No tiene acceso a los roles de esta área")
+    
     roles = await role_service.get_roles(mes, anio, area)
     if not roles:
         raise HTTPException(status_code=404, detail="No se encontraron roles para estos parámetros")

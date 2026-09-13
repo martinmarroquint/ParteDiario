@@ -68,10 +68,11 @@ async def create_user(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=f"Error al escribir en Google Sheets: {e}")
+        logger.error(f"Error de sheets creando usuario: {e}")
+        raise HTTPException(status_code=502, detail="Error al guardar en el servidor. Intente nuevamente.")
     except Exception as e:
         logger.error(f"Error inesperado creando usuario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 @router.put("/{user_id}", response_model=User)
@@ -89,10 +90,11 @@ async def update_user(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=f"Error al escribir en Google Sheets: {e}")
+        logger.error(f"Error de sheets actualizando usuario: {e}")
+        raise HTTPException(status_code=502, detail="Error al guardar en el servidor. Intente nuevamente.")
     except Exception as e:
         logger.error(f"Error inesperado actualizando usuario {user_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 @router.delete("/{user_id}", response_model=MessageResponse)

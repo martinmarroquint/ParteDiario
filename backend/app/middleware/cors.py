@@ -6,19 +6,21 @@ import re
 def setup_cors(app):
     """Configure CORS middleware.
     
-    Allows configured origins PLUS any localhost origin (for development).
-    This prevents CORS issues when testing from localhost:5173, :3000, etc.
+    SECURITY FIX: In production, only allow the configured origins.
+    Localhost is allowed only when ENVIRONMENT=development.
     """
     origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",")]
     
-    # Always allow any localhost origin for development
-    allow_regex = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
+    # Only allow localhost in development mode
+    allow_regex = None
+    if settings.ENVIRONMENT == "development":
+        allow_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_origin_regex=allow_regex,
         allow_credentials=True,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )

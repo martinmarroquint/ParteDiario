@@ -34,6 +34,7 @@ async def logout(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/refresh")
+@limiter.limit("10/minute")
 async def refresh_token(
     data: RefreshTokenRequest,
     current_user: User = Depends(get_current_user)
@@ -44,6 +45,7 @@ async def refresh_token(
 
 
 @router.post("/change-password", response_model=MessageResponse)
+@limiter.limit("5/minute")
 async def change_password(
     data: ChangePasswordRequest,
     current_user: User = Depends(get_current_user)
@@ -65,6 +67,10 @@ async def forgot_password(request: Request, data: ForgotPasswordRequest):
 
 @router.post("/reset-password", response_model=MessageResponse)
 async def reset_password(data: ResetPasswordRequest):
-    """Reset password with token."""
-    # In production, this would validate the reset token
-    return MessageResponse(message="Contraseña actualizada correctamente")
+    """Reset password with token — DESHABILITADO: pendiente implementación segura."""
+    # SECURITY FIX: This endpoint was a stub that always returned success.
+    # An attacker could probe it. Disabled until proper token-based reset is implemented.
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Función no implementada. Use 'Cambiar Contraseña' desde su perfil."
+    )

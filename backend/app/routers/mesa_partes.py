@@ -128,7 +128,15 @@ async def get_bandeja(
     area: str = Query(..., min_length=1),
     current_user: User = Depends(get_current_user)
 ):
-    """Get documents in bandeja (inbox) for a specific area."""
+    """Get documents in bandeja (inbox) for a specific area.
+    SECURITY: Users can only access their own areas unless they are admin/tramite.
+    """
+    user_areas = [a.upper() for a in (current_user.areas or [])]
+    is_privileged = _user_is_admin(current_user) or _user_is_tramite(current_user)
+    
+    if not is_privileged and area.upper() not in user_areas:
+        raise HTTPException(status_code=403, detail="No tiene acceso a esta área")
+    
     documentos = await mesa_partes_service.get_bandeja(area)
     return {"documentos": documentos, "total": len(documentos)}
 
@@ -141,16 +149,58 @@ async def get_opciones(current_user: User = Depends(get_current_user)):
 
 @router.get("/{doc_id}")
 async def get_documento(doc_id: int, current_user: User = Depends(get_current_user)):
-    """Get a single document with movements and derivations."""
+    """Get a single document with movements and derivations.
+    SECURITY: Admin/tramite can see all. Others only if document has derivations to their area.
+    """
     documento = await mesa_partes_service.get_documento(doc_id)
     if not documento:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    # Admin and tramite can see everything
+    is_privileged = _user_is_admin(current_user) or _user_is_tramite(current_user)
+    if is_privileged:
+        return {"documento": documento}
+    
+    # Regular users: check if any derivation is for their area
+    user_areas = [a.upper() for a in (current_user.areas or [])]
+    derivaciones = documento.get("derivaciones", [])
+    has_access = any(
+        d.get("area_destino", "").upper() in user_areas
+        for d in derivaciones
+    )
+    
+    # Also allow if user created the document
+    if documento.get("creado_por", "") == current_user.nombre:
+        has_access = True
+    
+    if not has_access:
+        raise HTTPException(status_code=403, detail="No tiene acceso a este documento")
+    
     return {"documento": documento}
 
 
 @router.get("/{doc_id}/historial")
 async def get_historial(doc_id: int, current_user: User = Depends(get_current_user)):
-    """Get history for a document."""
+    """Get history for a document.
+    SECURITY: Same access rules as get_documento.
+    """
+    documento = await mesa_partes_service.get_documento(doc_id)
+    if not documento:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    is_privileged = _user_is_admin(current_user) or _user_is_tramite(current_user)
+    if not is_privileged:
+        user_areas = [a.upper() for a in (current_user.areas or [])]
+        derivaciones = documento.get("derivaciones", [])
+        has_access = any(
+            d.get("area_destino", "").upper() in user_areas
+            for d in derivaciones
+        )
+        if documento.get("creado_por", "") == current_user.nombre:
+            has_access = True
+        if not has_access:
+            raise HTTPException(status_code=403, detail="No tiene acceso al historial de este documento")
+    
     historial = await mesa_partes_service.get_historial(doc_id)
     return {"historial": historial}
 
@@ -204,7 +254,20 @@ async def recibir_documento(
     data: RecibirDoc,
     current_user: User = Depends(get_current_user)
 ):
-    """Area confirms receipt. Jefes of the area can receive."""
+    """Area confirms receipt. Jefes of the area can receive.
+    SECURITY: Users can only receive derivations addressed to their area.
+    """
+    # Validate derivation belongs to user's area
+    is_privileged = _user_is_admin(current_user) or _user_is_tramite(current_user)
+    if not is_privileged:
+        derivaciones = await mesa_partes_service._read_derivaciones()
+        deriv = next((d for d in derivaciones if str(d.get("id")) == str(data.derivacion_id)), None)
+        if not deriv:
+            raise HTTPException(status_code=404, detail="Derivación no encontrada")
+        user_areas = [a.upper() for a in (current_user.areas or [])]
+        if deriv.get("area_destino", "").upper() not in user_areas:
+            raise HTTPException(status_code=403, detail="Esta derivación no es para su área")
+    
     result = await mesa_partes_service.recibir(
         data.derivacion_id,
         user_name=current_user.nombre
@@ -221,7 +284,20 @@ async def devolver_documento(
     data: DevolverDoc,
     current_user: User = Depends(get_current_user)
 ):
-    """Area returns document with devolution document."""
+    """Area returns document with devolution document.
+    SECURITY: Users can only return derivations addressed to their area.
+    """
+    # Validate derivation belongs to user's area
+    is_privileged = _user_is_admin(current_user) or _user_is_tramite(current_user)
+    if not is_privileged:
+        derivaciones = await mesa_partes_service._read_derivaciones()
+        deriv = next((d for d in derivaciones if str(d.get("id")) == str(data.derivacion_id)), None)
+        if not deriv:
+            raise HTTPException(status_code=404, detail="Derivación no encontrada")
+        user_areas = [a.upper() for a in (current_user.areas or [])]
+        if deriv.get("area_destino", "").upper() not in user_areas:
+            raise HTTPException(status_code=403, detail="Esta derivación no es para su área")
+    
     result = await mesa_partes_service.devolver(
         data.derivacion_id,
         data.model_dump(),

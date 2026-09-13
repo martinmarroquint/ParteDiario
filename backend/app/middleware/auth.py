@@ -56,14 +56,14 @@ async def get_current_user(
         logger.warning(f"Auth: user_id={user_id} not found in USUARIOS_OCR")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario no encontrado",
+            detail="Token inválido o usuario no válido",
         )
     
     if not user.activo:
         logger.warning(f"Auth: user_id={user_id} is inactive")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Usuario desactivado",
+            detail="Token inválido o usuario no válido",
         )
     
     return user
