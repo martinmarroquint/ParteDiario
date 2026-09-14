@@ -82,8 +82,8 @@ def require_roles(allowed_roles: List[int]):
 
 
 async def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Dependency that requires admin role."""
-    if 4 not in current_user.roles:
+    """Dependency that requires admin role. Demo role (6) has read-only admin access."""
+    if 4 not in current_user.roles and 6 not in current_user.roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de administrador",
@@ -91,12 +91,33 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+async def require_admin_write(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that requires admin role for WRITE operations. Demo role excluded."""
+    if 4 not in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requiere rol de administrador para escritura",
+        )
+    return current_user
+
+
 async def require_jefe_or_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Dependency that requires jefe (area, depto, division) or admin role."""
-    jefe_roles = [1, 2, 3, 4]
+    """Dependency that requires jefe (area, depto, division) or admin role. Demo has read access."""
+    jefe_roles = [1, 2, 3, 4, 6]
     if not any(role in current_user.roles for role in jefe_roles):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de jefe o administrador",
+        )
+    return current_user
+
+
+async def require_jefe_or_admin_write(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that requires jefe/admin for WRITE. Demo role excluded."""
+    jefe_roles = [1, 2, 3, 4]
+    if not any(role in current_user.roles for role in jefe_roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requiere rol de jefe o administrador para escritura",
         )
     return current_user

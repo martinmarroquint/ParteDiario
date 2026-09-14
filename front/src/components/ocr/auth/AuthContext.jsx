@@ -34,7 +34,8 @@ export const AuthProvider = ({ children }) => {
         // Normalizar datos del usuario
         const normalizedUser = {
           ...userData,
-          rol: userData.roles?.includes(5) ? 'tramite_documentario'
+          rol: userData.roles?.includes(6) ? 'demo'
+            : userData.roles?.includes(5) ? 'tramite_documentario'
             : userData.roles?.includes(4) ? 'admin' 
             : userData.roles?.includes(3) ? 'jefe_division'
             : userData.roles?.includes(2) ? 'jefe_departamento'
@@ -118,7 +119,8 @@ export const AuthProvider = ({ children }) => {
         // Normalizar datos del usuario
         const normalizedUser = {
           ...userData,
-          rol: userData.roles?.includes(5) ? 'tramite_documentario'
+          rol: userData.roles?.includes(6) ? 'demo'
+            : userData.roles?.includes(5) ? 'tramite_documentario'
             : userData.roles?.includes(4) ? 'admin' 
             : userData.roles?.includes(3) ? 'jefe_division'
             : userData.roles?.includes(2) ? 'jefe_departamento'

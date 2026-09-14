@@ -20,6 +20,7 @@ import { authService } from '../components/ocr/services/authService';
 import { rolesService } from '../components/ocr/services/rolesService';
 import GuidedTour from '../components/ocr/tour/GuidedTour';
 import { shouldShowTour, resetTour } from '../components/ocr/tour/TourSteps';
+import DemoModeSwitcher from '../components/ocr/demo/DemoModeSwitcher';
 import { descansosService } from '../components/ocr/services/descansosService';
 import { vacacionesService } from '../components/ocr/services/vacacionesService';
 import { solicitudesService } from '../components/ocr/services/solicitudesService';
@@ -164,7 +165,7 @@ const PanelOCRContent = () => {
   const [user, setUser] = useState(initialSession?.user || null);
   const [isAuthenticated, setIsAuthenticated] = useState(!!initialSession);
   const [loading, setLoading] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(initialSession?.user?.rol === 'admin');
+  const [isAdmin, setIsAdmin] = useState(initialSession?.user?.rol === 'admin' || initialSession?.user?.rol === 'demo');
   const [isJefe, setIsJefe] = useState(['jefe_area', 'jefe_departamento', 'jefe_division'].includes(initialSession?.user?.rol));
   const [isUsuario, setIsUsuario] = useState(initialSession?.user?.rol === 'usuario');
   // ============================================================
@@ -174,8 +175,9 @@ const PanelOCRContent = () => {
     initialSession?.sessionData?.area || initialSession?.user?.areas?.[0] || initialSession?.user?.area || null
   );
   const [responsable, setResponsable] = useState(initialSession?.user?.nombre || '');
-  const [esAdmin, setEsAdmin] = useState(initialSession?.user?.rol === 'admin');
+  const [esAdmin, setEsAdmin] = useState(initialSession?.user?.rol === 'admin' || initialSession?.user?.rol === 'demo');
   const [esTramite, setEsTramite] = useState(initialSession?.user?.rol === 'tramite_documentario');
+  const [esDemo, setEsDemo] = useState(initialSession?.user?.rol === 'demo');
   const [areas, setAreas] = useState([]);
   const [responsables, setResponsables] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -368,7 +370,8 @@ const PanelOCRContent = () => {
             2: 'jefe_departamento',
             3: 'jefe_division',
             4: 'admin',
-            5: 'tramite_documentario'
+            5: 'tramite_documentario',
+            6: 'demo'
           };
           
           const rolString = rolMap[userData.rol_principal] || 'usuario';
@@ -385,12 +388,13 @@ const PanelOCRContent = () => {
           
           setUser(normalizedUser);
           setIsAuthenticated(true);
-          setIsAdmin(userData.rol_principal === 4);
+          setIsAdmin(userData.rol_principal === 4 || userData.rol_principal === 6);
           setIsJefe([1, 2, 3].includes(userData.rol_principal));
           setIsUsuario(userData.rol_principal === 0);
           setResponsable(userData.nombre);
-          setEsAdmin(userData.rol_principal === 4);
+          setEsAdmin(userData.rol_principal === 4 || userData.rol_principal === 6);
           setEsTramite(userData.rol_principal === 5);
+          setEsDemo(userData.rol_principal === 6);
           
           if (userData.areas && userData.areas.length > 0) {
             setAreaSeleccionada(userData.areas[0]);
@@ -894,8 +898,37 @@ const PanelOCRContent = () => {
             })}
           </div>
           <div className="mt-1.5 text-[9px] text-gray-400 truncate">
-            Usuario: {user?.usuario} | Rol: {user?.rol} | Áreas: {user?.areas?.join(', ') || user?.area || 'Ninguna'}
+            Usuario: {user?.usuario} | Rol: {user?.rol} | Areas: {user?.areas?.join(', ') || user?.area || 'Ninguna'}
           </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BANNER MODO DEMO - Cambio de perspectiva
+          ============================================================ */}
+      {esDemo && (
+        <div className="fixed top-0 left-0 right-0 z-[150] bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-4 py-2 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded">DEMO</span>
+            <span className="text-xs">Modo demonstracion - Selecciona un rol para explorar</span>
+          </div>
+          <DemoModeSwitcher 
+            user={user}
+            onPerspectiveChange={(perspective) => {
+              // En modo demo, actualizar los flags de rol
+              setEsAdmin(perspective.rol_principal === 4 || perspective.rol_principal === 6);
+              setIsAdmin(perspective.rol_principal === 4 || perspective.rol_principal === 6);
+              setIsJefe([1, 2, 3].includes(perspective.rol_principal));
+              setIsUsuario(perspective.rol_principal === 0);
+              setEsTramite(perspective.rol_principal === 5);
+              // Actualizar el usuario simulado
+              setUser(prev => ({
+                ...prev,
+                rol: perspective.rol,
+                rol_principal: perspective.rol_principal
+              }));
+            }}
+          />
         </div>
       )}
 

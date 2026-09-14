@@ -184,6 +184,8 @@ class UserService:
             "jefe_depto": 2, "departamento": 2, "depto": 2,
             "jefe_area": 1, "area": 1,
             "usuario": 0, "user": 0,
+            "tramite_documentario": 5, "tramite": 5,
+            "demo": 6,
         }
         
         # Parse roles from column G

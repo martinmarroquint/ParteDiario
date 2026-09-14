@@ -6,7 +6,9 @@ ROLES = {
     1: "jefe_area",
     2: "jefe_departamento",
     3: "jefe_division",
-    4: "admin"
+    4: "admin",
+    5: "tramite_documentario",
+    6: "demo"
 }
 
 # Turn codes
