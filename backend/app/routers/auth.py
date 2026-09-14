@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from datetime import datetime, timedelta
-import jwt
+from jose import jwt
 
 from app.models.auth import (
     LoginRequest, LoginResponse, ChangePasswordRequest,
@@ -81,7 +81,7 @@ async def demo_login(request: Request):
         "iat": datetime.utcnow()
     }
     
-    token = jwt.encode(token_payload, settings.HMAC_SECRET, algorithm="HS256")
+    token = jwt.encode(token_payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     
     return LoginResponse(
         token=token,
