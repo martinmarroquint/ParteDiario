@@ -229,43 +229,32 @@ export const bodyAsciiJson = (obj) => JSON.stringify(obj).replace(/[\u007F-\uFFF
 // ============================================
 // HMAC SIGNING — Apps Script verification
 // ============================================
-const HMAC_SECRET = import.meta.env.VITE_APPSCRIPT_HMAC_SECRET || '';
+// REMOVED: HMAC signing is now server-side only.
+// postToAppsScript() calls the backend proxy which adds HMAC before forwarding to Apps Script.
+// The HMAC secret NEVER reaches the browser.
 
 /**
- * Sorted JSON stringify (matches Python json.dumps(sort_keys=True, separators=(',', ':')))
+ * POST to backend proxy → Apps Script (with HMAC signing server-side)
+ * This replaces ALL direct fetch() calls to Apps Script.
+ * The frontend NEVER touches the HMAC secret.
  */
-function sortedStringify(obj) {
-  const keys = Object.keys(obj).sort();
-  return '{' + keys.map(k => JSON.stringify(k) + ':' + JSON.stringify(obj[k])).join(',') + '}';
-}
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
-/**
- * Sign a payload with HMAC-SHA256 using Web Crypto API
- */
-async function signPayload(payload) {
-  if (!HMAC_SECRET) return payload;
-  const bodyStr = sortedStringify(payload);
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', encoder.encode(HMAC_SECRET),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(bodyStr));
-  const hex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
-  return { ...payload, _signature: hex };
-}
-
-/**
- * POST to Apps Script with HMAC signing
- */
-export async function postToAppsScript(url, payload) {
-  const signed = await signPayload(payload);
-  return fetch(url, {
+export async function postToAppsScript(_appsScriptUrl, payload) {
+  const token = localStorage.getItem('ocr_auth_token');
+  const response = await fetch(`${API_BASE_URL}/sheets/write`, {
     method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain' },
-    body: bodyAsciiJson(signed)
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(payload)
   });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Error del servidor: ${response.status}`);
+  }
+  return response.json();
 }
 
 // ============================================

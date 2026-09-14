@@ -1,12 +1,15 @@
 """
-Google Sheets Proxy — shields the API key from the frontend.
+Google Sheets Proxy — shields the API key AND HMAC secret from the frontend.
 
-Instead of the frontend calling sheets.googleapis.com directly (exposing the API key
-in the JS bundle), it calls GET /api/v1/sheets/{sheet_name} and the backend proxies
-the request using the server-side API key.
+Instead of the frontend calling sheets.googleapis.com or Apps Script directly
+(exposing the API key or HMAC secret in the JS bundle), it calls:
+- GET  /api/v1/sheets/{sheet_name}      → backend proxies read via Sheets API
+- POST /api/v1/sheets/write              → backend proxies write via Apps Script with HMAC
+
+This keeps ALL secrets server-side.
 """
 import logging
-from typing import Optional
+from typing import Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -25,6 +28,13 @@ sheets_service = GoogleSheetsService()
 class SheetRangeResponse(BaseModel):
     range: str
     values: list[list]
+
+
+class AppsScriptWriteRequest(BaseModel):
+    """Generic write request to forward to Apps Script with HMAC signing."""
+    accion: str
+    # All other fields go as **extras
+    datos: Optional[dict[str, Any]] = None
 
 
 @router.get("/{sheet_name}", response_model=SheetRangeResponse)
@@ -87,3 +97,36 @@ async def get_sheet_metadata(
     except Exception as e:
         logger.error(f"Sheets metadata error: {e}")
         raise HTTPException(status_code=502, detail="Error al obtener metadata")
+
+
+@router.post("/write")
+async def apps_script_write_proxy(
+    body: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """Generic write proxy to Apps Script.
+    
+    The frontend sends { accion: "...", ...params } and the backend:
+    1. Adds HMAC signature (secret stays server-side)
+    2. Forwards to Apps Script
+    3. Returns the result
+    
+    This replaces ALL direct fetch() calls from the frontend to Apps Script.
+    The HMAC secret NEVER reaches the browser.
+    
+    Requires authentication (any valid user).
+    """
+    accion = body.get("accion")
+    if not accion:
+        raise HTTPException(status_code=400, detail="Falta campo 'accion'")
+    
+    try:
+        # Extract accion, pass the rest as data to _apps_script_action
+        data = {k: v for k, v in body.items() if k != "accion"}
+        result = await sheets_service._apps_script_action(accion, data)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.error(f"Apps Script proxy error [{accion}]: {e}")
+        raise HTTPException(status_code=502, detail="Error al procesar la solicitud")

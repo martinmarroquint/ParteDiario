@@ -87,9 +87,15 @@ class GoogleSheetsService:
             ).hexdigest()
             payload["_signature"] = signature
         
-        # Write operations: appendRow, updateRange, updateCell, deleteRow, guardarCelda, etc.
+        # Write operations: all actions that modify data in Google Sheets
         es_escritura = action in ('appendRow', 'updateRange', 'updateCell', 'deleteRow', 
-                                   'guardarCelda', 'registrarCeldaModificada', 'actualizarHeartbeat',
+                                   'guardarCelda', 'guardarLote', 'guardarIndividual',
+                                   'registrarCeldaModificada', 'limpiarCeldasModificadas',
+                                   'actualizarHeartbeat', 'marcarFinalizado', 'desmarcarFinalizado',
+                                   'marcarLoteFinalizado', 'desmarcarLoteFinalizado',
+                                   'registrarDescansoMedico', 'registrarVacaciones',
+                                   'registrarCambiosOficiales', 'registrarSolicitudCambio',
+                                   'actualizarSolicitudCambio',
                                    'bloquearHoja', 'desbloquearHoja', 'guardarRol', 'inicializarEstructura')
         
         try:
