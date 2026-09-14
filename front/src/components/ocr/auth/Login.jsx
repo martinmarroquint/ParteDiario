@@ -84,7 +84,7 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
 
     try {
       const API_URL = import.meta.env.VITE_API_URL || '';
-      const response = await fetch(`${API_URL}/api/v1/auth/demo-login`, {
+      const response = await fetch(`${API_URL}/auth/demo-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
