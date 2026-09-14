@@ -18,6 +18,8 @@ import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualF
 import { apiClient } from '../components/ocr/services/apiClient';
 import { authService } from '../components/ocr/services/authService';
 import { rolesService } from '../components/ocr/services/rolesService';
+import GuidedTour from '../components/ocr/tour/GuidedTour';
+import { shouldShowTour, resetTour } from '../components/ocr/tour/TourSteps';
 import { descansosService } from '../components/ocr/services/descansosService';
 import { vacacionesService } from '../components/ocr/services/vacacionesService';
 import { solicitudesService } from '../components/ocr/services/solicitudesService';
@@ -200,6 +202,13 @@ const PanelOCRContent = () => {
   // ============================================================
 
   // ============================================================
+  // TOUR GUIADO
+  // ============================================================
+  const [runTour, setRunTour] = useState(false);
+  const tourInitialized = useRef(false);
+  // ============================================================
+
+  // ============================================================
   // MODO PRUEBA - Selector de rol (solo visible en modo prueba)
   // ============================================================
   const [rolSeleccionado, setRolSeleccionado] = useState(initialSession?.user?.rol || 'admin');
@@ -260,6 +269,35 @@ const PanelOCRContent = () => {
 
     verificarToken();
   }, []);
+
+  // ============================================================
+  // TOUR GUIADO: Auto-iniciar si es primera vez del usuario
+  // ============================================================
+  useEffect(() => {
+    if (user && isAuthenticated && !tourInitialized.current) {
+      tourInitialized.current = true;
+      const show = shouldShowTour(user);
+      console.log('[Tour] user:', user?.rol, 'shouldShow:', show, 'userId:', user?.id || user?.usuario);
+      // Pequena delay para que el DOM se renderice completamente
+      const timer = setTimeout(() => {
+        if (shouldShowTour(user)) {
+          console.log('[Tour] Iniciando tour automatico');
+          setRunTour(true);
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [user, isAuthenticated]);
+
+  const handleRestartTour = useCallback(() => {
+    resetTour(user);
+    setRunTour(true);
+  }, [user]);
+
+  const handleTourComplete = useCallback(() => {
+    setRunTour(false);
+  }, []);
+  // ============================================================
 
   // ============================================================
   // SOLICITUDES: Badge count loaded on-demand (no polling)
@@ -329,7 +367,8 @@ const PanelOCRContent = () => {
             1: 'jefe_area',
             2: 'jefe_departamento',
             3: 'jefe_division',
-            4: 'admin'
+            4: 'admin',
+            5: 'tramite_documentario'
           };
           
           const rolString = rolMap[userData.rol_principal] || 'usuario';
@@ -371,19 +410,17 @@ const PanelOCRContent = () => {
         } else {
           // Login fallido en backend real
           setLoading(false);
-          return false;
+          return result.error || 'Credenciales invalidas';
         }
       }
       
       // Backend no disponible — mostrar error, NO dar acceso admin
       setLoading(false);
-      setError('Servidor no disponible. Verifique su conexion e intente nuevamente.');
-      return false;
-    } catch (error) {
-      console.error('Error en login:', error);
+      return 'Servidor no disponible. Verifique su conexion e intente nuevamente.';
+    } catch (err) {
+      console.error('Error en login:', err);
       setLoading(false);
-      setError('Error de conexion con el servidor.');
-      return false;
+      return 'Error de conexion con el servidor.';
     }
   }, []);
 
@@ -420,19 +457,20 @@ const PanelOCRContent = () => {
   // FUNCIÓN: Logout - MEMOIZADA
   // ============================================================
   const handleLogout = useCallback(async () => {
-    // SIEMPRE limpiar localStorage y sessionStorage primero
-    localStorage.removeItem('ocr_auth_token');
-    localStorage.removeItem('ocr_user_data');
-    sessionStorage.removeItem(STORAGE_SESION);
-    
-    // Intentar cerrar sesión en el backend (sin await bloqueante)
+    // Intentar cerrar sesion en el backend PRIMERO (antes de borrar token)
     try {
-      authService.logout().catch(() => {});
-    } catch (error) {
+      await apiClient.post('/auth/logout-public', {}, { _skipAuthRedirect: true }).catch(() => {});
+    } catch {
       // Ignorar errores del backend
     }
     
-    // Reiniciar estado inmediatamente
+    // Ahora si limpiar todo
+    localStorage.removeItem('ocr_auth_token');
+    localStorage.removeItem('ocr_user_data');
+    sessionStorage.removeItem(STORAGE_SESION);
+    apiClient.removeToken();
+    
+    // Reiniciar estado
     setUser(null);
     setIsAuthenticated(false);
     setIsAdmin(false);
@@ -777,6 +815,7 @@ const PanelOCRContent = () => {
         onAbrirCambiosTurno={abrirCambiosTurno}
         onAbrirAdminUsuarios={abrirAdminUsuarios}
         onAbrirMesaPartes={abrirMesaPartes}
+        onRestartTour={handleRestartTour}
         esJefe={isJefe}
         esUsuario={isUsuario}
         user={user}
@@ -929,6 +968,13 @@ const PanelOCRContent = () => {
           onClose={cerrarAdminUsuarios}
         />
       )}
+
+      {/* Tour Guiado */}
+      <GuidedTour
+        user={user}
+        run={runTour}
+        onComplete={handleTourComplete}
+      />
     </>
   );
 };

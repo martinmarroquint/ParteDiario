@@ -220,7 +220,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
           {/* Search + Filters */}
           <div className="flex-shrink-0 space-y-2 pt-4">
             <div className="flex items-center gap-2">
-              <div className="relative flex-1">
+              <div className="relative flex-1" data-tour="tour-mesa-buscar">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" strokeWidth={1.5} />
                 <input
                   type="text"
@@ -245,6 +245,7 @@ const MesaDePartes = ({ onSalir, esAdmin, esTramite, user }) => {
                 <button
                   onClick={() => setDocVer('nuevo')}
                   className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-900 text-white hover:bg-gray-800 flex items-center gap-1.5"
+                  data-tour="tour-mesa-nuevo"
                 >
                   <Plus className="w-3.5 h-3.5" /> Nuevo
                 </button>

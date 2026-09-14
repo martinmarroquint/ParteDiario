@@ -144,7 +144,9 @@ class ApiClient {
 
   async logout() {
     try {
-      await this.post('/auth/logout');
+      await this.post('/auth/logout', {}, { _skipAuthRedirect: true });
+    } catch {
+      // Token may be expired after password change — that's OK
     } finally {
       this.removeToken();
     }

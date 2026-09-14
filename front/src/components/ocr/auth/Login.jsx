@@ -55,16 +55,19 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
         const result = await onSuccess(usuarioTrim, contrasenaTrim);
         
         if (result === false) {
-          setError('Credenciales inválidas');
+          setError('Credenciales invalidas');
           setContrasena('');
           if (usuarioRef.current) {
             usuarioRef.current.focus();
           }
           setLoading(false);
+        } else if (typeof result === 'string') {
+          setError(result);
+          setLoading(false);
         }
       }
     } catch (err) {
-      setError('Error al iniciar sesión');
+      setError('Error al iniciar sesion');
       setLoading(false);
     }
   };

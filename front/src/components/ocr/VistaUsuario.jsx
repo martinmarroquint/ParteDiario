@@ -2,8 +2,8 @@
 // VISTA PARA USUARIO BASE — Con separación entre celdas
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
-import { User, ChevronLeft, ChevronRight, Calendar, Clock } from 'lucide-react';
-import { TURNO_MAP, MESES, DIAS_SEMANA } from './constantes';
+import { User, ChevronLeft, ChevronRight, ChevronDown, Calendar, Clock } from 'lucide-react';
+import { TURNO_MAP, MESES, ANIOS, DIAS_SEMANA } from './constantes';
 
 // Helper: hex a rgba con opacidad ajustable
 const hexToRgba = (hex, alpha) => {
@@ -154,7 +154,7 @@ const VistaUsuario = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50/30 print:bg-white">
+    <div className="h-full flex flex-col bg-gray-50/30 print:bg-white" data-tour="tour-mi-horario">
       <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6 max-w-6xl mx-auto w-full min-h-0 print:p-4">
 
         {/* ===== SIDEBAR ===== */}
@@ -231,20 +231,55 @@ const VistaUsuario = ({
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
+                {/* Dropdown de Mes */}
+                <div className="relative">
+                  <select
+                    value={mesSeleccionado}
+                    onChange={(e) => onMesChange && onMesChange({ target: { value: Number(e.target.value) } })}
+                    className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 cursor-pointer hover:border-emerald-300 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 outline-none transition-colors pr-7"
+                  >
+                    {MESES.map((nombre, i) => (
+                      <option key={i + 1} value={i + 1}>{nombre}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
+
+                {/* Dropdown de Anio */}
+                <div className="relative">
+                  <select
+                    value={anioSeleccionado}
+                    onChange={(e) => onAnioChange && onAnioChange({ target: { value: Number(e.target.value) } })}
+                    className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 cursor-pointer hover:border-emerald-300 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 outline-none transition-colors pr-7"
+                  >
+                    {ANIOS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
+
+                {/* Botones de navegacion rapida */}
                 <button
-                  onClick={() => navigateMonth(-1)}
+                  onClick={() => {
+                    let newMes = mesSeleccionado - 1;
+                    let newAnio = anioSeleccionado;
+                    if (newMes < 1) { newMes = 12; newAnio--; }
+                    onMesChange && onMesChange({ target: { value: newMes } });
+                    if (newAnio !== anioSeleccionado) onAnioChange && onAnioChange({ target: { value: newAnio } });
+                  }}
                   className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <div className="flex items-center gap-2 min-w-[120px] justify-center">
-                  <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="text-sm font-medium text-gray-700">
-                    {MESES[mesSeleccionado - 1]} <span className="text-gray-400">{anioSeleccionado}</span>
-                  </span>
-                </div>
                 <button
-                  onClick={() => navigateMonth(1)}
+                  onClick={() => {
+                    let newMes = mesSeleccionado + 1;
+                    let newAnio = anioSeleccionado;
+                    if (newMes > 12) { newMes = 1; newAnio++; }
+                    onMesChange && onMesChange({ target: { value: newMes } });
+                    if (newAnio !== anioSeleccionado) onAnioChange && onAnioChange({ target: { value: newAnio } });
+                  }}
                   className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <ChevronRight className="w-4 h-4" />

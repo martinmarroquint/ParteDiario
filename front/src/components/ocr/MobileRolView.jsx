@@ -309,21 +309,8 @@ const MobileRolView = ({
       const hMeses = soloHojasMes(h);
       setHojasDisponibles(hMeses);
 
-      try {
-        if (config.appsScriptUrl) {
-          const salud = await verificarAppsScript(config.appsScriptUrl);
-          if (!salud.ok) setAppsScriptError(salud.mensaje);
-          else {
-            setAppsScriptError('');
-            // Inicializar estructura silenciosamente (no-cors)
-            await fetch(config.appsScriptUrl, {
-              method: 'POST', mode: 'no-cors',
-              headers: { 'Content-Type': 'text/plain' },
-              body: bodyAsciiJson({ accion: 'inicializarEstructura' })
-            }).catch(() => {});
-          }
-        }
-      } catch (e) { console.error('No se pudo inicializar estructura:', e); }
+      // Apps Script health check eliminado — el backend maneja las escrituras
+      setAppsScriptError('');
 
       const hojaElegida = hojaInicialParaArea(areaAsignada, config, hMeses);
       setConfig(prev => {

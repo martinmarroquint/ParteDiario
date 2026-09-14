@@ -52,7 +52,13 @@ async def login(request: Request, data: LoginRequest):
 @router.post("/logout", response_model=MessageResponse)
 async def logout(current_user: User = Depends(get_current_user)):
     """Logout (token will expire naturally)."""
-    return MessageResponse(message="Sesión cerrada correctamente")
+    return MessageResponse(message="Sesion cerrada correctamente")
+
+
+@router.post("/logout-public")
+async def logout_public():
+    """Public logout — clears frontend state without requiring a valid token."""
+    return MessageResponse(message="Sesion cerrada correctamente")
 
 
 @router.post("/refresh")

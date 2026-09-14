@@ -96,7 +96,7 @@ function doPost(e) {
     // HMAC VERIFICATION — reject unauthorized calls
     if (!verifyHMAC(data)) {
       console.warn('🚫 HMAC verification failed — rejecting request');
-      return json({ success: false, error: 'Firma de seguridad invalida' });
+      return crearRespuesta({ success: false, error: 'Firma de seguridad invalida' });
     }
     
     // Remove _signature from data after verification

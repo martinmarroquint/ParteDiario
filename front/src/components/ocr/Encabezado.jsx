@@ -113,6 +113,7 @@ const Encabezado = ({
   onAbrirMesaPartes = null,
   esTramite = false,
   onAbrirCambiarPassword = null,
+  onRestartTour = null,
   esJefe = false,
   esUsuario = false,
   user = null,
@@ -261,13 +262,13 @@ const Encabezado = ({
             <img src="/images/escudo-sanidad.png" alt="HRPA" className="w-5 h-5 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
           </div>
           
-          <span className="text-sm font-semibold text-gray-800 truncate">
+          <span className="text-sm font-semibold text-gray-800 truncate" data-tour="tour-area-label">
             {mostrarAreaLabel}
           </span>
           
           <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap ${
             rolHabilitado ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600 border border-red-200'
-          }`}>
+          }`} data-tour="tour-estado-rol">
             {rolHabilitado ? 'Abierto' : 'Cerrado'}
           </span>
         </div>
@@ -275,7 +276,7 @@ const Encabezado = ({
         <div className="flex items-center gap-1 flex-shrink-0 overflow-visible">
           {/* Selector de Área - Admin (antes del mes) */}
           {esAdmin && onAreaChangeAdmin && areasDisponiblesAdmin.length > 1 && (
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0" data-tour="tour-selector-area">
               <SelectPersonalizado 
                 value={areaSeleccionadaAdmin || 'TODAS'} 
                 onChange={onAreaChangeAdmin} 
@@ -289,7 +290,7 @@ const Encabezado = ({
 
           {/* Selector de Área - Jefes (antes del mes) */}
           {mostrarSelectorJefe && onAreaChangeJefe && (
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0" data-tour="tour-selector-area-jefe">
               <SelectPersonalizado 
                 value={areaSeleccionadaJefe || areaAsignada} 
                 onChange={onAreaChangeJefe} 
@@ -330,6 +331,7 @@ const Encabezado = ({
                   onClick={onAbrirAdminUsuarios} 
                   className={`${btnBase} relative`} 
                   title="Administrar Usuarios"
+                  data-tour="tour-admin-usuarios"
                 >
                   <UserCog className="w-4 h-4" />
                   <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-emerald-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
@@ -348,13 +350,13 @@ const Encabezado = ({
 
               {/* Admin: Sin botón Guardar (tiempo real), Imprimir siempre visible */}
               {puedeImprimir && onImprimir && (
-                <button onClick={onImprimir} className={`${btnBase} flex-shrink-0`} title="Imprimir">
+                <button onClick={onImprimir} className={`${btnBase} flex-shrink-0`} title="Imprimir" data-tour="tour-imprimir">
                   <Printer className="w-4 h-4" />
                 </button>
               )}
 
               {puedeBandeja && onAbrirCambiosTurno && (
-                <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`} title="Bandeja">
+                <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`} title="Bandeja" data-tour="tour-bandeja">
                   <Inbox className="w-4 h-4" />
                   {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
                 </button>
@@ -377,7 +379,8 @@ const Encabezado = ({
               {onGuardar && !rolGuardado && (
                 <button onClick={onGuardar} disabled={guardando}
                   className="h-8 px-4 text-xs font-semibold text-white rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
-                  style={{ backgroundColor: COLOR_PRIMARIO }}>
+                  style={{ backgroundColor: COLOR_PRIMARIO }}
+                  data-tour="tour-guardar">
                   {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" /> : <Save className="w-3.5 h-3.5 flex-shrink-0" />}
                   Guardar
                 </button>
@@ -399,21 +402,23 @@ const Encabezado = ({
           )}
 
           {/* ============================================================
-              BOTONES USUARIO BASE
+              BOTONES USUARIO Y JEFE - Solicitar Cambio y Descanso Medico
               ============================================================ */}
-          {esUsuario && !esAdmin && !esJefe && (
+          {!esAdmin && (
             <>
               {puedeSolicitarCambio && onAbrirCambiosTurno && (
                 <button onClick={onAbrirCambiosTurno} 
-                  className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                  className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+                  data-tour="tour-solicitar-cambio">
                   <Calendar className="w-3.5 h-3.5 flex-shrink-0" /> Solicitar Cambio
                 </button>
               )}
 
               {puedeDescansoMedico && onRegistrarDescanso && (
                 <button onClick={onRegistrarDescanso} 
-                  className="h-8 px-3 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
-                  <Clock className="w-3.5 h-3.5 flex-shrink-0" /> Descanso Médico
+                  className="h-8 px-3 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+                  data-tour="tour-descanso-medico">
+                  <Clock className="w-3.5 h-3.5 flex-shrink-0" /> Descanso Medico
                 </button>
               )}
             </>
@@ -429,6 +434,7 @@ const Encabezado = ({
               onClick={onAbrirMesaPartes} 
               className={`${btnBase} relative`} 
               title="Mesa de Partes"
+              data-tour="tour-mesa-partes"
             >
               <FileText className="w-4 h-4" />
               {pendingMesaPartesCount > 0 && (
@@ -439,23 +445,33 @@ const Encabezado = ({
             </button>
           )}
 
-          {/* ⭐ Cambiar Contraseña - SIEMPRE VISIBLE para todos los usuarios autenticados */}
+          {/* Cambiar Contrasena - SIEMPRE VISIBLE */}
           <button 
             onClick={() => {
               if (onAbrirCambiarPassword) {
                 onAbrirCambiarPassword();
-              } else {
-                console.warn('⚠️ [Encabezado] onAbrirCambiarPassword no está definido');
               }
             }} 
             className={`${btnBase} relative`} 
-            title="Cambiar Contraseña"
+            title="Cambiar Contrasena"
+            data-tour="tour-cambiar-password"
           >
             <Key className="w-4 h-4" />
           </button>
 
+          {/* Tour guiado - Siempre visible */}
+          {onRestartTour && (
+            <button 
+              onClick={onRestartTour}
+              className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors flex items-center justify-center text-xs font-bold flex-shrink-0" 
+              title="Ver tour guiado"
+            >
+              ?
+            </button>
+          )}
+
           {/* Salir - Siempre visible */}
-          <button onClick={onSalir} className={`${btnBase} hover:text-red-500 flex-shrink-0`} title="Salir">
+          <button onClick={onSalir} className={`${btnBase} hover:text-red-500 flex-shrink-0`} title="Salir" data-tour="tour-salir">
             <LogOut className="w-4 h-4" />
           </button>
         </div>
@@ -493,6 +509,7 @@ const Encabezado = ({
               <div 
                 id="carrusel-turnos"
                 className="flex items-center gap-1 flex-shrink-0"
+                data-tour="tour-carrusel-turnos"
               >
                 <span className="text-[10px] text-gray-500 font-medium mr-1 whitespace-nowrap">Turno activo:</span>
                 <button 
@@ -672,8 +689,8 @@ const Encabezado = ({
           <div className="px-5 py-1.5 border-t border-gray-100">
             <div className="flex items-center gap-2.5 flex-wrap">
               
-              {/* Turnos Rápidos */}
-              <div className="relative flex-shrink-0">
+              {/* Turnos Rapidos */}
+              <div className="relative flex-shrink-0" data-tour="tour-turnos-rapidos">
                 <button 
                   id="btn-turnos-rapidos"
                   onClick={() => { setMostrarDias(!mostrarDias); setMostrarRotacion(false); }}

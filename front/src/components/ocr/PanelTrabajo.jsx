@@ -77,6 +77,7 @@ const PanelTrabajo = ({
   onAbrirCambiosTurno,
   onAbrirAdminUsuarios = null,
   onAbrirMesaPartes = null,
+  onRestartTour = null,
   esTramite = false,
   esJefe = false,
   esUsuario = false,
@@ -404,21 +405,8 @@ const PanelTrabajo = ({
       const hMeses = soloHojasMes(h);
       setHojasDisponibles(hMeses); 
 
-      try {
-        if (config.appsScriptUrl) {
-          const salud = await verificarAppsScript(config.appsScriptUrl);
-          if (!salud.ok) {
-            setAppsScriptError(salud.mensaje);
-          } else {
-            setAppsScriptError('');
-            await fetch(config.appsScriptUrl, {
-              method: 'POST', mode: 'no-cors',
-              headers: { 'Content-Type': 'text/plain' },
-              body: bodyAsciiJson({ accion: 'inicializarEstructura' })
-            });
-          }
-        }
-      } catch (e) { console.error('No se pudo inicializar estructura:', e); }
+      // Apps Script health check eliminado — el backend maneja las escrituras
+      setAppsScriptError('');
 
       // Solo guardar la lista de hojas disponibles, NO cambiar la hoja seleccionada.
       // La hoja siempre inicia en el mes actual (hojaDelMesActual).
@@ -1431,8 +1419,10 @@ const PanelTrabajo = ({
         onAbrirAdminUsuarios={esAdmin ? onAbrirAdminUsuarios : null}
         onAbrirMesaPartes={onAbrirMesaPartes}
         esTramite={esTramite}
-        // Cambiar Contraseña - Visible para todos
+        // Cambiar Contrasena - Visible para todos
         onAbrirCambiarPassword={() => setMostrarCambiarPassword(true)}
+        // Tour guiado
+        onRestartTour={onRestartTour}
         // Selector de área para jefes
         areaSeleccionadaJefe={areaSeleccionadaJefe}
         onAreaChangeJefe={esJefe ? handleAreaChangeJefe : null}
@@ -1537,24 +1527,27 @@ const PanelTrabajo = ({
             </div>
           </div>
         ) : esUsuario && personalFiltrado.length === 1 ? (
-          <VistaUsuario
-            personalFiltrado={personalFiltrado}
-            turnos={turnos}
-            DIAS={DIAS}
-            mesSeleccionado={mesSeleccionado}
-            anioSeleccionado={anioSeleccionado}
-            areaAsignada={areaAsignada}
-            responsable={responsable}
-            user={user}
-            onCeldaClick={handleCeldaClick}
-            // ✅ USAR HANDLERS DE USUARIO (cambian hoja + recargan)
-            onMesChange={handleMesChangeUsuario}
-            onAnioChange={handleAnioChangeUsuario}
-            cargando={cargando}
-            rolHabilitado={rolHabilitado}
-            celdasModificadas={celdasModificadas}
-          />
+          <div data-tour="tour-vista-usuario">
+            <VistaUsuario
+              personalFiltrado={personalFiltrado}
+              turnos={turnos}
+              DIAS={DIAS}
+              mesSeleccionado={mesSeleccionado}
+              anioSeleccionado={anioSeleccionado}
+              areaAsignada={areaAsignada}
+              responsable={responsable}
+              user={user}
+              onCeldaClick={handleCeldaClick}
+              // USAR HANDLERS DE USUARIO (cambian hoja + recargan)
+              onMesChange={handleMesChangeUsuario}
+              onAnioChange={handleAnioChangeUsuario}
+              cargando={cargando}
+              rolHabilitado={rolHabilitado}
+              celdasModificadas={celdasModificadas}
+            />
+          </div>
         ) : (
+          <div data-tour="tour-tabla-rol">
           <TablaRol 
             personalFiltrado={personalFiltrado} 
             DIAS={DIAS} 
@@ -1587,6 +1580,7 @@ const PanelTrabajo = ({
             user={user}
             soloLectura={!puedeEditar}
           />
+          </div>
         )}
       </div>
 
