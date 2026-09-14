@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from datetime import datetime, timedelta
+import jwt
 
 from app.models.auth import (
     LoginRequest, LoginResponse, ChangePasswordRequest,
@@ -47,6 +49,44 @@ async def login(request: Request, data: LoginRequest):
     """Authenticate user and return JWT token."""
     result = await auth_service.login(data.usuario, data.password)
     return LoginResponse(**result)
+
+
+@router.post("/demo-login", response_model=LoginResponse)
+@limiter.limit("20/minute")
+async def demo_login(request: Request):
+    """Login automatico para modo demo - no requiere usuario en base de datos.
+    
+    Crea un JWT con rol demo (6) que tiene acceso de lectura a todo el sistema.
+    """
+    # Datos del usuario demo
+    demo_user_data = {
+        "id": 0,
+        "nombre": "Usuario Demo",
+        "usuario": "demo",
+        "correo": "demo@sistema.cl",
+        "rol_principal": 6,
+        "roles": [6],
+        "areas": ["Medicina", "Cirugia", "Pediatria", "Ginecologia", "Traumatologia"],
+        "requiere_cambio_password": False
+    }
+    
+    # Crear token JWT
+    token_payload = {
+        "sub": 0,
+        "usuario": "demo",
+        "rol_principal": 6,
+        "roles": [6],
+        "areas": demo_user_data["areas"],
+        "exp": datetime.utcnow() + timedelta(hours=8),
+        "iat": datetime.utcnow()
+    }
+    
+    token = jwt.encode(token_payload, settings.HMAC_SECRET, algorithm="HS256")
+    
+    return LoginResponse(
+        token=token,
+        usuario=demo_user_data
+    )
 
 
 @router.post("/logout", response_model=MessageResponse)
