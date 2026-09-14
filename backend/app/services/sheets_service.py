@@ -78,18 +78,25 @@ class GoogleSheetsService:
         payload = {"accion": action, **data}
         
         # HMAC SIGNING — Apps Script will verify this before processing
-        # IMPORTANT: ensure_ascii=False to match JavaScript's JSON.stringify behavior
-        # Python's json.dumps defaults to ensure_ascii=True which escapes ñ→\u00f1,
-        # but JS JSON.stringify keeps raw Unicode. Apps Script verifies with JS-style
-        # serialization, so we must match that format.
+        # We MUST send the EXACT body that was signed. Apps Script's verifyHMAC:
+        #   1. Parses JSON → JS object
+        #   2. Removes _signature
+        #   3. Re-serializes with sortedStringify() (compact, no spaces, sorted keys)
+        #   4. Computes HMAC on that string
+        # So we sign with the same compact format, then send THAT exact string.
         if settings.APPSCRIPT_HMAC_SECRET:
+            # Step 1: Sign WITHOUT _signature (compact format)
             body_str = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
             signature = hmac.new(
                 settings.APPSCRIPT_HMAC_SECRET.encode('utf-8'),
                 body_str.encode('utf-8'),
                 hashlib.sha256
             ).hexdigest()
+            # Step 2: Add _signature and re-serialize in SAME compact format
             payload["_signature"] = signature
+            signed_body = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+        else:
+            signed_body = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
         
         # Write operations: all actions that modify data in Google Sheets
         es_escritura = action in ('appendRow', 'updateRange', 'updateCell', 'deleteRow', 
@@ -104,17 +111,20 @@ class GoogleSheetsService:
         
         try:
             async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
+                # Send the EXACT signed body as text/plain — matches what frontend used to do
+                # NOT json=payload which re-serializes with different format!
                 response = await client.post(
                     self.apps_script_url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"}
+                    content=signed_body.encode('utf-8'),
+                    headers={"Content-Type": "text/plain"}
                 )
                 response.raise_for_status()
                 result = response.json()
                 # Check if Apps Script returned an error in the response body
                 if isinstance(result, dict) and result.get("error"):
-                    logger.error(f"Apps Script returned error for {action}: {result['error']}")
-                    raise RuntimeError("Error al procesar la solicitud. Intente nuevamente.")
+                    appscript_error = result['error']
+                    logger.error(f"Apps Script returned error for {action}: {appscript_error}")
+                    raise RuntimeError(f"Apps Script: {appscript_error}")
                 return result
         except httpx.HTTPError as e:
             if es_escritura:

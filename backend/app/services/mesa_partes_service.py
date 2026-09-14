@@ -211,8 +211,7 @@ class MesaPartesService:
         
         payload = {"accion": action, **data}
         
-        # HMAC SIGNING — Apps Script will verify this before processing
-        # IMPORTANT: ensure_ascii=False to match JavaScript's JSON.stringify behavior
+        # HMAC SIGNING — same format as sheets_service: compact, sorted, no escape
         if settings.APPSCRIPT_HMAC_SECRET:
             body_str = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
             signature = hmac.new(
@@ -221,13 +220,16 @@ class MesaPartesService:
                 hashlib.sha256
             ).hexdigest()
             payload["_signature"] = signature
+            signed_body = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+        else:
+            signed_body = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
         
         try:
             async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
                 response = await client.post(
                     self.apps_script_url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"}
+                    content=signed_body.encode('utf-8'),
+                    headers={"Content-Type": "text/plain"}
                 )
                 logger.info(f"Apps Script [{action}]: status={response.status_code}")
                 
