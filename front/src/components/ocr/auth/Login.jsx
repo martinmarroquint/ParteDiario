@@ -78,11 +78,6 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
     }
   };
 
-  const handleSolicitarRecuperacion = async (email) => {
-    console.log('Solicitando recuperacion para:', email);
-    return { success: true, mensaje: 'Se ha enviado un enlace de recuperacion a tu correo.' };
-  };
-
   return (
     <>
       <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
@@ -239,7 +234,6 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
       <RecuperarPassword
         isOpen={mostrarRecuperacion}
         onClose={() => setMostrarRecuperacion(false)}
-        onSolicitarRecuperacion={handleSolicitarRecuperacion}
         onVolverLogin={() => setMostrarRecuperacion(false)}
       />
     </>
