@@ -7,9 +7,10 @@ import {
   Loader2, Search, Shield, ChevronDown, Check,
   Zap, Trash2, Copy, Repeat, ChevronUp, Plus, Minus, SaveIcon, Play, ChevronLeft, ChevronRight,
   UserPlus, X, Users, Building2, GraduationCap, Inbox,
-  UserCog, Calendar, Clock, Key, FileText
+  UserCog, Calendar, Clock, Key, FileText, HelpCircle
 } from 'lucide-react';
 import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP } from './constantes';
+import { shouldShowTour } from './tour/TourSteps';
 
 const TURNOS_RAPIDOS = Object.keys(TURNO_MAP);
 const TURNOS_LISTA = Object.values(TURNO_MAP).filter((v, i, a) => a.findIndex(t => t.codigo === v.codigo) === i);
@@ -459,15 +460,42 @@ const Encabezado = ({
             <Key className="w-4 h-4" />
           </button>
 
-          {/* Tour guiado - Siempre visible */}
+          {/* Tour guiado - Boton de ayuda profesional */}
           {onRestartTour && (
-            <button 
-              onClick={onRestartTour}
-              className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors flex items-center justify-center text-xs font-bold flex-shrink-0" 
-              title="Ver tour guiado"
-            >
-              ?
-            </button>
+            <div className="relative group flex-shrink-0">
+              <button 
+                onClick={onRestartTour}
+                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
+                  shouldShowTour(user) 
+                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-700 ring-2 ring-emerald-200 animate-pulse' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700'
+                }`}
+                title="Ver tour guiado"
+              >
+                <HelpCircle className="w-4 h-4" />
+              </button>
+              
+              {/* Tooltip profesional en hover */}
+              <div className="absolute right-0 top-full mt-2 w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none">
+                <div className="bg-white rounded-xl shadow-xl border border-gray-100 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: `${COLOR_PRIMARIO}15` }}>
+                      <HelpCircle className="w-3.5 h-3.5" style={{ color: COLOR_PRIMARIO }} />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-800">Tour Guiado</span>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed mb-3">
+                    Recorre paso a paso todas las funcionalidades del sistema. Ideal para nuevos usuarios.
+                  </p>
+                  <div className="flex items-center gap-1.5 text-[10px] font-medium" style={{ color: COLOR_PRIMARIO }}>
+                    <span>Haz clic para iniciar</span>
+                    <span className="opacity-60">→</span>
+                  </div>
+                  {/* Flecha */}
+                  <div className="absolute -top-1.5 right-3 w-3 h-3 bg-white border-t border-l border-gray-100 transform rotate-45" />
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Salir - Siempre visible */}
