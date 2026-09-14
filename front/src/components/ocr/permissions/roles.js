@@ -3,7 +3,6 @@
 
 export const ROLES_OCR = {
   ADMIN: 'admin',
-  DEMO: 'demo',
   TRAMITE_DOCUMENTARIO: 'tramite_documentario',
   JEFE_DIVISION: 'jefe_division',
   JEFE_DEPARTAMENTO: 'jefe_departamento',
@@ -13,16 +12,10 @@ export const ROLES_OCR = {
 
 export const JERARQUIA_OCR = {
   [ROLES_OCR.ADMIN]: {
-    nivel: 6,
+    nivel: 5,
     siguiente: null,
     etiqueta: 'Administrador',
     descripcion: 'Acceso total al sistema'
-  },
-  [ROLES_OCR.DEMO]: {
-    nivel: 5,
-    siguiente: null,
-    etiqueta: 'Demo',
-    descripcion: 'Modo demostracion - acceso lectura'
   },
   [ROLES_OCR.TRAMITE_DOCUMENTARIO]: {
     nivel: 4,
@@ -58,18 +51,6 @@ export const JERARQUIA_OCR = {
 
 export const PERMISOS_OCR = {
   [ROLES_OCR.ADMIN]: {
-    puedeEditar: true,
-    puedeAprobar: true,
-    puedeVerTodos: true,
-    puedeGestionarUsuarios: true,
-    puedeConfigurar: true,
-    puedeVerAuditoria: true,
-    puedeMesaPartes: true,
-    puedeRegistarDocumento: true,
-    puedeEntregarDocumento: true,
-    puedeDescargarDocumento: true
-  },
-  [ROLES_OCR.DEMO]: {
     puedeEditar: true,
     puedeAprobar: true,
     puedeVerTodos: true,

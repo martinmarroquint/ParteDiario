@@ -78,41 +78,6 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setError('');
-    setLoading(true);
-
-    try {
-      const API_URL = import.meta.env.VITE_API_URL || '';
-      const response = await fetch(`${API_URL}/auth/demo-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!response.ok) {
-        setError('Error al iniciar modo demo');
-        setLoading(false);
-        return;
-      }
-
-      const data = await response.json();
-      
-      if (data.token && data.user) {
-        // Guardar en localStorage y recargar — el panel detectara la sesion
-        localStorage.setItem('ocr_auth_token', data.token);
-        localStorage.setItem('ocr_user_data', JSON.stringify(data.user));
-        window.location.reload();
-      } else {
-        setError('Error al iniciar modo demo');
-      }
-    } catch (err) {
-      console.error('[Demo Login] Error:', err);
-      setError('Error de conexion al iniciar demo');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSolicitarRecuperacion = async (email) => {
     console.log('Solicitando recuperacion para:', email);
     return { success: true, mensaje: 'Se ha enviado un enlace de recuperacion a tu correo.' };
@@ -233,20 +198,6 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
                   ) : (
                     'Iniciar Sesion'
                   )}
-                </button>
-
-                {/* Boton Demo */}
-                <button
-                  type="button"
-                  onClick={handleDemoLogin}
-                  disabled={isLoading}
-                  className="w-full py-3 border-2 border-dashed border-emerald-300 text-emerald-600 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:bg-emerald-50 hover:border-emerald-400 disabled:opacity-50"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Modo Demo
                 </button>
               </form>
 
