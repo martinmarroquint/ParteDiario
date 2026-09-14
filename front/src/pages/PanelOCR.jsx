@@ -145,7 +145,7 @@ const getStoredSession = () => {
     if (!user || !user.nombre) return null;
     // Asegurar que los campos 'rol' y 'rol_principal' existan
     if (user.roles && user.roles.length) {
-      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin', 5: 'tramite_documentario' };
+      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin', 5: 'tramite_documentario', 6: 'demo' };
       if (!user.rol) user.rol = rolMap[Math.max(...user.roles)] || 'usuario';
       if (!user.rol_principal) user.rol_principal = Math.max(...user.roles);
       if (!user.areas) user.areas = user.area ? [user.area] : [];

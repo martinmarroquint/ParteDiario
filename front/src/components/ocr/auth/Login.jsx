@@ -98,17 +98,10 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
       const data = await response.json();
       
       if (data.token && data.user) {
-        // Guardar en localStorage
+        // Guardar en localStorage y recargar — el panel detectara la sesion
         localStorage.setItem('ocr_auth_token', data.token);
         localStorage.setItem('ocr_user_data', JSON.stringify(data.user));
-        
-        // Llamar al onSuccess con los datos del demo
-        if (onSuccess) {
-          const result = await onSuccess('demo', 'demo');
-          if (typeof result === 'string') {
-            setError(result);
-          }
-        }
+        window.location.reload();
       } else {
         setError('Error al iniciar modo demo');
       }
