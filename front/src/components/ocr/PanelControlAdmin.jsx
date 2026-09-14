@@ -3,7 +3,7 @@
 // El admin elige el mes de trabajo del panel (no impone el mes a los demas usuarios).
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Shield, Lock, Unlock, RefreshCw, Loader2, X, Search, CheckCircle2, CalendarDays } from 'lucide-react';
-import { hojaDelMesActual } from './constantes';
+import { hojaDelMesActual, postToAppsScript } from './constantes';
 
 const COLOR_PRIMARIO = '#188C5D';
 const STORAGE_KEY = 'ocr_estados_areas';
@@ -83,10 +83,8 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
     setGuardando(true);
     try {
       const accion = estado === 'FINALIZADO' ? 'marcarLoteFinalizado' : 'desmarcarLoteFinalizado';
-      await fetch(config.appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ accion, mes: mesTrabajoTmp, areas: areasCambiables })
+      await postToAppsScript(config.appsScriptUrl, {
+        accion, mes: mesTrabajoTmp, areas: areasCambiables
       });
       const nuevosEstados = { ...estadosAreas };
       areasCambiables.forEach(a => { nuevosEstados[a] = (estado === 'FINALIZADO'); });
@@ -124,10 +122,8 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
     if (config?.appsScriptUrl) {
       try {
         const accion = nuevoEstado ? 'marcarFinalizado' : 'desmarcarFinalizado';
-        await fetch(config.appsScriptUrl, {
-          method: 'POST', mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ accion, mes: mesTrabajoTmp, area })
+        await postToAppsScript(config.appsScriptUrl, {
+          accion, mes: mesTrabajoTmp, area
         });
       } catch (e) {
         console.error('Error:', e);

@@ -2,7 +2,7 @@
 // Servicio de SOLICITUDES DE CAMBIO DE TURNO — CADENA MULTINIVEL
 // La cadena de aprobación se almacena en la columna 'detalle' (JSON existente)
 // No se modifican columnas del sheet ni el Apps Script
-import { esPersonalCivil, DEFAULT_GOOGLE_CONFIG } from './constantes';
+import { esPersonalCivil, DEFAULT_GOOGLE_CONFIG, postToAppsScript } from './constantes';
 
 export const HOJA_SOLICITUDES = 'SOLICITUDES_CAMBIOS';
 
@@ -154,13 +154,9 @@ export const enviarSolicitudCambio = async (config, datos) => {
   };
 
   try {
-    const response = await fetch(config.appsScriptUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ 
-        accion: 'registrarSolicitudCambio', 
-        datos: datosConCadena
-      })
+    const response = await postToAppsScript(config.appsScriptUrl, { 
+      accion: 'registrarSolicitudCambio', 
+      datos: datosConCadena 
     });
 
     try {
@@ -192,17 +188,13 @@ export const actualizarSolicitudCambio = async (config, { id, estado, revisadoPo
       historial: historial || [],
     };
 
-    const response = await fetch(config.appsScriptUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        accion: 'actualizarSolicitudCambio',
-        id,
-        estado,
-        revisadoPor,
-        observacion,
-        detalle: JSON.stringify(detalleActualizado),
-      })
+    const response = await postToAppsScript(config.appsScriptUrl, {
+      accion: 'actualizarSolicitudCambio',
+      id,
+      estado,
+      revisadoPor,
+      observacion,
+      detalle: JSON.stringify(detalleActualizado),
     });
 
     try {

@@ -14,7 +14,7 @@ import ParteDiario from '../components/ocr/ParteDiario';
 import ModalSolicitudCambioTurno from '../components/ocr/ModalSolicitudCambioTurno';
 import PanelAdminUsuariosOCR from '../components/ocr/admin/PanelAdminUsuariosOCR';
 import MesaDePartes from '../components/mesapartes/MesaDePartes';
-import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn, initTurnosDinamicos } from '../components/ocr/constantes';
+import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn, initTurnosDinamicos, postToAppsScript } from '../components/ocr/constantes';
 import { apiClient } from '../components/ocr/services/apiClient';
 import { authService } from '../components/ocr/services/authService';
 import { rolesService } from '../components/ocr/services/rolesService';
@@ -640,24 +640,16 @@ const PanelOCRContent = () => {
         const colInicio = columnaLetra(5 + dias[0] - 1);
         const valores = dias.map(() => 'DESCANSO MEDICO');
 
-        await fetch(config.appsScriptUrl, {
-          method: 'POST', mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ accion: 'guardarIndividual', hoja, fila, colInicio, valores })
-        });
+        await postToAppsScript(config.appsScriptUrl, { accion: 'guardarIndividual', hoja, fila, colInicio, valores });
 
         total += dias.length;
         hojasAfectadas.push(hoja);
       }
 
       if (total > 0) {
-        await fetch(config.appsScriptUrl, {
-          method: 'POST', mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            accion: 'registrarDescansoMedico',
-            datos: { ...descanso, hojas_afectadas: hojasAfectadas.join(', '), total_dias_marcados: total, fecha_registro: new Date().toISOString() }
-          })
+        await postToAppsScript(config.appsScriptUrl, {
+          accion: 'registrarDescansoMedico',
+          datos: { ...descanso, hojas_afectadas: hojasAfectadas.join(', '), total_dias_marcados: total, fecha_registro: new Date().toISOString() }
         });
       }
 
@@ -719,20 +711,12 @@ const PanelOCRContent = () => {
         const colInicio = columnaLetra(5 + dias[0] - 1);
         const valores = dias.map(() => 'VACACIONES');
 
-        await fetch(config.appsScriptUrl, {
-          method: 'POST', mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ accion: 'guardarIndividual', hoja, fila, colInicio, valores })
-        });
+        await postToAppsScript(config.appsScriptUrl, { accion: 'guardarIndividual', hoja, fila, colInicio, valores });
       }
 
-      await fetch(config.appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          accion: 'registrarVacaciones',
-          datos: { ...vacaciones, fecha_registro: new Date().toISOString() }
-        })
+      await postToAppsScript(config.appsScriptUrl, {
+        accion: 'registrarVacaciones',
+        datos: { ...vacaciones, fecha_registro: new Date().toISOString() }
       });
 
     } catch (error) {

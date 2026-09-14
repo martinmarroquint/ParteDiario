@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { 
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, MESES, ANIOS, COLOR_PRIMARIO, 
-  DEFAULT_GOOGLE_CONFIG, bodyAsciiJson, ordenarPersonalPorGrado, esPersonalCivil, 
+  DEFAULT_GOOGLE_CONFIG, bodyAsciiJson, postToAppsScript, ordenarPersonalPorGrado, esPersonalCivil, 
   soloHojasMes, hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual, 
   mesDeHoja, verificarAppsScript, DIAS_SEMANA 
 } from './constantes';
@@ -585,20 +585,15 @@ const MobileRolView = ({
     guardadosPendientesRef.current.add(key);
     
     // IMPORTANTE: Usar mode: 'no-cors' y manejar silenciosamente
-    return fetch(config.appsScriptUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({ 
-        accion: 'guardarCelda', 
-        hoja: hojaSeleccionada, 
-        fila, 
-        columna, 
-        valor: valorTexto, 
-        responsable: responsable || 'ADMIN', 
-        area: areaAsignada, 
-        registrarHistorial: false 
-      })
+    return postToAppsScript(config.appsScriptUrl, {
+      accion: 'guardarCelda', 
+      hoja: hojaSeleccionada, 
+      fila, 
+      columna, 
+      valor: valorTexto, 
+      responsable: responsable || 'ADMIN', 
+      area: areaAsignada, 
+      registrarHistorial: false 
     })
     .then(() => {
       // Con no-cors, la respuesta es opaca pero la solicitud se envió
@@ -907,19 +902,15 @@ const MobileRolView = ({
       const filaEnvio = emp ? emp.fila : 0;
       for (const c of cambios) {
         try {
-          await fetch(config.appsScriptUrl, {
-            method: 'POST', mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain' },
-            body: bodyAsciiJson({
-              accion: 'registrarCeldaModificada',
-              hoja: hojaSeleccionada,
-              fila: filaEnvio,
-              dia: c.dia,
-              valorAnterior: c.turnoAnterior || '',
-              valorNuevo: c.turnoNuevoCodigo || '',
-              responsable: responsable || 'ADMIN',
-              tipo: 'solicitud'
-            })
+          await postToAppsScript(config.appsScriptUrl, {
+            accion: 'registrarCeldaModificada',
+            hoja: hojaSeleccionada,
+            fila: filaEnvio,
+            dia: c.dia,
+            valorAnterior: c.turnoAnterior || '',
+            valorNuevo: c.turnoNuevoCodigo || '',
+            responsable: responsable || 'ADMIN',
+            tipo: 'solicitud'
           });
         } catch { /* no-cors errors are expected */ }
       }
@@ -932,10 +923,8 @@ const MobileRolView = ({
   // ============================================
   const guardarDescansoMedico = useCallback((descanso) => {
     if (!config.appsScriptUrl) return;
-    fetch(config.appsScriptUrl, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({ accion: 'registrarDescansoMedico', datos: descanso })
+    postToAppsScript(config.appsScriptUrl, {
+      accion: 'registrarDescansoMedico', datos: descanso
     }).catch(err => console.warn('Error guardando descanso:', err));
 
     const emp = personal.find(p => p.dni === descanso.personal_dni);
@@ -962,10 +951,8 @@ const MobileRolView = ({
   // ============================================
   const limpiarCeldasModificadasPersistidas = useCallback(() => {
     if (!config.appsScriptUrl || !hojaSeleccionada) return;
-    fetch(config.appsScriptUrl, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({ accion: 'limpiarCeldasModificadas', hoja: hojaSeleccionada })
+    postToAppsScript(config.appsScriptUrl, {
+      accion: 'limpiarCeldasModificadas', hoja: hojaSeleccionada
     }).catch(() => {});
   }, [config.appsScriptUrl, hojaSeleccionada]);
 
@@ -980,20 +967,16 @@ const MobileRolView = ({
     try {
       const columna = columnaLetra(4 + dia);
       const valorTexto = valor ? (TURNO_MAP[valor]?.nombre || valor) : '';
-      await fetch(config.appsScriptUrl, { 
-        method: 'POST', mode: 'no-cors', 
-        headers: { 'Content-Type': 'text/plain' }, 
-        body: bodyAsciiJson({ 
-          accion: 'guardarCelda', 
-          hoja: hojaSeleccionada, 
-          fila, 
-          columna, 
-          valor: valorTexto, 
-          responsable: responsable || 'ADMIN', 
-          area: areaAsignada, 
-          origen: 'modalCambioTurno', 
-          registrarHistorial: true 
-        }) 
+      await postToAppsScript(config.appsScriptUrl, { 
+        accion: 'guardarCelda', 
+        hoja: hojaSeleccionada, 
+        fila, 
+        columna, 
+        valor: valorTexto, 
+        responsable: responsable || 'ADMIN', 
+        area: areaAsignada, 
+        origen: 'modalCambioTurno', 
+        registrarHistorial: true 
       });
       return true;
     } finally { 
@@ -1055,19 +1038,15 @@ const MobileRolView = ({
         for (const p of participantes) {
           for (const c of (p.cambios || [])) {
             try {
-              await fetch(config.appsScriptUrl, {
-                method: 'POST', mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: bodyAsciiJson({
-                  accion: 'registrarCeldaModificada',
-                  hoja: hojaSeleccionada,
-                  fila: p.fila || 0,
-                  dia: c.dia || c.numero_dia || 0,
-                  valorAnterior: c.actual || '',
-                  valorNuevo: c.nuevo || '',
-                  responsable: 'SOLICITUD APROBADA',
-                  tipo: 'solicitud'
-                })
+              await postToAppsScript(config.appsScriptUrl, {
+                accion: 'registrarCeldaModificada',
+                hoja: hojaSeleccionada,
+                fila: p.fila || 0,
+                dia: c.dia || c.numero_dia || 0,
+                valorAnterior: c.actual || '',
+                valorNuevo: c.nuevo || '',
+                responsable: 'SOLICITUD APROBADA',
+                tipo: 'solicitud'
               });
             } catch { /* no-cors */ }
           }
@@ -1093,26 +1072,20 @@ const MobileRolView = ({
           return c ? (TURNO_MAP[c]?.nombre || '') : '';
         })
       }));
-      await fetch(config.appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: bodyAsciiJson({ 
-          accion: 'guardarLote', 
-          hoja: hojaSeleccionada, 
-          colInicio: 'F', 
-          area: areaAsignada, 
-          responsable: responsable || 'ADMIN', 
-          filas 
-        })
+      await postToAppsScript(config.appsScriptUrl, {
+        accion: 'guardarLote', 
+        hoja: hojaSeleccionada, 
+        colInicio: 'F', 
+        area: areaAsignada, 
+        responsable: responsable || 'ADMIN', 
+        filas 
       });
       setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
       guardarRespaldoLocal();
       setCeldasModificadas(new Map());
       limpiarCeldasModificadasPersistidas();
-      await fetch(config.appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: bodyAsciiJson({ accion: 'marcarFinalizado', mes: hojaSeleccionada, area: areaAsignada })
+      await postToAppsScript(config.appsScriptUrl, {
+        accion: 'marcarFinalizado', mes: hojaSeleccionada, area: areaAsignada
       });
       if (!esAdmin) { setRolHabilitado(false); actualizarEstadoArea(areaAsignada, true); }
       mostrarToast('Guardado exitosamente', 'success');

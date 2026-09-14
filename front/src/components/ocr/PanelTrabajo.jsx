@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { 
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, COLOR_PRIMARIO, MESES, 
-  DEFAULT_GOOGLE_CONFIG, bodyAsciiJson, ordenarPersonalPorGrado, esPersonalCivil, soloHojasMes,
+  DEFAULT_GOOGLE_CONFIG, bodyAsciiJson, postToAppsScript, ordenarPersonalPorGrado, esPersonalCivil, soloHojasMes,
   hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual, verificarAppsScript
 } from './constantes';
 import Encabezado from './Encabezado';
@@ -373,11 +373,7 @@ const PanelTrabajo = ({
   const marcarAreaComoFinalizada = useCallback(async () => { 
     if (!config.appsScriptUrl) return; 
     try { 
-      await fetch(config.appsScriptUrl, { 
-        method: 'POST', mode: 'no-cors', 
-        headers: { 'Content-Type': 'text/plain' }, 
-        body: bodyAsciiJson({ accion: 'marcarFinalizado', mes: hojaSeleccionada, area: areaAsignada }) 
-      }); 
+      await postToAppsScript(config.appsScriptUrl, { accion: 'marcarFinalizado', mes: hojaSeleccionada, area: areaAsignada });
       setRolGuardado(true);
     } catch (e) { console.error('Error al marcar area:', e); } 
   }, [config.appsScriptUrl, areaAsignada, hojaSeleccionada]);
@@ -385,11 +381,7 @@ const PanelTrabajo = ({
   const desmarcarArea = useCallback(async () => { 
     if (!config.appsScriptUrl) return; 
     try { 
-      await fetch(config.appsScriptUrl, { 
-        method: 'POST', mode: 'no-cors', 
-        headers: { 'Content-Type': 'text/plain' }, 
-        body: bodyAsciiJson({ accion: 'desmarcarFinalizado', mes: hojaSeleccionada, area: areaAsignada }) 
-      }); 
+      await postToAppsScript(config.appsScriptUrl, { accion: 'desmarcarFinalizado', mes: hojaSeleccionada, area: areaAsignada });
       setRolGuardado(false);
     } catch (e) { console.error('Error al desmarcar area:', e); } 
   }, [config.appsScriptUrl, areaAsignada, hojaSeleccionada]);
@@ -781,14 +773,9 @@ const PanelTrabajo = ({
         tipo: c.tipo || 'APROBADO_SOLICITUD'
       }));
       
-      await fetch(config.appsScriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: bodyAsciiJson({ 
-          accion: 'registrarCambiosOficiales',
-          datos: registros 
-        })
+      await postToAppsScript(config.appsScriptUrl, {
+        accion: 'registrarCambiosOficiales',
+        datos: registros
       });
       
       console.log('Cambios registrados en historial oficial');
@@ -808,19 +795,15 @@ const PanelTrabajo = ({
         for (const p of participantes) {
           for (const c of (p.cambios || [])) {
             try {
-              await fetch(config.appsScriptUrl, {
-                method: 'POST', mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: bodyAsciiJson({
-                  accion: 'registrarCeldaModificada',
-                  hoja: hojaSeleccionada,
-                  fila: p.fila || 0,
-                  dia: c.dia || c.numero_dia || 0,
-                  valorAnterior: c.actual || '',
-                  valorNuevo: c.nuevo || '',
-                  responsable: 'SOLICITUD APROBADA',
-                  tipo: 'solicitud'
-                })
+              await postToAppsScript(config.appsScriptUrl, {
+                accion: 'registrarCeldaModificada',
+                hoja: hojaSeleccionada,
+                fila: p.fila || 0,
+                dia: c.dia || c.numero_dia || 0,
+                valorAnterior: c.actual || '',
+                valorNuevo: c.nuevo || '',
+                responsable: 'SOLICITUD APROBADA',
+                tipo: 'solicitud'
               });
             } catch { /* no-cors */ }
           }
@@ -910,17 +893,12 @@ const PanelTrabajo = ({
     
     if (config.appsScriptUrl) {
       try {
-        await fetch(config.appsScriptUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: bodyAsciiJson({
-            accion: 'guardarIndividual',
-            hoja: hojaActualRef.current,
-            fila: empActual.fila,
-            colInicio: 'D',
-            valores: [nuevaArea]
-          })
+        await postToAppsScript(config.appsScriptUrl, {
+          accion: 'guardarIndividual',
+          hoja: hojaActualRef.current,
+          fila: empActual.fila,
+          colInicio: 'D',
+          valores: [nuevaArea]
         });
         
         console.log('Area guardada en Sheets:', nuevaArea);
@@ -1024,20 +1002,15 @@ const PanelTrabajo = ({
 
     // Solo guardar en Google Sheets - NO registrar en CELDA_MODIFICADA
     // El punto verde solo se muestra para cambios del modal y solicitudes
-    fetch(config.appsScriptUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({
-        accion: 'guardarCelda',
-        hoja: hojaSeleccionada,
-        fila,
-        columna,
-        valor: valorTexto,
-        responsable: responsable || 'ADMIN',
-        area: areaAsignada,
-        registrarHistorial: false
-      })
+    postToAppsScript(config.appsScriptUrl, {
+      accion: 'guardarCelda',
+      hoja: hojaSeleccionada,
+      fila,
+      columna,
+      valor: valorTexto,
+      responsable: responsable || 'ADMIN',
+      area: areaAsignada,
+      registrarHistorial: false
     }).catch(err => console.warn('Error guardando celda:', err));
 
   }, [config.appsScriptUrl, hojaSeleccionada, areaAsignada, responsable]);
@@ -1045,18 +1018,14 @@ const PanelTrabajo = ({
   // Persistir celda modificada en Google Sheets via Apps Script
   const persistirCeldaModificada = useCallback((fila, dia, valorAnterior, valorNuevo, tipo = 'directo') => {
     if (!config.appsScriptUrl || !hojaSeleccionada) return;
-    fetch(config.appsScriptUrl, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({
-        accion: 'registrarCeldaModificada',
-        hoja: hojaSeleccionada,
-        fila, dia,
-        valorAnterior: valorAnterior || '',
-        valorNuevo: valorNuevo || '',
-        responsable: responsable || 'ADMIN',
-        tipo
-      })
+    postToAppsScript(config.appsScriptUrl, {
+      accion: 'registrarCeldaModificada',
+      hoja: hojaSeleccionada,
+      fila, dia,
+      valorAnterior: valorAnterior || '',
+      valorNuevo: valorNuevo || '',
+      responsable: responsable || 'ADMIN',
+      tipo
     }).catch(() => {});
   }, [config.appsScriptUrl, hojaSeleccionada, responsable]);
 
@@ -1092,10 +1061,8 @@ const PanelTrabajo = ({
   // Limpiar celdas modificadas después de guardar (via Apps Script)
   const limpiarCeldasModificadasPersistidas = useCallback(() => {
     if (!config.appsScriptUrl || !hojaSeleccionada) return;
-    fetch(config.appsScriptUrl, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({ accion: 'limpiarCeldasModificadas', hoja: hojaSeleccionada })
+    postToAppsScript(config.appsScriptUrl, {
+      accion: 'limpiarCeldasModificadas', hoja: hojaSeleccionada
     }).catch(() => {});
   }, [config.appsScriptUrl, hojaSeleccionada]);
 
@@ -1105,21 +1072,16 @@ const PanelTrabajo = ({
     const columna = columnaLetra(4 + dia);
     const valorTexto = valor ? (TURNO_MAP[valor]?.nombre || valor) : '';
 
-    await fetch(config.appsScriptUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({
-        accion: 'guardarCelda',
-        hoja: hojaSeleccionada,
-        fila,
-        columna,
-        valor: valorTexto,
-        responsable: responsable || 'ADMIN',
-        area: areaAsignada,
-        origen: 'modalCambioTurno',
-        registrarHistorial: true
-      })
+    await postToAppsScript(config.appsScriptUrl, {
+      accion: 'guardarCelda',
+      hoja: hojaSeleccionada,
+      fila,
+      columna,
+      valor: valorTexto,
+      responsable: responsable || 'ADMIN',
+      area: areaAsignada,
+      origen: 'modalCambioTurno',
+      registrarHistorial: true
     });
     
     return true;
@@ -1128,10 +1090,8 @@ const PanelTrabajo = ({
   const guardarDescansoMedico = useCallback((descanso) => {
     if (!config.appsScriptUrl) return;
     
-    fetch(config.appsScriptUrl, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({ accion: 'registrarDescansoMedico', datos: descanso })
+    postToAppsScript(config.appsScriptUrl, {
+      accion: 'registrarDescansoMedico', datos: descanso
     }).catch(err => console.warn('Error guardando descanso:', err));
     
     const emp = personal.find(p => p.dni === descanso.personal_dni);
@@ -1156,10 +1116,8 @@ const PanelTrabajo = ({
   const guardarVacaciones = useCallback((vacaciones) => {
     if (!config.appsScriptUrl) return;
     
-    fetch(config.appsScriptUrl, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: bodyAsciiJson({ accion: 'registrarVacaciones', datos: vacaciones })
+    postToAppsScript(config.appsScriptUrl, {
+      accion: 'registrarVacaciones', datos: vacaciones
     }).catch(err => console.warn('Error guardando vacaciones:', err));
     
     const emp = personal.find(p => p.dni === vacaciones.personal_dni);
@@ -1324,19 +1282,15 @@ const PanelTrabajo = ({
       const filaEnvio = emp ? emp.fila : 0;
       for (const c of cambios) {
         try {
-          await fetch(config.appsScriptUrl, {
-            method: 'POST', mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain' },
-            body: bodyAsciiJson({
-              accion: 'registrarCeldaModificada',
-              hoja: hojaSeleccionada,
-              fila: filaEnvio,
-              dia: c.dia,
-              valorAnterior: c.turnoAnterior || '',
-              valorNuevo: c.turnoNuevoCodigo || '',
-              responsable: responsable || 'ADMIN',
-              tipo: 'solicitud'
-            })
+          await postToAppsScript(config.appsScriptUrl, {
+            accion: 'registrarCeldaModificada',
+            hoja: hojaSeleccionada,
+            fila: filaEnvio,
+            dia: c.dia,
+            valorAnterior: c.turnoAnterior || '',
+            valorNuevo: c.turnoNuevoCodigo || '',
+            responsable: responsable || 'ADMIN',
+            tipo: 'solicitud'
           });
         } catch { /* no-cors errors expected */ }
       }
@@ -1354,11 +1308,7 @@ const PanelTrabajo = ({
         valores: DIAS.map(d => { const c = turnos[emp.id]?.[d]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }), 
         area: cambiosArea[emp.id] && cambiosArea[emp.id] !== emp.areaOriginal ? cambiosArea[emp.id] : null 
       })); 
-      await fetch(config.appsScriptUrl, { 
-        method: 'POST', mode: 'no-cors', 
-        headers: { 'Content-Type': 'text/plain' }, 
-        body: bodyAsciiJson({ accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaAsignada, responsable: responsable || 'ADMIN', filas }) 
-      }); 
+      await postToAppsScript(config.appsScriptUrl, { accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaAsignada, responsable: responsable || 'ADMIN', filas });
       setTurnosBackup(JSON.parse(JSON.stringify(turnos))); guardarRespaldoLocal(); await marcarAreaComoFinalizada(); 
       setCeldasModificadas(new Map());
       limpiarCeldasModificadasPersistidas();

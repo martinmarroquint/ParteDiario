@@ -227,6 +227,48 @@ export const DEFAULT_GOOGLE_CONFIG = {
 export const bodyAsciiJson = (obj) => JSON.stringify(obj).replace(/[\u007F-\uFFFF]/g, (ch) => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
 
 // ============================================
+// HMAC SIGNING — Apps Script verification
+// ============================================
+const HMAC_SECRET = import.meta.env.VITE_APPSCRIPT_HMAC_SECRET || '';
+
+/**
+ * Sorted JSON stringify (matches Python json.dumps(sort_keys=True, separators=(',', ':')))
+ */
+function sortedStringify(obj) {
+  const keys = Object.keys(obj).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + JSON.stringify(obj[k])).join(',') + '}';
+}
+
+/**
+ * Sign a payload with HMAC-SHA256 using Web Crypto API
+ */
+async function signPayload(payload) {
+  if (!HMAC_SECRET) return payload;
+  const bodyStr = sortedStringify(payload);
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(HMAC_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(bodyStr));
+  const hex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return { ...payload, _signature: hex };
+}
+
+/**
+ * POST to Apps Script with HMAC signing
+ */
+export async function postToAppsScript(url, payload) {
+  const signed = await signPayload(payload);
+  return fetch(url, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain' },
+    body: bodyAsciiJson(signed)
+  });
+}
+
+// ============================================
 // APPS SCRIPT: validacion y verificacion de salud
 // ============================================
 // Valida que la URL tenga el formato de un Web App publicado (/macros/s/<ID>/exec o /dev).
