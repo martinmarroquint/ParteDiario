@@ -85,7 +85,7 @@ async def demo_login(request: Request):
     
     return LoginResponse(
         token=token,
-        usuario=demo_user_data
+        user=demo_user_data
     )
 
 

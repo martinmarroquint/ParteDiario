@@ -97,10 +97,10 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
 
       const data = await response.json();
       
-      if (data.token && data.usuario) {
+      if (data.token && data.user) {
         // Guardar en localStorage
         localStorage.setItem('ocr_auth_token', data.token);
-        localStorage.setItem('ocr_user_data', JSON.stringify(data.usuario));
+        localStorage.setItem('ocr_user_data', JSON.stringify(data.user));
         
         // Llamar al onSuccess con los datos del demo
         if (onSuccess) {
