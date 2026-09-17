@@ -249,6 +249,27 @@ const PanelOCRContent = () => {
   }, [isAuthenticated, user]);
 
   // ============================================================
+  // HEARTBEAT — reportar actividad cada 30 segundos
+  // ============================================================
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    const enviarHeartbeat = async () => {
+      try {
+        const area = user?.area || user?.areas?.[0] || '';
+        const hoja = '';
+        await apiClient.sendHeartbeat(area, hoja);
+      } catch { /* ignore — si falla, el backend limpiara el heartbeat viejo */ }
+    };
+
+    // Enviar inmediatamente al entrar
+    enviarHeartbeat();
+    const it = setInterval(enviarHeartbeat, 30000);
+
+    return () => clearInterval(it);
+  }, [isAuthenticated, user]);
+
+  // ============================================================
   // FUNCIÓN: Login (backend real o modo prueba)
   // ============================================================
   const handleLogin = useCallback(async (usuario, password) => {

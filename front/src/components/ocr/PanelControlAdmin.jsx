@@ -2,8 +2,9 @@
 // PANEL DE CONTROL ADMIN - ORDENADO: DESBLOQUEADOS PRIMERO
 // El admin elige el mes de trabajo del panel (no impone el mes a los demas usuarios).
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Shield, Lock, Unlock, RefreshCw, Loader2, X, Search, CheckCircle2, CalendarDays } from 'lucide-react';
+import { Shield, Lock, Unlock, RefreshCw, Loader2, X, Search, CheckCircle2, CalendarDays, Users, Wifi } from 'lucide-react';
 import { hojaDelMesActual, postToAppsScript, readSheet } from './constantes';
+import apiClient from './services/apiClient';
 
 const COLOR_PRIMARIO = '#188C5D';
 const STORAGE_KEY = 'ocr_estados_areas';
@@ -16,6 +17,8 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
   const [mensaje, setMensaje] = useState(null);
   const [busqueda, setBusqueda] = useState('');
   const [mostrarSoloPendientes, setMostrarSoloPendientes] = useState(false);
+  const [usuariosActivos, setUsuariosActivos] = useState([]);
+  const [cargandoActivos, setCargandoActivos] = useState(false);
   const prevIsOpen = useRef(false);
 
   // Al abrir el panel, trabajar sobre el mes que el admin tiene visible.
@@ -59,6 +62,25 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
   useEffect(() => {
     if (isOpen) { cargarEstadosDesdeSheets(); }
   }, [isOpen, cargarEstadosDesdeSheets]);
+
+  // ============================================================
+  // USUARIOS ACTIVOS — heartbeat cada 10s cuando panel abierto
+  // ============================================================
+  const cargarUsuariosActivos = useCallback(async () => {
+    try {
+      setCargandoActivos(true);
+      const result = await apiClient.getActiveUsers();
+      setUsuariosActivos(result.users || []);
+    } catch { /* ignore */ }
+    finally { setCargandoActivos(false); }
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    cargarUsuariosActivos();
+    const it = setInterval(cargarUsuariosActivos, 10000);
+    return () => clearInterval(it);
+  }, [isOpen, cargarUsuariosActivos]);
 
   const aplicarLote = async (estado) => {
     if (!config?.appsScriptUrl) return;
@@ -311,6 +333,47 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* ============================================ */}
+        {/* USUARIOS ACTIVOS */}
+        {/* ============================================ */}
+        <div className="px-6 py-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-gray-500" />
+              <h4 className="text-sm font-semibold text-gray-700">
+                Usuarios Activos
+                <span className="ml-2 text-xs font-normal text-gray-400">
+                  ({usuariosActivos.length} conectado{usuariosActivos.length !== 1 ? 's' : ''})
+                </span>
+              </h4>
+            </div>
+            <button onClick={cargarUsuariosActivos} disabled={cargandoActivos}
+              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
+              <RefreshCw className={`w-3 h-3 ${cargandoActivos ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {usuariosActivos.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">No hay usuarios activos</p>
+          ) : (
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {usuariosActivos.map((u) => (
+                <div key={u.user_id}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                  <Wifi className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs font-medium text-gray-700">{u.nombre}</span>
+                    {u.area && <span className="text-xs text-gray-400 ml-2">({u.area})</span>}
+                  </div>
+                  <span className="text-xs text-gray-400 flex-shrink-0">
+                    {u.seconds_ago < 10 ? 'ahora' : `${u.seconds_ago}s`}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>

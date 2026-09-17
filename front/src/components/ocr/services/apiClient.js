@@ -415,6 +415,18 @@ class ApiClient {
   async healthCheck() {
     return this.request('/health', { method: 'GET' });
   }
+
+  // ============================================
+  // HEARTBEAT — report user is active
+  // ============================================
+
+  async sendHeartbeat(area = '', hoja = '') {
+    return this.post('/auth/heartbeat', { area, hoja }, { _skipAuthRedirect: true });
+  }
+
+  async getActiveUsers() {
+    return this.get('/auth/active-users');
+  }
 }
 
 // Export singleton instance

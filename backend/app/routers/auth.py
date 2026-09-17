@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+import time
+import threading
 
 from app.models.auth import (
     LoginRequest, LoginResponse, ChangePasswordRequest,
@@ -21,12 +23,47 @@ sheets_service = GoogleSheetsService()
 auth_service = AuthService(sheets_service)
 
 
+# ============================================
+# ACTIVE USERS TRACKING (in-memory heartbeat)
+# ============================================
+_active_users: dict[int, dict] = {}
+_active_lock = threading.Lock()
+
+def _cleanup_stale_users():
+    """Remove users with heartbeat older than 90 seconds."""
+    now = time.time()
+    stale = [uid for uid, info in _active_users.items() if now - info["last_seen"] > 90]
+    for uid in stale:
+        del _active_users[uid]
+
+
 class AdminKeyRequest(BaseModel):
     clave: str
 
 
 class AdminKeyResponse(BaseModel):
     valido: bool
+
+
+class HeartbeatRequest(BaseModel):
+    area: str = ""
+    hoja: str = ""
+
+
+class ActiveUserInfo(BaseModel):
+    user_id: int
+    usuario: str
+    nombre: str
+    area: str
+    hoja: str
+    rol: int
+    last_seen: float
+    seconds_ago: int
+
+
+class ActiveUsersResponse(BaseModel):
+    users: list[ActiveUserInfo]
+    total: int
 
 
 @router.post("/validate-admin-key", response_model=AdminKeyResponse)
@@ -104,3 +141,62 @@ async def reset_password(data: ResetPasswordRequest):
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Función no implementada. Use 'Cambiar Contraseña' desde su perfil."
     )
+
+
+# ============================================
+# HEARTBEAT — usuarios avisan que siguen vivos
+# ============================================
+@router.post("/heartbeat")
+async def send_heartbeat(
+    data: HeartbeatRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Send heartbeat to indicate user is active.
+    
+    Frontend calls this every 30 seconds.
+    Backend stores timestamp; admin can query active users.
+    """
+    with _active_lock:
+        _cleanup_stale_users()
+        _active_users[current_user.id] = {
+            "user_id": current_user.id,
+            "usuario": current_user.usuario,
+            "nombre": current_user.nombre,
+            "area": data.area,
+            "hoja": data.hoja,
+            "rol": max(current_user.roles) if current_user.roles else 0,
+            "last_seen": time.time(),
+        }
+    return {"ok": True}
+
+
+# ============================================
+# ACTIVE USERS — admin ve quien esta conectado
+# ============================================
+@router.get("/active-users", response_model=ActiveUsersResponse)
+async def get_active_users(current_user: User = Depends(get_current_user)):
+    """Get list of currently active users (heartbeat < 90s).
+    
+    Admin only.
+    """
+    if 4 not in current_user.roles:
+        raise HTTPException(status_code=403, detail="Solo administradores")
+    
+    with _active_lock:
+        _cleanup_stale_users()
+        now = time.time()
+        users = []
+        for info in _active_users.values():
+            users.append(ActiveUserInfo(
+                user_id=info["user_id"],
+                usuario=info["usuario"],
+                nombre=info["nombre"],
+                area=info["area"],
+                hoja=info["hoja"],
+                rol=info["rol"],
+                last_seen=info["last_seen"],
+                seconds_ago=int(now - info["last_seen"]),
+            ))
+    
+    users.sort(key=lambda u: u.seconds_ago)
+    return ActiveUsersResponse(users=users, total=len(users))
