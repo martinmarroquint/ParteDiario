@@ -160,7 +160,6 @@ const PanelOCRContent = () => {
           setIsAdmin(maxRol === 4);
           setIsJefe([1, 2, 3].includes(maxRol));
           setIsUsuario(maxRol === 0);
-          setRolSeleccionado(freshUser.rol);
           // Cargar turnos dinámicos desde BD sheet (sesión restaurada)
           initTurnosDinamicos();
         }
@@ -297,8 +296,6 @@ const PanelOCRContent = () => {
           if (userData.areas && userData.areas.length > 0) {
             setAreaSeleccionada(userData.areas[0]);
           }
-          
-          setRolSeleccionado(rolString);
           
           // GUARDAR en localStorage para persistir recarga
           localStorage.setItem('ocr_auth_token', result.token);
