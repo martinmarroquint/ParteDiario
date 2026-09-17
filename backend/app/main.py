@@ -23,6 +23,7 @@ from app.routers import (
     estructura_jerarquica,
     mesa_partes,
     sheets_proxy,
+    migration,
 )
 
 # Configure logging
@@ -98,6 +99,7 @@ app.include_router(areas.router, prefix="/api/v1")
 app.include_router(estructura_jerarquica.router, prefix="/api/v1")
 app.include_router(mesa_partes.router, prefix="/api/v1")
 app.include_router(sheets_proxy.router, prefix="/api/v1")
+app.include_router(migration.router, prefix="/api/v1")
 
 
 @app.api_route("/", methods=["GET", "HEAD"], tags=["Root"])
@@ -118,7 +120,9 @@ async def health_check():
         "status": "healthy",
         "services": {
             "api": "running",
+            "database": "supabase" if settings.USE_SUPABASE else "google_sheets",
             "google_sheets": "configured" if settings.GOOGLE_SHEETS_API_KEY else "not_configured",
+            "supabase": "configured" if settings.SUPABASE_URL else "not_configured",
         },
     }
 

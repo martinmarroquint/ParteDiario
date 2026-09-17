@@ -37,9 +37,14 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
     
+    # Supabase (PostgreSQL)
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_KEY: str = ""  # service_role key (server-side only)
+    USE_SUPABASE: bool = False  # Toggle: True = Supabase, False = Google Sheets (legacy)
+
     # App Info
     APP_NAME: str = "OCR Roles Servicio API"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "2.0.0"
     
     @field_validator("JWT_SECRET")
     @classmethod
