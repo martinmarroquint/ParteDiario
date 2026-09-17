@@ -27,6 +27,7 @@ import ImpresionRol from './ImpresionRol';
 import ModalCambiarPassword from './auth/ModalCambiarPassword';
 import PanelAdminUsuariosOCR from './admin/PanelAdminUsuariosOCR';
 import apiClient from './services/apiClient';
+import { useFrancosInvalidos, useFrancosStats } from './hooks/useFrancosInvalidos';
 
 const STORAGE_RESPALDO_LOCAL = 'ocr_respaldo_local';
 const STORAGE_ESTADOS = 'ocr_estados_areas';
@@ -698,36 +699,9 @@ const MobileRolView = ({
     return ordenarPersonalPorGrado(r);
   }, [personal, busqueda]);
 
-  const francosInvalidos = useMemo(() => {
-    const invalidaciones = {};
-    personal.forEach(emp => {
-      if (esPersonalCivil(emp.grado)) return;
-      let contadorFrancos = 0, inicioFrancos = null, diasFrancos = [];
-      for (let d = 1; d <= totalDiasMes; d++) {
-        const turno = turnos[emp.id]?.[d] || '';
-        if (turno === 'F') {
-          if (contadorFrancos === 0) inicioFrancos = d;
-          contadorFrancos++;
-          diasFrancos.push(d);
-        } else {
-          if (contadorFrancos >= 3) {
-            if (!invalidaciones[emp.id]) invalidaciones[emp.id] = [];
-            invalidaciones[emp.id].push({ inicio: inicioFrancos, fin: d - 1, cantidad: contadorFrancos, dias: [...diasFrancos] });
-          }
-          contadorFrancos = 0; inicioFrancos = null; diasFrancos = [];
-        }
-      }
-      if (contadorFrancos >= 3) {
-        if (!invalidaciones[emp.id]) invalidaciones[emp.id] = [];
-        invalidaciones[emp.id].push({ inicio: inicioFrancos, fin: totalDiasMes, cantidad: contadorFrancos, dias: [...diasFrancos] });
-      }
-    });
-    return invalidaciones;
-  }, [personal, turnos, totalDiasMes]);
-
-  const totalFrancosInvalidos = useMemo(() => Object.keys(francosInvalidos).length, [francosInvalidos]);
-  const totalInfraccionesFrancos = useMemo(() => Object.values(francosInvalidos).reduce((s, i) => s + i.length, 0), [francosInvalidos]);
-  const idsConFrancosInvalidos = useMemo(() => new Set(Object.keys(francosInvalidos).map(Number)), [francosInvalidos]);
+  // Usar hook compartido para francos invalidos
+  const francosInvalidos = useFrancosInvalidos(personal, turnos, totalDiasMes, esPersonalCivil);
+  const { totalFrancosInvalidos, totalInfraccionesFrancos, idsConFrancosInvalidos } = useFrancosStats(francosInvalidos);
   const todosLosTurnos = useMemo(() => Object.keys(TURNO_MAP), []);
 
   // ============================================

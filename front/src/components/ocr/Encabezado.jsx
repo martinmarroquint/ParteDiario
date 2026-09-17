@@ -924,4 +924,5 @@ const Encabezado = ({
   );
 };
 
-export default Encabezado;
+// React.memo evita re-renders cuando las props no cambian
+export default React.memo(Encabezado);

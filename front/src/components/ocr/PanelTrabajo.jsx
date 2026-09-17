@@ -28,6 +28,7 @@ import ModalVistaPrevia from './ModalVistaPrevia';
 import ModalSolicitudCambioTurno from './ModalSolicitudCambioTurno';
 import ModalCambiarPassword from './auth/ModalCambiarPassword';
 import ModalFrancosInvalidos from './ModalFrancosInvalidos';
+import { useFrancosInvalidos, useFrancosStats } from './hooks/useFrancosInvalidos';
 import apiClient from './services/apiClient';
 
 const STORAGE_ESTADOS = 'ocr_estados_areas';
@@ -235,21 +236,20 @@ const PanelTrabajo = ({
   }, [esAdmin, esJefe, esUsuario, personal, areaSeleccionadaAdmin, areaSeleccionadaJefe, areaAsignada, user]);
 
   const personalFiltrado = useMemo(() => {
-    let r = personalFiltradoPorRol;
+    // Si no hay busqueda, devolver directamente (ya esta ordenado)
+    if (!busqueda.trim()) return personalFiltradoPorRol;
     
-    if (busqueda.trim()) { 
-      const t = busqueda.toLowerCase(); 
-      r = r.filter(p => 
-        p.nombre?.toLowerCase().includes(t) || 
-        p.dni?.includes(t) || 
-        p.grado?.toLowerCase().includes(t) || 
-        p.area?.toLowerCase().includes(t)
-      ); 
-    }
-    return ordenarPersonalPorGrado(r);
+    // Solo filtrar cuando hay busqueda
+    const t = busqueda.toLowerCase();
+    return personalFiltradoPorRol.filter(p => 
+      p.nombre?.toLowerCase().includes(t) || 
+      p.dni?.includes(t) || 
+      p.grado?.toLowerCase().includes(t) || 
+      p.area?.toLowerCase().includes(t)
+    );
   }, [personalFiltradoPorRol, busqueda]);
 
-  const personalOrdenado = useMemo(() => ordenarPersonalPorGrado(personal), [personal]);
+  // NOTA: personalOrdenado eliminado - era codigo muerto (nunca se usaba)
   
   const personalDisponible = useMemo(() => {
     if (!esAdmin && !esJefe) return [];
@@ -258,36 +258,10 @@ const PanelTrabajo = ({
     return ordenarPersonalPorGrado(filtrado);
   }, [todoElPersonal, areaAsignada, esAdmin, esJefe, areaSeleccionadaJefe]);
 
-  const francosInvalidos = useMemo(() => {
-    const invalidaciones = {};
-    const personalAValidar = esAdmin ? personal : personalFiltradoPorRol;
-    personalAValidar.forEach(emp => {
-      if (esPersonalCivil(emp.grado)) return;
-      let contadorFrancos = 0, inicioFrancos = null;
-      for (let idx = 0; idx < DIAS.length; idx++) {
-        const dia = DIAS[idx], turno = turnos[emp.id]?.[dia] || '';
-        if (turno === 'F') { 
-          if (contadorFrancos === 0) inicioFrancos = dia; 
-          contadorFrancos++; 
-        } else { 
-          if (contadorFrancos >= 3) { 
-            if (!invalidaciones[emp.id]) invalidaciones[emp.id] = []; 
-            invalidaciones[emp.id].push({ inicio: inicioFrancos, fin: dia - 1, cantidad: contadorFrancos, dias: DIAS.slice(idx - contadorFrancos, idx) }); 
-          } 
-          contadorFrancos = 0; inicioFrancos = null; 
-        }
-      }
-      if (contadorFrancos >= 3) { 
-        if (!invalidaciones[emp.id]) invalidaciones[emp.id] = []; 
-        invalidaciones[emp.id].push({ inicio: inicioFrancos, fin: DIAS[DIAS.length - 1], cantidad: contadorFrancos, dias: DIAS.slice(DIAS.length - contadorFrancos) }); 
-      }
-    });
-    return invalidaciones;
-  }, [personal, turnos, DIAS, esAdmin, personalFiltradoPorRol]);
-
-  const totalFrancosInvalidos = useMemo(() => Object.keys(francosInvalidos).length, [francosInvalidos]);
-  const totalInfraccionesFrancos = useMemo(() => Object.values(francosInvalidos).reduce((s, i) => s + i.length, 0), [francosInvalidos]);
-  const idsConFrancosInvalidos = useMemo(() => new Set(Object.keys(francosInvalidos).map(Number)), [francosInvalidos]);
+  // Usar hook compartido para francos invalidos
+  const personalAValidar = esAdmin ? personal : personalFiltradoPorRol;
+  const francosInvalidos = useFrancosInvalidos(personalAValidar, turnos, DIAS.length, esPersonalCivil);
+  const { totalFrancosInvalidos, totalInfraccionesFrancos, idsConFrancosInvalidos } = useFrancosStats(francosInvalidos);
 
   // Permisos según rol — solo se puede editar si el rol está habilitado (abierto)
   const puedeEditar = rolHabilitado && (esAdmin || esJefe);
@@ -1327,8 +1301,17 @@ const PanelTrabajo = ({
   const handleActualizarEstados = (ne) => { localStorage.setItem(`${STORAGE_ESTADOS}_${hojaSeleccionada}`, JSON.stringify(ne)); if (ne[areaAsignada] === true && !esAdmin) { setRolHabilitado(false); setRolGuardado(true); } else if ((ne[areaAsignada] === false || ne[areaAsignada] === undefined) && !esAdmin) { setRolHabilitado(true); setRolGuardado(false); } };
   const handleGuardarConfig = () => { setConfig(prev => ({ ...prev, sheetName: hojaSeleccionada })); setMostrarConfig(false); cargadoRef.current = false; recargarDatos(); mostrarMensajeTemporal('success', 'Configuracion aplicada', 4000); };
 
-  const totalTurnos = Object.values(turnos).reduce((s, e) => s + Object.values(e).filter(t => t).length, 0);
-  const completos = personal.filter(e => Object.values(turnos[e.id]||{}).filter(t => t).length >= totalDiasMes - 3).length;
+  // Memoizar calculos pesados (se recalculan solo cuando cambian dependencias)
+  const totalTurnos = useMemo(() => 
+    Object.values(turnos).reduce((s, e) => s + Object.values(e).filter(t => t).length, 0),
+    [turnos]
+  );
+  
+  const completos = useMemo(() => 
+    personal.filter(e => Object.values(turnos[e.id]||{}).filter(t => t).length >= totalDiasMes - 3).length,
+    [personal, turnos, totalDiasMes]
+  );
+  
   const totalHorasRol = useMemo(() => personal.reduce((s, e) => s + calcularComputo(e.id), 0), [personal, calcularComputo]);
 
   // ============================================================

@@ -467,4 +467,5 @@ const TablaRol = ({
   );
 };
 
-export default TablaRol;
+// React.memo evita re-renders cuando las props no cambian
+export default React.memo(TablaRol);
