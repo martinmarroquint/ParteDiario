@@ -3,14 +3,14 @@ Endpoint de migracion: Google Sheets → Supabase
 Solo para uso del administrador durante la transicion.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from app.auth import require_role
+from app.middleware.auth import require_admin
 from app.config import settings
 
 router = APIRouter(prefix="/migration", tags=["Migration"])
 
 
 @router.post("/run")
-async def run_migration(usuario=Depends(require_role(4))):
+async def run_migration(usuario=Depends(require_admin)):
     """
     Ejecuta la migracion completa de Google Sheets a Supabase.
     Solo accessible por admins (rol 4+).
@@ -32,7 +32,7 @@ async def run_migration(usuario=Depends(require_role(4))):
 
 
 @router.post("/test-connection")
-async def test_supabase(usuario=Depends(require_role(4))):
+async def test_supabase(usuario=Depends(require_admin)):
     """Prueba la conexion a Supabase."""
     if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
         raise HTTPException(400, "SUPABASE_URL y SUPABASE_SERVICE_KEY no configurados")
