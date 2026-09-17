@@ -1,16 +1,35 @@
 // src/components/hojaReferencia/SelectorCIE10.jsx
-// CARGADO DESDE JSON LOCAL - INSTANTÁNEO - HASTA 10 SELECCIONES
-import React, { useState, useRef, useEffect } from 'react';
+// LAZY-LOAD: cie10.json (1.14MB) se carga solo cuando se abre el selector
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, X, Plus } from 'lucide-react';
-import cie10Data from '../../data/cie10.json';
 import { COLOR_PRIMARIO_REF } from './constantes';
+
+// Lazy-load del JSON pesado
+let cie10DataPromise = null;
+const getCie10Data = () => {
+  if (!cie10DataPromise) {
+    cie10DataPromise = import('../../data/cie10.json').then(m => m.default || m);
+  }
+  return cie10DataPromise;
+};
 
 const SelectorCIE10 = ({ onSelect, seleccionados = [], maxSelecciones = 10 }) => {
   const [busqueda, setBusqueda] = useState('');
   const [resultados, setResultados] = useState([]);
   const [mostrarDropdown, setMostrarDropdown] = useState(false);
+  const [cie10Data, setCie10Data] = useState([]);
+  const [cargando, setCargando] = useState(false);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Cargar datos solo cuando se monta el componente
+  useEffect(() => {
+    getCie10Data().then(data => {
+      setCie10Data(data);
+    }).catch(() => {
+      console.error('Error cargando cie10.json');
+    });
+  }, []);
 
   const totalRegistros = cie10Data.length;
 

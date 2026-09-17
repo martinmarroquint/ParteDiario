@@ -1,16 +1,34 @@
 // src/components/hojaReferencia/SelectorCPT.jsx
-// CARGADO DESDE JSON LOCAL - INSTANTÁNEO - HASTA 10 SELECCIONES
+// LAZY-LOAD: cpt.json (161KB) se carga solo cuando se abre el selector
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, X, Plus } from 'lucide-react';
-import cptData from '../../data/cpt.json';
 import { COLOR_PRIMARIO_REF } from './constantes';
+
+// Lazy-load del JSON
+let cptDataPromise = null;
+const getCptData = () => {
+  if (!cptDataPromise) {
+    cptDataPromise = import('../../data/cpt.json').then(m => m.default || m);
+  }
+  return cptDataPromise;
+};
 
 const SelectorCPT = ({ onSelect, seleccionados = [], maxSelecciones = 10 }) => {
   const [busqueda, setBusqueda] = useState('');
   const [resultados, setResultados] = useState([]);
   const [mostrarDropdown, setMostrarDropdown] = useState(false);
+  const [cptData, setCptData] = useState([]);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Cargar datos solo cuando se monta el componente
+  useEffect(() => {
+    getCptData().then(data => {
+      setCptData(data);
+    }).catch(() => {
+      console.error('Error cargando cpt.json');
+    });
+  }, []);
 
   const totalRegistros = cptData.length;
 
