@@ -257,6 +257,56 @@ export async function postToAppsScript(_appsScriptUrl, payload) {
   return response.json();
 }
 
+/**
+ * Read sheet data through backend proxy (keeps API key server-side).
+ * Replaces ALL direct fetch() to sheets.googleapis.com.
+ * @param {string} sheetName - Name of the sheet tab
+ * @param {string} range - Optional range (e.g. "A1:Z100")
+ * @returns {Promise<Array<Array<string>>>} - 2D array of values
+ */
+export async function readSheet(sheetName, range) {
+  const token = localStorage.getItem('ocr_auth_token');
+  const params = new URLSearchParams();
+  if (range) params.set('range', range);
+  const qs = params.toString();
+  const url = `${API_BASE_URL}/sheets/${encodeURIComponent(sheetName)}${qs ? '?' + qs : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Error leyendo hoja: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.values || [];
+}
+
+/**
+ * Get spreadsheet metadata (list of sheet names) through backend proxy.
+ * Replaces direct fetch() to sheets.googleapis.com/v4/spreadsheets/{id}.
+ * @returns {Promise<Array<string>>} - List of sheet names
+ */
+export async function getSheetMetadata() {
+  const token = localStorage.getItem('ocr_auth_token');
+  const response = await fetch(`${API_BASE_URL}/sheets/metadata/sheet`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Error obteniendo metadata: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.sheets || [];
+}
+
 // ============================================
 // APPS SCRIPT: validacion y verificacion de salud
 // ============================================

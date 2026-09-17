@@ -5,14 +5,15 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   X, AlertTriangle, Loader2, RefreshCw, CheckCircle2, XCircle, User,
-  Eye, Printer, LogOut, Shield, Settings, Undo2, History,
+  Eye, Printer, LogOut, Shield, Undo2, History,
   Search, Zap, Trash2, Copy, Repeat, ChevronUp, Plus, Minus, SaveIcon, 
   Play, ChevronLeft, ChevronRight, UserPlus, Users, Building2, GraduationCap,
   EyeOff
 } from 'lucide-react';
 import { 
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, COLOR_PRIMARIO, MESES, 
-  DEFAULT_GOOGLE_CONFIG, postToAppsScript, ordenarPersonalPorGrado, esPersonalCivil, soloHojasMes,
+  DEFAULT_GOOGLE_CONFIG, postToAppsScript, readSheet, getSheetMetadata, 
+  ordenarPersonalPorGrado, esPersonalCivil, soloHojasMes,
   hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual
 } from './constantes';
 import Encabezado from './Encabezado';
@@ -31,6 +32,7 @@ import ModalFrancosInvalidos from './ModalFrancosInvalidos';
 import { useFrancosInvalidos, useFrancosStats } from './hooks/useFrancosInvalidos';
 import apiClient from './services/apiClient';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 const STORAGE_ESTADOS = 'ocr_estados_areas';
 const STORAGE_RESPALDO_LOCAL = 'ocr_respaldo_local';
 const STORAGE_SESION = 'ocr_sesion_activa';
@@ -87,7 +89,6 @@ const PanelTrabajo = ({
   pendingMesaPartesCount = 0
 }) => {
   const [config, setConfig] = useState(DEFAULT_GOOGLE_CONFIG);
-  const [mostrarConfig, setMostrarConfig] = useState(false);
   const [hojasDisponibles, setHojasDisponibles] = useState([]);
   const [hojaSeleccionada, setHojaSeleccionada] = useState(config.sheetName || hojaDelMesActual());
 
@@ -327,14 +328,7 @@ const PanelTrabajo = ({
   const verificarAreaFinalizadaEnSheets = useCallback(async () => {
     if (esAdmin) return false;
     try { 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/ESTADOS!A:C?key=${config.apiKey}`; 
-      const r = await fetch(url, { signal: controller.signal }); 
-      clearTimeout(timeoutId);
-      if (!r.ok) return false; 
-      const d = await r.json(); 
-      const filas = d.values || []; 
+      const filas = await readSheet('ESTADOS', 'A:C');
       for (const fila of filas) { 
         if (fila[0] === hojaSeleccionada && fila[1] === areaAsignada && fila[2] === 'FINALIZADO') return true; 
       } 
@@ -342,7 +336,7 @@ const PanelTrabajo = ({
     } catch { 
       return false; 
     }
-  }, [config, areaAsignada, esAdmin, hojaSeleccionada]);
+  }, [areaAsignada, esAdmin, hojaSeleccionada]);
 
   const marcarAreaComoFinalizada = useCallback(async () => { 
     if (!config.appsScriptUrl) return; 
@@ -363,11 +357,8 @@ const PanelTrabajo = ({
   const hojaAMes = useCallback((hoja) => { const mapa = { ENERO:1, FEBRERO:2, MARZO:3, ABRIL:4, MAYO:5, JUNIO:6, JULIO:7, AGOSTO:8, SEPTIEMBRE:9, OCTUBRE:10, NOVIEMBRE:11, DICIEMBRE:12 }; return mapa[String(hoja).toUpperCase()] || new Date().getMonth() + 1; }, []);
 
   const cargarHojas = useCallback(async () => { 
-    if (!config.sheetId || !config.apiKey) return; 
     try { 
-      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}?key=${config.apiKey}&fields=sheets.properties.title`); 
-      const d = await r.json(); 
-      const h = d.sheets?.map(s => s.properties.title) || []; 
+      const h = await getSheetMetadata();
       const hMeses = soloHojasMes(h);
       setHojasDisponibles(hMeses); 
 
@@ -377,20 +368,17 @@ const PanelTrabajo = ({
       // Solo guardar la lista de hojas disponibles, NO cambiar la hoja seleccionada.
       // La hoja siempre inicia en el mes actual (hojaDelMesActual).
     } catch (e) { console.error('Error al cargar hojas:', e); } 
-  }, [config]);
+  }, []);
 
   const cargarDatosIniciales = useCallback(async () => {
-    if (!config.sheetId || !hojaSeleccionada) return;
+    if (!hojaSeleccionada) return;
     if (cargadoRef.current || cargandoRef.current) return;
     
     cargandoRef.current = true;
     setCargando(true); 
     setErrorCarga(null);
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodeURIComponent(hojaSeleccionada)}!A:AJ?key=${config.apiKey}`;
-      const r = await fetch(url); 
-      if (!r.ok) { const ed = await r.json(); throw new Error(ed.error?.message || `Error HTTP ${r.status}`); }
-      const d = await r.json(); const rows = d.values || [];
+      const rows = await readSheet(hojaSeleccionada, 'A:AJ');
       if (rows.length < 2) { 
         setPersonal([]); setTodoElPersonal([]); setTurnos({}); setTurnosBackup({}); setCambiosArea({}); 
         cargadoRef.current = true; return; 
@@ -440,19 +428,14 @@ const PanelTrabajo = ({
       setPersonal(ordenarPersonalPorGrado(personalInicial)); 
       setTurnos(tObj); setTurnosBackup(JSON.parse(JSON.stringify(tObj))); setCambiosArea(cObj); 
       
-      // Cargar celdas modificadas desde Google Sheets API (cross-device)
+      // Cargar celdas modificadas desde backend proxy (cross-device)
       try {
-        const rMod = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/CELDA_MODIFICADA!A:H?key=${config.apiKey}`
-        );
-        if (rMod.ok) {
-          const dMod = await rMod.json();
-          const rowsMod = dMod.values || [];
-          const mapaMod = new Map();
-          for (let m = 1; m < rowsMod.length; m++) {
-            const row = rowsMod[m];
-            if (String(row[0] || '') !== hojaSeleccionada) continue;
-            const fila = parseInt(row[1]);
+        const rowsMod = await readSheet('CELDA_MODIFICADA', 'A:H');
+        const mapaMod = new Map();
+        for (let m = 1; m < rowsMod.length; m++) {
+          const row = rowsMod[m];
+          if (String(row[0] || '') !== hojaSeleccionada) continue;
+          const fila = parseInt(row[1]);
             const dia = parseInt(row[2]);
             if (!fila || !dia) continue;
             // emp.id = i, emp.fila = i + 1, so emp.id = fila - 1
@@ -467,7 +450,6 @@ const PanelTrabajo = ({
           }
           // Siempre actualizar el mapa (aunque esté vacío) para limpiar datos del mes anterior
           setCeldasModificadas(mapaMod);
-        }
       } catch { void 0; }
       
       const estadoGuardado = localStorage.getItem(`${STORAGE_ESTADOS}_${hojaSeleccionada}`);
@@ -508,13 +490,19 @@ const PanelTrabajo = ({
   
   // Función para aplicar solo los cambios (delta sync)
   const aplicarDelta = useCallback(async () => {
-    if (!config.sheetId || !hojaSeleccionada || !cargadoRef.current) return;
+    if (!hojaSeleccionada || !cargadoRef.current) return;
     if (cargandoRef.current) return;
     
     try {
-      // 1. Obtener heartbeat actual
-      const hbUrl = `${config.appsScriptUrl}?accion=obtenerHeartbeat&ts=${Date.now()}`;
-      const hbRes = await fetch(hbUrl, { method: 'GET', cache: 'no-store' });
+      // 1. Obtener heartbeat actual via backend proxy
+      const token = localStorage.getItem('ocr_auth_token');
+      const hbUrl = `${API_BASE_URL}/sheets/write`;
+      const hbRes = await fetch(hbUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ accion: 'obtenerHeartbeat' })
+      });
+      if (!hbRes.ok) return;
       const hbData = await hbRes.json();
       const nuevoHeartbeat = hbData.heartbeat || '';
       
@@ -522,12 +510,8 @@ const PanelTrabajo = ({
       if (!nuevoHeartbeat || nuevoHeartbeat === heartbeatRef.current) return;
       heartbeatRef.current = nuevoHeartbeat;
       
-      // 3. Obtener solo las celdas modificadas (delta)
-      const modUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/CELDA_MODIFICADA!A:H?key=${config.apiKey}`;
-      const modRes = await fetch(modUrl);
-      if (!modRes.ok) return;
-      const modData = await modRes.json();
-      const rowsMod = modData.values || [];
+      // 3. Obtener celdas modificadas via backend proxy
+      const rowsMod = await readSheet('CELDA_MODIFICADA', 'A:H');
       
       // 4. Procesar modificaciones de esta hoja
       const celdasNuevas = new Map();
@@ -702,10 +686,7 @@ const PanelTrabajo = ({
   const cargarHistorialCambios = useCallback(async () => {
     if (!config.sheetId || !config.apiKey) return;
     try {
-      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${HOJA_CAMBIOS}!A:I?key=${config.apiKey}`);
-      if (!r.ok) return;
-      const d = await r.json();
-      const rows = d.values || [];
+      const rows = await readSheet(HOJA_CAMBIOS, 'A:I');
       const lista = [];
       for (let i = 1; i < rows.length; i++) {
         const c = rows[i];
@@ -726,7 +707,7 @@ const PanelTrabajo = ({
       }
       setHistorialCambios(lista);
     } catch { console.error('Error al cargar historial de cambios'); }
-  }, [config.sheetId, config.apiKey]);
+  }, []);
 
   const handleAbrirHistorial = useCallback(() => {
     cargarHistorialCambios();
@@ -1007,12 +988,7 @@ const PanelTrabajo = ({
   const cargarCeldasModificadasDeSheet = useCallback(async () => {
     if (!config.sheetId || !config.apiKey || !hojaSeleccionada) return new Map();
     try {
-      const r = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/CELDA_MODIFICADA!A:H?key=${config.apiKey}`
-      );
-      if (!r.ok) return new Map();
-      const d = await r.json();
-      const rows = d.values || [];
+      const rows = await readSheet('CELDA_MODIFICADA', 'A:H');
       const mapa = new Map();
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
@@ -1030,7 +1006,7 @@ const PanelTrabajo = ({
       }
       return mapa;
     } catch { return new Map(); }
-  }, [config.sheetId, config.apiKey, hojaSeleccionada]);
+  }, [hojaSeleccionada]);
 
   // Limpiar celdas modificadas después de guardar (via Apps Script)
   const limpiarCeldasModificadasPersistidas = useCallback(() => {
@@ -1298,8 +1274,11 @@ const PanelTrabajo = ({
   const handleFinalizar = async () => { if (esAdmin) { await handleGuardar(); return; } if (!window.confirm('Finalizar y guardar el rol? Una vez guardado no podra editarlo.')) return; await handleGuardar(); };
   const handleHabilitar = () => { if (!esAdmin) { mostrarMensajeTemporal('error', 'Solo el administrador puede habilitar.'); return; } if (!window.confirm('Habilitar edicion?')) return; setRolHabilitado(true); actualizarEstadoArea(areaAsignada, false); desmarcarArea(); setRolGuardado(false); mostrarMensajeTemporal('success', 'Rol habilitado para edicion'); };
   const handleAbrirImpresion = () => setMostrarImpresion(true);
-  const handleActualizarEstados = (ne) => { localStorage.setItem(`${STORAGE_ESTADOS}_${hojaSeleccionada}`, JSON.stringify(ne)); if (ne[areaAsignada] === true && !esAdmin) { setRolHabilitado(false); setRolGuardado(true); } else if ((ne[areaAsignada] === false || ne[areaAsignada] === undefined) && !esAdmin) { setRolHabilitado(true); setRolGuardado(false); } };
-  const handleGuardarConfig = () => { setConfig(prev => ({ ...prev, sheetName: hojaSeleccionada })); setMostrarConfig(false); cargadoRef.current = false; recargarDatos(); mostrarMensajeTemporal('success', 'Configuracion aplicada', 4000); };
+  const handleActualizarEstados = useCallback((ne) => { 
+    localStorage.setItem(`${STORAGE_ESTADOS}_${hojaSeleccionada}`, JSON.stringify(ne)); 
+    if (ne[areaAsignada] === true && !esAdmin) { setRolHabilitado(false); setRolGuardado(true); } 
+    else if ((ne[areaAsignada] === false || ne[areaAsignada] === undefined) && !esAdmin) { setRolHabilitado(true); setRolGuardado(false); } 
+  }, [hojaSeleccionada, areaAsignada, esAdmin]);
 
   // Memoizar calculos pesados (se recalculan solo cuando cambian dependencias)
   const totalTurnos = useMemo(() => 
@@ -1371,7 +1350,6 @@ const PanelTrabajo = ({
         onMesChange={esUsuario ? handleMesChangeUsuario : handleMesChange}
         anioSeleccionado={anioSeleccionado} 
         onAnioChange={esUsuario ? handleAnioChangeUsuario : handleAnioChange}
-        onConfigClick={()=>setMostrarConfig(true)} 
         onRecargar={esAdmin || esJefe ? recargarDatos : null} 
         cargando={cargando} 
         onDeshacer={null}
@@ -1540,8 +1518,6 @@ const PanelTrabajo = ({
       <ModalVistaPrevia isOpen={mostrarVistaPrevia} onClose={() => setMostrarVistaPrevia(false)} onConfirmar={handleConfirmarVistaPrevia} area={esAdmin ? areaSeleccionadaAdmin : areaAsignada} responsable={responsable} mes={mesSeleccionado} anio={anioSeleccionado} personal={personalFiltrado} turnos={turnos} cambiosArea={cambiosArea} DIAS={DIAS} totalTurnos={totalTurnos} totalHoras={totalHorasRol} francosInvalidos={francosInvalidos} totalFrancosInvalidos={totalFrancosInvalidos} />
 
       <style>{`@media print{@page{size:landscape;margin:10mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print\\:hidden{display:none!important}}@keyframes slideInRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}.animate-slideInRight{animation:slideInRight 0.3s ease-out}`}</style>
-
-      {mostrarConfig && <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[200] p-4" onClick={()=>setMostrarConfig(false)}><div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e=>e.stopPropagation()}><div className="px-6 py-4 text-white flex items-center justify-between" style={{backgroundColor:COLOR_PRIMARIO}}><h3 className="text-lg font-bold">Configuracion</h3><button onClick={()=>setMostrarConfig(false)} className="p-1.5 hover:bg-white/20 rounded-lg"><X className="w-5 h-5"/></button></div><div className="p-6 space-y-4"><div><label className="block text-sm font-semibold text-gray-700 mb-1">Sheet ID</label><input value={config.sheetId} onChange={e=>setConfig(prev=>({...prev,sheetId:e.target.value}))} className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm"/></div><div><label className="block text-sm font-semibold text-gray-700 mb-1">Hoja</label><input value={config.sheetName} onChange={e=>setConfig(prev=>({...prev,sheetName:e.target.value}))} className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm"/></div><div><label className="block text-sm font-semibold text-gray-700 mb-1">API Key</label><input value={config.apiKey} onChange={e=>setConfig(prev=>({...prev,apiKey:e.target.value}))} className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-mono"/></div><div><label className="block text-sm font-semibold text-gray-700 mb-1">Apps Script URL</label><input value={config.appsScriptUrl} onChange={e=>setConfig(prev=>({...prev,appsScriptUrl:e.target.value}))} className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-mono"/></div></div><div className="px-6 py-4 bg-gray-50 border-t"><button onClick={handleGuardarConfig} className="w-full py-3 text-white rounded-xl text-sm font-bold" style={{backgroundColor:COLOR_PRIMARIO}}>Aplicar Cambios</button></div></div></div>}
 
       {/* Modal Cambiar Contraseña */}
       <ModalCambiarPassword

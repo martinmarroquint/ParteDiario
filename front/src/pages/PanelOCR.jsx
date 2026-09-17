@@ -14,7 +14,7 @@ import ParteDiario from '../components/ocr/ParteDiario';
 import ModalSolicitudCambioTurno from '../components/ocr/ModalSolicitudCambioTurno';
 import PanelAdminUsuariosOCR from '../components/ocr/admin/PanelAdminUsuariosOCR';
 import MesaDePartes from '../components/mesapartes/MesaDePartes';
-import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn, initTurnosDinamicos, postToAppsScript } from '../components/ocr/constantes';
+import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn, initTurnosDinamicos, postToAppsScript, readSheet, getSheetMetadata } from '../components/ocr/constantes';
 import { apiClient } from '../components/ocr/services/apiClient';
 import { authService } from '../components/ocr/services/authService';
 import GuidedTour from '../components/ocr/tour/GuidedTour';
@@ -38,97 +38,6 @@ function columnaLetra(numero) {
   }
   return letra;
 }
-
-// ============================================================
-// MODO PRUEBA - DESHABILITADO por seguridad
-// Si el backend no esta disponible, se muestra error en vez de dar acceso admin
-// ============================================================
-const MODO_PRUEBA = false;
-
-const USUARIOS_PRUEBA = {
-  admin: {
-    id: 'USR001',
-    nombre: 'Administrador del Sistema',
-    usuario: 'admin',
-    rol: 'admin',
-    roles: [4],
-    areas: ['ADMIN'],
-    area: 'ADMIN',
-    requiereCambio: false
-  },
-  jefe_area: {
-    id: 'USR002',
-    nombre: 'Jefe de Medicina',
-    usuario: 'jefe_medicina',
-    rol: 'jefe_area',
-    roles: [1],
-    areas: ['Medicina', 'Cirugía'],
-    area: 'Medicina',
-    requiereCambio: false
-  },
-  jefe_departamento: {
-    id: 'USR003',
-    nombre: 'Jefe de Departamento Médico',
-    usuario: 'jefe_departamento',
-    rol: 'jefe_departamento',
-    roles: [2],
-    areas: ['Departamento Médico', 'Departamento de Cirugía'],
-    area: 'Departamento Médico',
-    requiereCambio: false
-  },
-  jefe_division: {
-    id: 'USR004',
-    nombre: 'Jefe de División Médica',
-    usuario: 'jefe_division',
-    rol: 'jefe_division',
-    roles: [3],
-    areas: ['División Médica', 'División Quirúrgica'],
-    area: 'División Médica',
-    requiereCambio: false
-  },
-  usuario: {
-    id: 'USR005',
-    nombre: 'Juan Pérez García',
-    usuario: 'jperez',
-    rol: 'usuario',
-    roles: [0],
-    areas: ['Medicina'],
-    area: 'Medicina',
-    requiereCambio: false
-  },
-  usuario2: {
-    id: 'USR006',
-    nombre: 'María Rodríguez López',
-    usuario: 'mrodriguez',
-    rol: 'usuario',
-    roles: [0],
-    areas: ['Emergencia'],
-    area: 'Emergencia',
-    requiereCambio: false
-  },
-  tramite_documentario: {
-    id: 'USR007',
-    nombre: 'Oficina de Trámite Documentario',
-    usuario: 'tramite',
-    rol: 'tramite_documentario',
-    roles: [5],
-    areas: ['UNIDAD DE TRAMITE DOCUMENTARIO'],
-    area: 'UNIDAD DE TRAMITE DOCUMENTARIO',
-    requiereCambio: false
-  }
-};
-
-// Lista de roles disponibles para el selector de prueba
-const ROLES_PRUEBA = [
-  { value: 'admin', label: 'Administrador', desc: 'Acceso total' },
-  { value: 'tramite_documentario', label: 'Trámite Documentario', desc: 'Registra y deriva documentos' },
-  { value: 'jefe_area', label: 'Jefe de Área', desc: 'Gestiona su área' },
-  { value: 'jefe_departamento', label: 'Jefe de Departamento', desc: 'Gestiona su departamento' },
-  { value: 'jefe_division', label: 'Jefe de División', desc: 'Gestiona su división' },
-  { value: 'usuario', label: 'Usuario Base', desc: 'Solo consulta' },
-  { value: 'usuario2', label: 'Usuario Base 2', desc: 'Solo consulta' }
-];
-// ============================================================
 
 // ============================================================
 // LEER SESIÓN GUARDADA (sincrónico - para inicializar estado)
@@ -205,12 +114,6 @@ const PanelOCRContent = () => {
   // ============================================================
   const [runTour, setRunTour] = useState(false);
   const tourInitialized = useRef(false);
-  // ============================================================
-
-  // ============================================================
-  // MODO PRUEBA - Selector de rol (solo visible en modo prueba)
-  // ============================================================
-  const [rolSeleccionado, setRolSeleccionado] = useState(initialSession?.user?.rol || 'admin');
   // ============================================================
 
   const config = DEFAULT_GOOGLE_CONFIG;
@@ -424,35 +327,6 @@ const PanelOCRContent = () => {
   }, []);
 
   // ============================================================
-  // FUNCIÓN: Cambiar rol en modo prueba
-  // ============================================================
-  const cambiarRolPrueba = useCallback((rolKey) => {
-    const userData = USUARIOS_PRUEBA[rolKey];
-    if (!userData) return;
-
-    setUser(userData);
-    setIsAuthenticated(true);
-    setIsAdmin(userData.rol === 'admin');
-    setIsJefe(['jefe_area', 'jefe_departamento', 'jefe_division'].includes(userData.rol));
-    setIsUsuario(userData.rol === 'usuario');
-    setResponsable(userData.nombre);
-    setEsAdmin(userData.rol === 'admin');
-    setEsTramite(userData.rol === 'tramite_documentario');
-    
-    if (userData.areas && userData.areas.length > 0) {
-      setAreaSeleccionada(userData.areas[0]);
-    } else if (userData.area) {
-      setAreaSeleccionada(userData.area);
-    }
-    
-    setRolSeleccionado(rolKey);
-    setMostrarAdminUsuarios(false);
-    
-    // Actualizar localStorage para persistir en recarga
-    localStorage.setItem('ocr_user_data', JSON.stringify(userData));
-  }, []);
-
-  // ============================================================
   // FUNCIÓN: Logout - MEMOIZADA
   // ============================================================
   const handleLogout = useCallback(async () => {
@@ -517,19 +391,14 @@ const PanelOCRContent = () => {
   // ============================================================
   useEffect(() => {
     const cargar = async () => {
-      if (!config.sheetId || !config.apiKey) return;
       setCargando(true);
       try {
-        const [sheetsRes, personalRes] = await Promise.all([
-          fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}?key=${config.apiKey}&fields=sheets.properties.title`),
-          fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${hojaActiva}!A:E?key=${config.apiKey}`)
+        const [hojas, rows] = await Promise.all([
+          getSheetMetadata(),
+          readSheet(hojaActiva, 'A:E')
         ]);
 
-        const sheetsData = await sheetsRes.json();
-        setHojasDisponibles(sheetsData.sheets?.map(s => s.properties.title) || []);
-
-        const data = await personalRes.json();
-        const rows = data.values || [];
+        setHojasDisponibles(hojas);
 
         setTodoElPersonal(rows.slice(1).map((r, i) => ({
           id: i + 1, fila: i + 2,
@@ -625,9 +494,7 @@ const PanelOCRContent = () => {
         const hoja = hojasDisponibles.find(h => h.toUpperCase().includes(MESES[grupo.mes - 1].toUpperCase()));
         if (!hoja) continue;
 
-        const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodeURIComponent(hoja)}!A:A?key=${config.apiKey}`);
-        const data = await res.json();
-        const rows = data.values || [];
+        const rows = await readSheet(hoja, 'A:A');
 
         let fila = null;
         for (let i = 1; i < rows.length; i++) {
@@ -696,9 +563,7 @@ const PanelOCRContent = () => {
         const hoja = hojasDisponibles.find(h => h.toUpperCase().includes(MESES[grupo.mes - 1].toUpperCase()));
         if (!hoja) continue;
 
-        const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodeURIComponent(hoja)}!A:A?key=${config.apiKey}`);
-        const data = await res.json();
-        const rows = data.values || [];
+        const rows = await readSheet(hoja, 'A:A');
 
         let fila = null;
         for (let i = 1; i < rows.length; i++) {
@@ -848,40 +713,6 @@ const PanelOCRContent = () => {
   // ============================================================
   return (
     <>
-      {/* ============================================================
-          SELECTOR DE ROL - MODO PRUEBA
-          ============================================================ */}
-      {MODO_PRUEBA && (
-        <div className="fixed top-16 right-4 z-[200] bg-white rounded-xl shadow-xl border border-gray-200 p-3 max-w-xs">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">MODO PRUEBA</span>
-            <span className="text-[10px] text-gray-400">Cambiar rol</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {ROLES_PRUEBA.map(rol => {
-              const activo = rolSeleccionado === rol.value;
-              return (
-                <button
-                  key={rol.value}
-                  onClick={() => cambiarRolPrueba(rol.value)}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
-                    activo
-                      ? 'bg-emerald-500 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                  title={rol.desc}
-                >
-                  {rol.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-1.5 text-[9px] text-gray-400 truncate">
-            Usuario: {user?.usuario} | Rol: {user?.rol} | Areas: {user?.areas?.join(', ') || user?.area || 'Ninguna'}
-          </div>
-        </div>
-      )}
-
       {/* ============================================================
           PANEL PRINCIPAL - OPTIMIZADO CON useMemo
           ============================================================ */}

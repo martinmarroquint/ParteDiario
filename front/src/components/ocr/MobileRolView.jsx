@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { 
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, MESES, ANIOS, COLOR_PRIMARIO, 
-  DEFAULT_GOOGLE_CONFIG, postToAppsScript, ordenarPersonalPorGrado, esPersonalCivil, 
+  DEFAULT_GOOGLE_CONFIG, postToAppsScript, readSheet, getSheetMetadata,
+  ordenarPersonalPorGrado, esPersonalCivil, 
   soloHojasMes, hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual
 } from './constantes';
 import ModalCambioTurno from './ModalCambioTurno';
@@ -301,24 +302,21 @@ const MobileRolView = ({
   // CARGA DE HOJAS
   // ============================================
   const cargarHojas = useCallback(async () => {
-    if (!config.sheetId || !config.apiKey) return;
     try {
-      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}?key=${config.apiKey}&fields=sheets.properties.title`);
-      const d = await r.json();
-      const h = d.sheets?.map(s => s.properties.title) || [];
+      const h = await getSheetMetadata();
       const hMeses = soloHojasMes(h);
       setHojasDisponibles(hMeses);
 
       // Apps Script health check eliminado — el backend maneja las escrituras
       setAppsScriptError('');
 
-      const hojaElegida = hojaInicialParaArea(areaAsignada, config, hMeses);
+      const hojaElegida = hojaInicialParaArea(areaAsignada, hMeses);
       setConfig(prev => {
         if (prev.sheetName === hojaElegida) return prev;
         return { ...prev, sheetName: hojaElegida };
       });
     } catch (e) { console.error('Error al cargar hojas:', e); }
-  }, [config.sheetId, config.apiKey, config.appsScriptUrl, areaAsignada]);
+  }, [areaAsignada]);
 
   useEffect(() => { 
     if (cargarHojasRef.current) return;
@@ -345,22 +343,15 @@ const MobileRolView = ({
   const verificarAreaFinalizadaEnSheets = useCallback(async () => {
     if (esAdmin) return false;
     try { 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/ESTADOS!A:C?key=${config.apiKey}`; 
-      const r = await fetch(url, { signal: controller.signal }); 
-      clearTimeout(timeoutId);
-      if (!r.ok) return false; 
-      const d = await r.json(); 
-      const filas = d.values || []; 
-      for (const fila of filas) { 
+      const rows = await readSheet('ESTADOS', 'A:C');
+      for (const fila of rows) { 
         if (fila[0] === hojaSeleccionada && fila[1] === areaAsignada && fila[2] === 'FINALIZADO') return true; 
       } 
       return false; 
     } catch { 
       return false; 
     }
-  }, [config, areaAsignada, esAdmin, hojaSeleccionada]);
+  }, [areaAsignada, esAdmin, hojaSeleccionada]);
 
   // ============================================
   // CARGA DE DATOS - CORREGIDA
@@ -377,11 +368,7 @@ const MobileRolView = ({
     setErrorCarga(null);
     
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodeURIComponent(hojaSeleccionada)}!A:AJ?key=${config.apiKey}`;
-      const r = await fetch(url); 
-      if (!r.ok) { const ed = await r.json(); throw new Error(ed.error?.message || `Error HTTP ${r.status}`); }
-      const d = await r.json(); 
-      const rows = d.values || [];
+      const rows = await readSheet(hojaSeleccionada, 'A:AJ');
       
       if (rows.length < 2) { 
         setPersonal([]); 
@@ -442,19 +429,14 @@ const MobileRolView = ({
       setTurnos(tObj); 
       setTurnosBackup(JSON.parse(JSON.stringify(tObj))); 
       
-      // Cargar celdas modificadas
+      // Cargar celdas modificadas via backend proxy
       try {
-        const rMod = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/CELDA_MODIFICADA!A:H?key=${config.apiKey}`
-        );
-        if (rMod.ok) {
-          const dMod = await rMod.json();
-          const rowsMod = dMod.values || [];
-          const mapaMod = new Map();
-          for (let m = 1; m < rowsMod.length; m++) {
-            const row = rowsMod[m];
-            if (String(row[0] || '') !== hojaSeleccionada) continue;
-            const fila = parseInt(row[1]);
+        const rowsMod = await readSheet('CELDA_MODIFICADA', 'A:H');
+        const mapaMod = new Map();
+        for (let m = 1; m < rowsMod.length; m++) {
+          const row = rowsMod[m];
+          if (String(row[0] || '') !== hojaSeleccionada) continue;
+          const fila = parseInt(row[1]);
             const dia = parseInt(row[2]);
             if (!fila || !dia) continue;
             const empIdForMap = fila - 1;
@@ -468,10 +450,7 @@ const MobileRolView = ({
           }
           // Siempre actualizar el mapa (aunque esté vacío) para limpiar datos del mes anterior
           setCeldasModificadas(mapaMod);
-        } else {
-          console.warn('⚠️ CELDA_MODIFICADA fetch falló:', rMod.status);
-        }
-      } catch (e) { console.error('❌ Error cargando CELDA_MODIFICADA:', e); }
+      } catch (e) { console.error('Error cargando CELDA_MODIFICADA:', e); }
       
       cargadoRef.current = true;
       
@@ -961,12 +940,8 @@ const MobileRolView = ({
   // HISTORIAL DE CAMBIOS
   // ============================================
   const cargarHistorialCambios = useCallback(async () => {
-    if (!config.sheetId || !config.apiKey) return;
     try {
-      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${HOJA_CAMBIOS}!A:I?key=${config.apiKey}`);
-      if (!r.ok) return;
-      const d = await r.json();
-      const rows = d.values || [];
+      const rows = await readSheet(HOJA_CAMBIOS, 'A:I');
       const lista = [];
       for (let i = 1; i < rows.length; i++) {
         const c = rows[i];
@@ -982,7 +957,7 @@ const MobileRolView = ({
       }
       setHistorialCambios(lista);
     } catch { console.error('Error al cargar historial'); }
-  }, [config.sheetId, config.apiKey]);
+  }, []);
 
   const handleAbrirHistorial = useCallback(() => { cargarHistorialCambios(); setModalHistorialAbierto(true); }, [cargarHistorialCambios]);
 

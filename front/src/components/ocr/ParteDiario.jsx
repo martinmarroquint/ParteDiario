@@ -9,7 +9,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { X, Calendar, ChevronLeft, ChevronRight, Loader2, AlertTriangle, FileDown } from 'lucide-react';
 import { PDFDownloadLink, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { COLOR_PRIMARIO, TURNO_MAP, MESES, DEFAULT_GOOGLE_CONFIG, obtenerCodigoArea, ANIOS } from './constantes';
+import { COLOR_PRIMARIO, TURNO_MAP, MESES, DEFAULT_GOOGLE_CONFIG, obtenerCodigoArea, ANIOS, readSheet } from './constantes';
 
 // ============================================
 // TIPOS DE GRADO PARA RESUMEN
@@ -285,14 +285,10 @@ const ParteDiario = ({ isOpen, onClose, todasLasAreas }) => {
   const totalDiasMes = new Date(anioSeleccionado, mesSeleccionado, 0).getDate();
 
   const cargarDatos = useCallback(async () => {
-    const config = DEFAULT_GOOGLE_CONFIG;
-    if (!config.sheetId || !config.apiKey) { setError('Falta configuración'); return; }
     setCargando(true); setError(null);
     try {
       const hoja = MESES[mesSeleccionado - 1].toUpperCase();
-      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${hoja}!A:AJ?key=${config.apiKey}`);
-      if (!r.ok) throw new Error('Error al cargar datos');
-      const d = await r.json(); const rows = d.values || [];
+      const rows = await readSheet(hoja, 'A:AJ');
       if (rows.length < 2) { setPersonal([]); setTurnos({}); setCargando(false); return; }
       const todos = []; const tObj = {};
       for (let i = 1; i < rows.length; i++) {

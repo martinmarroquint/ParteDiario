@@ -6,6 +6,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/
 class ApiClient {
   constructor() {
     this.baseUrl = API_BASE_URL;
+    this._refreshTimer = null;
+    this._setupAutoRefresh();
   }
 
   // ============================================
@@ -18,11 +20,57 @@ class ApiClient {
 
   setToken(token) {
     localStorage.setItem('ocr_auth_token', token);
+    this._scheduleRefresh(token);
   }
 
   removeToken() {
     localStorage.removeItem('ocr_auth_token');
     localStorage.removeItem('ocr_user_data');
+    if (this._refreshTimer) {
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = null;
+    }
+  }
+
+  // ============================================
+  // AUTO-REFRESH TOKEN
+  // ============================================
+
+  _setupAutoRefresh() {
+    const token = this.getToken();
+    if (token) this._scheduleRefresh(token);
+  }
+
+  _scheduleRefresh(token) {
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expiresAt = payload.exp * 1000;
+      const now = Date.now();
+      const refreshIn = expiresAt - now - 300000; // 5 min before expiry
+      if (refreshIn > 0) {
+        this._refreshTimer = setTimeout(() => this._silentRefresh(), refreshIn);
+      } else if (refreshIn > -60000) {
+        // Already within 1 min of expiry, refresh now
+        this._silentRefresh();
+      }
+    } catch {
+      // Invalid token, ignore
+    }
+  }
+
+  async _silentRefresh() {
+    try {
+      const token = this.getToken();
+      if (!token) return;
+      const result = await this.post('/auth/refresh', { token }, { _skipAuthRedirect: true });
+      if (result.token) {
+        this.setToken(result.token);
+      }
+    } catch {
+      // Refresh failed, token will expire naturally
+      // Don't force logout here - let the next request handle it
+    }
   }
 
   getUser() {
@@ -103,10 +151,11 @@ class ApiClient {
     return this.request(url, { method: 'GET', ...extraOptions });
   }
 
-  async post(endpoint, data = {}) {
+  async post(endpoint, data = {}, extraOptions = {}) {
     return this.request(endpoint, {
       method: 'POST',
       body: JSON.stringify(data),
+      ...extraOptions,
     });
   }
 

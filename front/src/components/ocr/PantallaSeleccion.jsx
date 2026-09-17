@@ -7,8 +7,9 @@ import {
   LogIn, Eye, Key, CheckCircle2, FileText, Umbrella, ArrowRightLeft
 } from 'lucide-react';
 import { 
-  COLOR_PRIMARIO, CLAVE_SECRETA, TURNO_MAP, MESES, 
-  NOMBRE_A_CODIGO, DEFAULT_GOOGLE_CONFIG, mesDeHoja, resolverHojaActiva, soloHojasMes 
+  COLOR_PRIMARIO, TURNO_MAP, MESES, 
+  NOMBRE_A_CODIGO, DEFAULT_GOOGLE_CONFIG, mesDeHoja, resolverHojaActiva, soloHojasMes,
+  readSheet, getSheetMetadata
 } from './constantes';
 import apiClient from './services/apiClient';
 
@@ -86,8 +87,7 @@ const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegist
 
   const configConsultaRef = useRef(DEFAULT_GOOGLE_CONFIG);
 
-  const cargarTurnosConsulta = useCallback((config, hoja) => {
-    if (!config?.sheetId || !config?.apiKey) { setErrorConsulta('Falta configuracion'); setCargandoConsulta(false); return; }
+  const cargarTurnosConsulta = useCallback((hoja) => {
     setCargandoConsulta(true);
     setErrorConsulta('');
     setPersonaConsulta(null);
@@ -96,10 +96,8 @@ const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegist
     setMesConsulta(mesR);
     setHojaConsultaSeleccionada(hoja);
     const totalDias = new Date(anioConsulta, mesR, 0).getDate();
-    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodeURIComponent(hoja)}!A:AJ?key=${config.apiKey}`)
-      .then(r => { if (!r.ok) return r.json().then(err => { throw new Error(err.error?.message || 'Error'); }); return r.json(); })
-      .then(d => {
-        const rows = d.values || [];
+    readSheet(hoja, 'A:AJ')
+      .then(rows => {
         if (rows.length < 2) { setPersonalConsulta([]); setTurnosConsulta({}); setErrorConsulta(`Sin datos en la hoja ${hoja}`); return; }
         const todos = [], tObj = {};
         for (let i = 1; i < rows.length; i++) {
@@ -126,20 +124,14 @@ const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegist
   useEffect(() => {
     if (!mostrarConsulta) return;
     Promise.resolve().then(() => {
-      let config = DEFAULT_GOOGLE_CONFIG;
-      try { config = JSON.parse(localStorage.getItem('ocr_google_config') || 'null') || DEFAULT_GOOGLE_CONFIG; } catch { /* storage corrupto: usar config por defecto */ }
-      if (!localStorage.getItem('ocr_google_config')) localStorage.setItem('ocr_google_config', JSON.stringify(DEFAULT_GOOGLE_CONFIG));
-      configConsultaRef.current = config;
-      if (!config.sheetId || !config.apiKey) { setErrorConsulta('Falta configuracion'); setCargandoConsulta(false); return; }
       setCargandoConsulta(true);
       setErrorConsulta('');
       setHojasConsulta([]);
-      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}?key=${config.apiKey}&fields=sheets.properties.title`)
-        .then(r => r.json())
-        .then(d => setHojasConsulta(soloHojasMes(d.sheets?.map(s => s.properties.title) || [])))
+      getSheetMetadata()
+        .then(h => setHojasConsulta(soloHojasMes(h)))
         .catch(() => { /* sin permisos de listado: igual se consulta la hoja activa */ });
-      resolverHojaActiva(config, config.sheetName)
-        .then(hoja => cargarTurnosConsulta(config, hoja))
+      resolverHojaActiva(DEFAULT_GOOGLE_CONFIG, DEFAULT_GOOGLE_CONFIG.sheetName)
+        .then(hoja => cargarTurnosConsulta(hoja))
         .catch(err => { setErrorConsulta(err.message); setCargandoConsulta(false); });
     });
   }, [mostrarConsulta, cargarTurnosConsulta]);

@@ -97,7 +97,7 @@ const Encabezado = ({
   onFinalizar, onHabilitar, onGuardar, onImprimir, onSalir, onPanelAdmin, onAbrirCambiosTurno, guardando,
   hojaSeleccionada, hojasDisponibles, onHojaChange,
   mesSeleccionado, onMesChange, anioSeleccionado, onAnioChange,
-  onConfigClick, onRecargar, cargando,
+  onRecargar, cargando,
   busqueda, onBusquedaChange,
   turnoActivo, onSelectTurno,
   diasSeleccionadosSemana, onToggleDia, onSeleccionarGrupo,

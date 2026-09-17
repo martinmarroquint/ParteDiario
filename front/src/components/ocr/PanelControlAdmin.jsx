@@ -3,7 +3,7 @@
 // El admin elige el mes de trabajo del panel (no impone el mes a los demas usuarios).
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Shield, Lock, Unlock, RefreshCw, Loader2, X, Search, CheckCircle2, CalendarDays } from 'lucide-react';
-import { hojaDelMesActual, postToAppsScript } from './constantes';
+import { hojaDelMesActual, postToAppsScript, readSheet } from './constantes';
 
 const COLOR_PRIMARIO = '#188C5D';
 const STORAGE_KEY = 'ocr_estados_areas';
@@ -34,13 +34,9 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
     const inicializados = {};
     areas.forEach(area => { inicializados[area] = false; });
     
-    if (config?.sheetId && config?.apiKey) {
-      try {
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/ESTADOS!A:C?key=${config.apiKey}`;
-        const r = await fetch(url);
-        if (r.ok) {
-          const d = await r.json();
-          (d.values || []).forEach(fila => {
+    try {
+      const rows = await readSheet('ESTADOS', 'A:C');
+      (rows || []).forEach(fila => {
             const mes = fila[0]?.trim();
             const nombreArea = fila[1]?.trim();
             const estado = fila[2]?.trim();
@@ -48,10 +44,8 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
               inicializados[nombreArea] = (estado === 'FINALIZADO');
             }
           });
-        }
-      } catch (e) {
-        console.error('Error al cargar desde Sheets:', e);
-      }
+    } catch (e) {
+      console.error('Error al cargar desde Sheets:', e);
     }
     
     localStorage.setItem(`${STORAGE_KEY}_${mesTrabajo}`, JSON.stringify(inicializados));
@@ -60,11 +54,11 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
     if (onActualizar && mesTrabajo === hojaSeleccionada) onActualizar(inicializados);
     setEstadosAreas(inicializados);
     setCargando(false);
-  }, [config, areas, onActualizar, mesTrabajoTmp, hojaSeleccionada]);
+  }, [areas, onActualizar, mesTrabajoTmp, hojaSeleccionada]);
 
   useEffect(() => {
     if (isOpen) { cargarEstadosDesdeSheets(); }
-  }, [isOpen, config, areas, onActualizar, cargarEstadosDesdeSheets]);
+  }, [isOpen, cargarEstadosDesdeSheets]);
 
   const aplicarLote = async (estado) => {
     if (!config?.appsScriptUrl) return;
