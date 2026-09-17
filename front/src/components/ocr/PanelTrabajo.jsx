@@ -5,15 +5,15 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   X, AlertTriangle, Loader2, RefreshCw, CheckCircle2, XCircle, User,
-  Save, Eye, Printer, LogOut, Shield, Settings, Undo2, History,
+  Eye, Printer, LogOut, Shield, Settings, Undo2, History,
   Search, Zap, Trash2, Copy, Repeat, ChevronUp, Plus, Minus, SaveIcon, 
   Play, ChevronLeft, ChevronRight, UserPlus, Users, Building2, GraduationCap,
   EyeOff
 } from 'lucide-react';
 import { 
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, COLOR_PRIMARIO, MESES, 
-  DEFAULT_GOOGLE_CONFIG, bodyAsciiJson, postToAppsScript, ordenarPersonalPorGrado, esPersonalCivil, soloHojasMes,
-  hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual, verificarAppsScript
+  DEFAULT_GOOGLE_CONFIG, postToAppsScript, ordenarPersonalPorGrado, esPersonalCivil, soloHojasMes,
+  hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual
 } from './constantes';
 import Encabezado from './Encabezado';
 import TablaRol from './TablaRol';

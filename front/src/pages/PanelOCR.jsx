@@ -17,7 +17,6 @@ import MesaDePartes from '../components/mesapartes/MesaDePartes';
 import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn, initTurnosDinamicos, postToAppsScript } from '../components/ocr/constantes';
 import { apiClient } from '../components/ocr/services/apiClient';
 import { authService } from '../components/ocr/services/authService';
-import { rolesService } from '../components/ocr/services/rolesService';
 import GuidedTour from '../components/ocr/tour/GuidedTour';
 import { shouldShowTour, resetTour } from '../components/ocr/tour/TourSteps';
 import { descansosService } from '../components/ocr/services/descansosService';

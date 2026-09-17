@@ -14,9 +14,8 @@ import {
 } from 'lucide-react';
 import { 
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, MESES, ANIOS, COLOR_PRIMARIO, 
-  DEFAULT_GOOGLE_CONFIG, bodyAsciiJson, postToAppsScript, ordenarPersonalPorGrado, esPersonalCivil, 
-  soloHojasMes, hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual, 
-  mesDeHoja, verificarAppsScript, DIAS_SEMANA 
+  DEFAULT_GOOGLE_CONFIG, postToAppsScript, ordenarPersonalPorGrado, esPersonalCivil, 
+  soloHojasMes, hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual
 } from './constantes';
 import ModalCambioTurno from './ModalCambioTurno';
 import ModalHistorial from './ModalHistorial';
