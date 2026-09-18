@@ -91,7 +91,7 @@ class ApiClient {
   // ============================================
 
   async request(endpoint, options = {}) {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
     const token = this.getToken();
 
     const headers = {
@@ -446,11 +446,14 @@ class ApiClient {
   async readSheet(sheetName, range) {
     const params = {};
     if (range) params.range = range;
-    return this.get(`/sheets/${sheetName}`, params);
+    // 1 reintento a fallos transitorios de Google Sheets (502) — solo lectura
+    return this.get(`/sheets/${sheetName}`, params, { _retries: 1, _retryDelays: [1000], _timeout: 30000 });
   }
 
   async getSheetMetadata(sheetName) {
-    return this.get(`/sheets/metadata/${sheetName}`);
+    // 2 reintentos: las cargas simultaneas de varios dispositivos provocaban
+    // 502 en este endpoint (error "Error al obtener metadata" = no cargaba)
+    return this.get(`/sheets/metadata/${sheetName}`, {}, { _retries: 2, _retryDelays: [800, 2000], _timeout: 20000 });
   }
 
   // ============================================
@@ -458,7 +461,9 @@ class ApiClient {
   // ============================================
 
   async healthCheck() {
-    return this.request('/health', { method: 'GET' });
+    // El endpoint /health esta en la RAIZ, no bajo /api/v1
+    const rootUrl = this.baseUrl.replace(/\/api\/v1\/?$/, '');
+    return this.request(`${rootUrl}/health`, { method: 'GET', _skipAuthRedirect: true, _timeout: 10000 });
   }
 
   // ============================================

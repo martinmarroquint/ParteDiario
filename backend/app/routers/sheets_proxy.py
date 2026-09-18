@@ -8,7 +8,9 @@ Instead of the frontend calling sheets.googleapis.com or Apps Script directly
 
 This keeps ALL secrets server-side.
 """
+import asyncio
 import logging
+import time
 from typing import Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,6 +25,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sheets", tags=["Sheets Proxy"])
 
 sheets_service = GoogleSheetsService()
+
+# Cache de metadata de hojas: el spreadsheet.get es pesado y se llamaba en
+# cada carga del panel — con varios dispositivos saturaba la API (502).
+_METADATA_CACHE: dict[str, tuple[float, list]] = {}
+_METADATA_TTL_SECONDS = 300  # 5 minutos
 
 
 class SheetRangeResponse(BaseModel):
@@ -76,23 +83,35 @@ async def get_sheet_metadata(
     No authentication required (API key is protected server-side).
     """
     try:
+        now = time.time()
+        cached = _METADATA_CACHE.get(sheet_name)
+        if cached and now - cached[0] < _METADATA_TTL_SECONDS:
+            return {"sheets": cached[1]}
+
         url = f"{sheets_service.base_url}/{sheets_service.sheet_id}"
         params = {"key": sheets_service.api_key}
 
         import httpx
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-
-        # Extract just sheet names
-        sheets_list = []
-        for s in data.get("sheets", []):
-            title = s.get("properties", {}).get("title", "")
-            if title:
-                sheets_list.append(title)
-
-        return {"sheets": sheets_list}
+        last_err = None
+        # 1 reintento ante fallos transitorios de Google Sheets API
+        for intento in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(url, params=params)
+                    response.raise_for_status()
+                    data = response.json()
+                sheets_list = [
+                    s.get("properties", {}).get("title", "")
+                    for s in data.get("sheets", [])
+                ]
+                sheets_list = [t for t in sheets_list if t]
+                _METADATA_CACHE[sheet_name] = (time.time(), sheets_list)
+                return {"sheets": sheets_list}
+            except Exception as e:
+                last_err = e
+                if intento == 0:
+                    await asyncio.sleep(1.0)
+        raise last_err
     except Exception as e:
         logger.error(f"Sheets metadata error: {e}")
         raise HTTPException(status_code=502, detail="Error al obtener metadata")

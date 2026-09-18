@@ -3,7 +3,7 @@ import hmac
 import os
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from jose import JWTError, jwt
@@ -75,14 +75,37 @@ def generate_salt() -> str:
     return str(secrets.token_hex(16))
 
 
+# Zona horaria de Peru (UTC-5). Las sesiones expiran a la medianoche LOCAL,
+# de modo que duran todo el dia y se reinician a las 00:00 si no se cerro.
+_LIMA_TZ = timezone(timedelta(hours=-5))
+
+
+def _segundos_hasta_medianoche_lima() -> int:
+    """Segundos que faltan hasta la proxima medianoche en Peru (minimo 1h)."""
+    ahora_lima = datetime.now(_LIMA_TZ)
+    manana = (ahora_lima + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    segundos = int((manana - ahora_lima).total_seconds())
+    return max(segundos, 3600)
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token."""
+    """Create a JWT access token.
+
+    Por defecto el token expira a las 00:00 (hora de Peru): la sesion se
+    mantiene activa todo el dia y se reinicia a medianoche si no se cerro.
+    El refresh tambien apunta a la misma medianoche, asi el reinicio diario
+    se cumple incluso con renovacion automatica del token.
+    """
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
+    ahora_utc = datetime.now(timezone.utc)
+    try:
+        if expires_delta:
+            expire = ahora_utc + expires_delta
+        else:
+            expire = ahora_utc + timedelta(seconds=_segundos_hasta_medianoche_lima())
+    except Exception:
+        expire = ahora_utc + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire, "iat": ahora_utc})
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 

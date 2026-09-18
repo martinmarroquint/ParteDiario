@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from typing import Optional
 
 from app.models.user import User, UserCreate, UserUpdate
@@ -14,15 +15,40 @@ HOJA_USUARIOS = "USUARIOS_OCR"
 
 class UserService:
     
+    # Cache de get_user_by_id: cada peticion autenticada leia USUARIOS_OCR
+    # (get_current_user) — con varios dispositivos y el polling de presencia
+    # eso saturaba la API de Google Sheets (502). TTL corto: los cambios de
+    # rol/estado toman efecto en <30s y el login SIEMPRE lee fresco
+    # (get_user_by_usuario no se cachea).
+    CACHE_TTL_SECONDS = 30
+    
     def __init__(self, sheets_service: GoogleSheetsService):
         self.sheets = sheets_service
+        self._cache: dict[int, tuple[float, User]] = {}
+    
+    def _cache_get(self, user_id: int) -> Optional[User]:
+        item = self._cache.get(user_id)
+        if item and (time.time() - item[0]) < self.CACHE_TTL_SECONDS:
+            return item[1]
+        return None
+    
+    def _cache_set(self, user_id: int, user: User) -> None:
+        self._cache[user_id] = (time.time(), user)
+    
+    def _cache_del(self, user_id: int) -> None:
+        self._cache.pop(user_id, None)
     
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
-        """Get user by ID."""
+        """Get user by ID (con cache TTL para no saturar Google Sheets)."""
+        cached = self._cache_get(user_id)
+        if cached is not None:
+            return cached
         rows = await self.sheets.find_rows(HOJA_USUARIOS, 0, str(user_id))
         if not rows:
             return None
-        return self._row_to_user(rows[0])
+        user = self._row_to_user(rows[0])
+        self._cache_set(user_id, user)
+        return user
     
     async def get_user_by_usuario(self, usuario: str) -> Optional[User]:
         """Get user by login username (DNI)."""
@@ -72,6 +98,7 @@ class UserService:
         ]
         
         await self.sheets.append_row(HOJA_USUARIOS, row)
+        self._cache_del(next_id)
         
         return User(
             id=next_id,
@@ -109,6 +136,7 @@ class UserService:
         if user_data.areas is not None:
             await self.sheets.update_cell(HOJA_USUARIOS, f"H{row_index}", json.dumps(user_data.areas))
         
+        self._cache_del(user_id)
         return await self.get_user_by_id(user_id)
     
     async def update_user_field(self, user_id: int, field: str, value: str) -> bool:
@@ -139,6 +167,7 @@ class UserService:
             return False
         
         await self.sheets.update_cell(HOJA_USUARIOS, f"{col}{row_index}", value)
+        self._cache_del(user_id)
         return True
     
     async def delete_user(self, user_id: int) -> bool:
