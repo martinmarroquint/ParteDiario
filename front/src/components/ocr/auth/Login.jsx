@@ -19,6 +19,7 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
   const [espera, setEspera] = useState(false);
 
   const usuarioRef = useRef(null);
+  const isLoading = loadingProp || loading;
 
   // Pre-calentar el backend al abrir el login: mientras el usuario escribe
   // sus credenciales, el servidor (si estaba dormido) ya esta arrancando,
@@ -44,8 +45,6 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
     const t = setTimeout(() => setEspera(true), 15000);
     return () => clearTimeout(t);
   }, [isLoading]);
-
-  const isLoading = loadingProp || loading;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
