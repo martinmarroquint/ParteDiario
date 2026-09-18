@@ -466,7 +466,10 @@ const PanelTrabajo = ({
       const estadoGuardado = localStorage.getItem(`${STORAGE_ESTADOS}_${hojaSeleccionada}`);
       if (estadoGuardado) {
         const e = JSON.parse(estadoGuardado);
-        setRolGuardado(e[areaAsignada] === true);
+        // Usar SIEMPRE el area efectiva (la seleccionada ahora): si un jefe
+        // maneja varias jefaturas, el estado de bloqueo debe corresponder al
+        // area que se esta viendo, no al area asignada al iniciar la sesion.
+        setRolGuardado(e[areaEfectiva] === true);
       }
       
       cargadoRef.current = true;
