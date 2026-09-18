@@ -103,11 +103,42 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+    // Opciones de control (no se envian a fetch)
+    const {
+      _timeout = 60000,
+      _retries = 0,
+      _retryDelays = [3000, 8000],
+      ...fetchOptions
+    } = options;
+
+    for (let intento = 0; intento <= _retries; intento++) {
+      // Timeout por peticion: evita que la UI se quede "colgada" para siempre
+      // (arbejo en frio de Render puede tardar ~50s en la primera peticion)
+      const controller = !options.signal ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), _timeout) : null;
+
+      let response;
+      try {
+        response = await fetch(url, {
+          ...fetchOptions,
+          headers,
+          signal: options.signal || controller.signal,
+        });
+      } catch (error) {
+        if (timer) clearTimeout(timer);
+        const esTransitorio =
+          error.name === 'AbortError' ||
+          (error.name === 'TypeError' && (error.message.includes('fetch') || error.message === 'Failed to fetch'));
+        if (esTransitorio && intento < _retries) {
+          await this._esperar(_retryDelays[intento] ?? 5000);
+          continue;
+        }
+        if (esTransitorio) {
+          throw new Error('El servidor está iniciando o no responde. Por favor, espere unos segundos e intente nuevamente.');
+        }
+        throw error;
+      }
+      if (timer) clearTimeout(timer);
 
       // Handle 401 - Token expired or invalid
       if (response.status === 401) {
@@ -125,10 +156,18 @@ class ApiClient {
         throw new Error('No tiene permisos para realizar esta acción.');
       }
 
-      // Handle other errors
+      // Handle other errors (con reintento automatico en errores transitorios)
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Error HTTP: ${response.status}`);
+        const mensaje = errorData.detail || `Error HTTP: ${response.status}`;
+        if ([429, 502, 503, 504].includes(response.status) && intento < _retries) {
+          await this._esperar(_retryDelays[intento] ?? 5000);
+          continue;
+        }
+        if (response.status === 429) {
+          throw new Error('Demasiados intentos en poco tiempo. Espere un momento y vuelva a intentar.');
+        }
+        throw new Error(mensaje);
       }
 
       // Handle 204 No Content
@@ -137,12 +176,13 @@ class ApiClient {
       }
 
       return await response.json();
-    } catch (error) {
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        throw new Error('Error de conexión. Verifique que el servidor esté disponible.');
-      }
-      throw error;
     }
+
+    throw new Error('Error de conexión con el servidor.');
+  }
+
+  async _esperar(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async get(endpoint, params = {}, extraOptions = {}) {
@@ -183,7 +223,12 @@ class ApiClient {
   // ============================================
 
   async login(usuario, password) {
-    const result = await this.post('/auth/login', { usuario, password });
+    // Timeout 90s (arranque en frio puede tardar ~50s) + 2 reintentos con backoff
+    const result = await this.post('/auth/login', { usuario, password }, {
+      _timeout: 90000,
+      _retries: 2,
+      _retryDelays: [3000, 8000],
+    });
     if (result.token) {
       this.setToken(result.token);
       this.setUser(result.user);

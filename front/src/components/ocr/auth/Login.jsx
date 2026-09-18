@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import RecuperarPassword from './RecuperarPassword';
+import { apiClient } from '../services/apiClient';
 
 // Detectar si el backend está disponible
 const BACKEND_DISPONIBLE = !!import.meta.env.VITE_API_URL;
@@ -15,14 +16,34 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
   const [loading, setLoading] = useState(false);
   const [recordar, setRecordar] = useState(false);
   const [mostrarRecuperacion, setMostrarRecuperacion] = useState(false);
+  const [espera, setEspera] = useState(false);
 
   const usuarioRef = useRef(null);
+
+  // Pre-calentar el backend al abrir el login: mientras el usuario escribe
+  // sus credenciales, el servidor (si estaba dormido) ya esta arrancando,
+  // asi el primer intento de login no paga la espera de ~50s.
+  useEffect(() => {
+    if (BACKEND_DISPONIBLE) {
+      apiClient.healthCheck().catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     if (usuarioRef.current) {
       usuarioRef.current.focus();
     }
   }, []);
+
+  // Despues de 15s de espera, muestra un mensaje tranquilizador
+  useEffect(() => {
+    if (!isLoading) {
+      setEspera(false);
+      return;
+    }
+    const t = setTimeout(() => setEspera(true), 15000);
+    return () => clearTimeout(t);
+  }, [isLoading]);
 
   const isLoading = loadingProp || loading;
 
@@ -176,6 +197,15 @@ const Login = ({ onSuccess, loading: loadingProp }) => {
                 {error && (
                   <div className="p-3.5 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2.5 text-sm text-red-600">
                     <span className="font-medium">{error}</span>
+                  </div>
+                )}
+
+                {espera && isLoading && (
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-100 rounded-xl text-sm text-emerald-700">
+                    <p className="font-medium">Conectando con el servidor...</p>
+                    <p className="text-xs mt-1 text-emerald-600">
+                      La primera conexión puede tardar hasta un minuto. No cierres ni recargues la página.
+                    </p>
                   </div>
                 )}
 

@@ -95,9 +95,14 @@ async def validate_admin_key(request: Request, data: AdminKeyRequest):
 
 
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit("10/minute")
+@limiter.limit("60/minute")
 async def login(request: Request, data: LoginRequest):
-    """Authenticate user and return JWT token."""
+    """Authenticate user and return JWT token.
+
+    NOTE: 60/min por IP porque el hospital comparte una unica IP publica;
+    al arrancar en frio (Render free) los usuarios reintentan varias veces en
+    poco tiempo y 10/min provocaba bloqueos 429 falsos.
+    """
     result = await auth_service.login(data.usuario, data.password)
     return LoginResponse(**result)
 
