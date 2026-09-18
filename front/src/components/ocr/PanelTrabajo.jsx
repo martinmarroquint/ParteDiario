@@ -965,6 +965,8 @@ const PanelTrabajo = ({
   // ============================================================
   const [usuariosActivos, setUsuariosActivos] = useState([]);
   useEffect(() => {
+    // Presencia visible SOLO para admins (los demas roles no la usan)
+    if (!esAdmin) return;
     let activo = true;
     const verificar = async () => {
       try {
@@ -985,7 +987,7 @@ const PanelTrabajo = ({
     verificar();
     const it = setInterval(verificar, 10000);
     return () => { activo = false; clearInterval(it); };
-  }, []);
+  }, [esAdmin]);
 
   const guardarCeldaInmediato = useCallback((fila, dia, valor) => {
     if (!config.appsScriptUrl || !hojaSeleccionada) return;

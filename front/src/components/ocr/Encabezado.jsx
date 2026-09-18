@@ -274,8 +274,8 @@ const Encabezado = ({
             {rolHabilitado ? 'Abierto' : 'Cerrado'}
           </span>
 
-          {/* Burbujas: usuarios activos (estilo Google Sheets, rediseñado) */}
-          {usuariosActivos.length > 0 && (
+          {/* Burbujas: usuarios activos (estilo Google Sheets, rediseñado) — solo admin */}
+          {esAdmin && usuariosActivos.length > 0 && (
             <div className="flex items-center gap-2" title={`${usuariosActivos.length} conectado${usuariosActivos.length !== 1 ? 's' : ''} ahora`}>
               <div className="hidden sm:block h-5 w-px bg-gray-200" />
               <div className="flex items-center -space-x-1.5">

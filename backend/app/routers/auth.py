@@ -194,10 +194,12 @@ async def send_heartbeat(
 @router.get("/active-users", response_model=ActiveUsersResponse)
 async def get_active_users(current_user: User = Depends(get_current_user)):
     """Get list of currently active users (heartbeat < 90s).
-    
-    Presencia estilo Google Sheets: cualquier usuario autenticado puede
-    ver quienes estan conectados. Los datos son no sensibles (nombre, area).
+
+    SECURITY: Solo administradores (rol 4) pueden ver quienes estan
+    conectados. Los demas roles no necesitan esta informacion.
     """
+    if 4 not in (current_user.roles or []):
+        raise HTTPException(status_code=403, detail="Solo administradores pueden ver usuarios activos")
     with _active_lock:
         _cleanup_stale_users()
         now = time.time()
