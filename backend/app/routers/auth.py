@@ -48,6 +48,20 @@ class AdminKeyResponse(BaseModel):
 class HeartbeatRequest(BaseModel):
     area: str = ""
     hoja: str = ""
+    vista: str = ""  # e.g. "rol", "consulta", "admin"
+
+
+# Colores para indicadores de usuario (estilo Google Sheets)
+_COLORS_PALETTE = [
+    "#1a73e8", "#e8710a", "#0d652d", "#c5221f", "#9334e6",
+    "#185abc", "#b06000", "#137333", "#a50e0e", "#7627bb",
+    "#e37400", "#188038", "#d93025", "#7b1fa2", "#0277bd",
+    "#388e3c", "#f57c00", "#d32f2f", "#512da8", "#0097a7",
+]
+
+
+def _user_color(user_id: int) -> str:
+    return _COLORS_PALETTE[user_id % len(_COLORS_PALETTE)]
 
 
 class ActiveUserInfo(BaseModel):
@@ -56,6 +70,8 @@ class ActiveUserInfo(BaseModel):
     nombre: str
     area: str
     hoja: str
+    vista: str
+    color: str
     rol: int
     last_seen: float
     seconds_ago: int
@@ -164,10 +180,12 @@ async def send_heartbeat(
             "nombre": current_user.nombre,
             "area": data.area,
             "hoja": data.hoja,
+            "vista": data.vista,
+            "color": _user_color(current_user.id),
             "rol": max(current_user.roles) if current_user.roles else 0,
             "last_seen": time.time(),
         }
-    return {"ok": True}
+    return {"ok": True, "color": _user_color(current_user.id)}
 
 
 # ============================================
@@ -177,11 +195,9 @@ async def send_heartbeat(
 async def get_active_users(current_user: User = Depends(get_current_user)):
     """Get list of currently active users (heartbeat < 90s).
     
-    Admin only.
+    Presencia estilo Google Sheets: cualquier usuario autenticado puede
+    ver quienes estan conectados. Los datos son no sensibles (nombre, area).
     """
-    if 4 not in current_user.roles:
-        raise HTTPException(status_code=403, detail="Solo administradores")
-    
     with _active_lock:
         _cleanup_stale_users()
         now = time.time()
@@ -193,6 +209,8 @@ async def get_active_users(current_user: User = Depends(get_current_user)):
                 nombre=info["nombre"],
                 area=info["area"],
                 hoja=info["hoja"],
+                vista=info.get("vista", ""),
+                color=info.get("color", "#666"),
                 rol=info["rol"],
                 last_seen=info["last_seen"],
                 seconds_ago=int(now - info["last_seen"]),

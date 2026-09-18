@@ -256,9 +256,14 @@ const PanelOCRContent = () => {
 
     const enviarHeartbeat = async () => {
       try {
-        const area = user?.area || user?.areas?.[0] || '';
-        const hoja = '';
-        await apiClient.sendHeartbeat(area, hoja);
+        // Area activa: sessionStorage se actualiza al cambiar de area (jefe/admin)
+        let area = user?.area || user?.areas?.[0] || '';
+        try {
+          const ses = JSON.parse(sessionStorage.getItem(STORAGE_SESION) || '{}');
+          if (ses.area) area = ses.area;
+        } catch { /* sesion no disponible */ }
+        const vista = pantalla || 'panel';
+        await apiClient.sendHeartbeat(area, '', vista);
       } catch { /* ignore — si falla, el backend limpiara el heartbeat viejo */ }
     };
 
@@ -267,7 +272,7 @@ const PanelOCRContent = () => {
     const it = setInterval(enviarHeartbeat, 30000);
 
     return () => clearInterval(it);
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, pantalla]);
 
   // ============================================================
   // FUNCIÓN: Login (backend real o modo prueba)

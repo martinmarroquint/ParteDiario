@@ -6,6 +6,44 @@
 export const COLOR_PRIMARIO = '#188C5D';
 
 // ============================================
+// COLORES DE PRESENCIA (burbujas de usuarios activos)
+// ============================================
+export const COLORES_PRESENCIA = [
+  '#1a73e8', '#e8710a', '#0d652d', '#c5221f', '#9334e6',
+  '#185abc', '#b06000', '#137333', '#a50e0e', '#7627bb',
+  '#e37400', '#188038', '#d93025', '#7b1fa2', '#0277bd',
+  '#388e3c', '#f57c00', '#d32f2f', '#512da8', '#0097a7',
+];
+
+// Color estable por usuario. Si el backend no envia `color`
+// (versiones viejas), se calcula en el frontend para que las
+// burbujas siempre sean visibles.
+export const colorUsuario = (u) => {
+  if (u?.color) return u.color;
+  const id = u?.user_id ?? u?.id ?? 0;
+  return COLORES_PRESENCIA[id % COLORES_PRESENCIA.length];
+};
+
+// Iniciales de 2 letras para avatares.
+// Soporta formato "APELLIDOS, NOMBRES" y "NOMBRE APELLIDO".
+// Ej: "CHAVEZ NUÑEZ, MARKO DELFORD" -> "MC"
+export const iniciales = (nombre = '') => {
+  const texto = String(nombre || '').trim();
+  let primera = '';
+  let segunda = '';
+  if (texto.includes(',')) {
+    const [apellidos, nombres] = texto.split(',');
+    segunda = apellidos.trim().split(/\s+/).filter(Boolean)[0]?.[0] || '';
+    primera = nombres.trim().split(/\s+/).filter(Boolean)[0]?.[0] || '';
+  } else {
+    const partes = texto.split(/\s+/).filter(Boolean);
+    primera = partes[0]?.[0] || '';
+    segunda = partes[1]?.[0] || partes[0]?.[1] || '';
+  }
+  return (primera + segunda).toUpperCase() || '?';
+};
+
+// ============================================
 // CLAVE DE ACCESO ADMIN - SOLO DESDE .env
 // ============================================
 // ✅ Se lee SOLO del .env. Si no está definida, será undefined.

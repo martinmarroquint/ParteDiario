@@ -2,8 +2,8 @@
 // PANEL DE CONTROL ADMIN - ORDENADO: DESBLOQUEADOS PRIMERO
 // El admin elige el mes de trabajo del panel (no impone el mes a los demas usuarios).
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Shield, Lock, Unlock, RefreshCw, Loader2, X, Search, CheckCircle2, CalendarDays, Users, Wifi } from 'lucide-react';
-import { hojaDelMesActual, postToAppsScript, readSheet } from './constantes';
+import { Shield, Lock, Unlock, RefreshCw, Loader2, X, Search, CheckCircle2, CalendarDays } from 'lucide-react';
+import { hojaDelMesActual, postToAppsScript, readSheet, colorUsuario } from './constantes';
 import apiClient from './services/apiClient';
 
 const COLOR_PRIMARIO = '#188C5D';
@@ -305,6 +305,8 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
             <div className="space-y-2">
               {areasFiltradas.map(area => {
                 const bloqueado = estadosAreas[area] === true;
+                // Usuarios activos en esta area
+                const usuariosEnArea = usuariosActivos.filter(u => u.area === area);
                 return (
                   <div key={area} className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
                     bloqueado ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200 hover:border-gray-300'
@@ -315,10 +317,32 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
                       }`}>
                         {bloqueado ? <Lock className="w-4 h-4 text-gray-500" /> : <Unlock className="w-4 h-4 text-emerald-600" />}
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-700 text-sm truncate">{area}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-700 text-sm truncate">{area}</p>
+                          {/* Dots de usuarios activos */}
+                          {usuariosEnArea.length > 0 && (
+                            <div className="flex items-center -space-x-1.5">
+                              {usuariosEnArea.slice(0, 5).map(u => (
+                                <div key={u.user_id} title={`${u.nombre} (${u.seconds_ago}s)`}
+                                  className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0"
+                                  style={{ backgroundColor: colorUsuario(u) }}>
+                                  {u.nombre?.charAt(0) || '?'}
+                                </div>
+                              ))}
+                              {usuariosEnArea.length > 5 && (
+                                <span className="text-[10px] text-gray-500 ml-1">+{usuariosEnArea.length - 5}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <p className={`text-xs ${bloqueado ? 'text-gray-400' : 'text-emerald-600'}`}>
                           {bloqueado ? 'Bloqueada' : 'Disponible'}
+                          {usuariosEnArea.length > 0 && (
+                            <span className="ml-2 text-gray-400">
+                              {usuariosEnArea.length} viendo
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -333,47 +357,6 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
                   </div>
                 );
               })}
-            </div>
-          )}
-        </div>
-
-        {/* ============================================ */}
-        {/* USUARIOS ACTIVOS */}
-        {/* ============================================ */}
-        <div className="px-6 py-4 border-t border-gray-200">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-gray-500" />
-              <h4 className="text-sm font-semibold text-gray-700">
-                Usuarios Activos
-                <span className="ml-2 text-xs font-normal text-gray-400">
-                  ({usuariosActivos.length} conectado{usuariosActivos.length !== 1 ? 's' : ''})
-                </span>
-              </h4>
-            </div>
-            <button onClick={cargarUsuariosActivos} disabled={cargandoActivos}
-              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
-              <RefreshCw className={`w-3 h-3 ${cargandoActivos ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-
-          {usuariosActivos.length === 0 ? (
-            <p className="text-xs text-gray-400 italic">No hay usuarios activos</p>
-          ) : (
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-              {usuariosActivos.map((u) => (
-                <div key={u.user_id}
-                  className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
-                  <Wifi className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <span className="text-xs font-medium text-gray-700">{u.nombre}</span>
-                    {u.area && <span className="text-xs text-gray-400 ml-2">({u.area})</span>}
-                  </div>
-                  <span className="text-xs text-gray-400 flex-shrink-0">
-                    {u.seconds_ago < 10 ? 'ahora' : `${u.seconds_ago}s`}
-                  </span>
-                </div>
-              ))}
             </div>
           )}
         </div>

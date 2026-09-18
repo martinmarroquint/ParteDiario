@@ -420,8 +420,8 @@ class ApiClient {
   // HEARTBEAT — report user is active
   // ============================================
 
-  async sendHeartbeat(area = '', hoja = '') {
-    return this.post('/auth/heartbeat', { area, hoja }, { _skipAuthRedirect: true });
+  async sendHeartbeat(area = '', hoja = '', vista = '') {
+    return this.post('/auth/heartbeat', { area, hoja, vista }, { _skipAuthRedirect: true });
   }
 
   async getActiveUsers() {

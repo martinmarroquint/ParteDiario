@@ -9,7 +9,7 @@ import {
   UserPlus, X, Users, Building2, GraduationCap, Inbox,
   UserCog, Calendar, Clock, Key, FileText, HelpCircle
 } from 'lucide-react';
-import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP } from './constantes';
+import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP, colorUsuario, iniciales } from './constantes';
 import { shouldShowTour } from './tour/TourSteps';
 
 const TURNOS_RAPIDOS = Object.keys(TURNO_MAP);
@@ -132,7 +132,8 @@ const Encabezado = ({
   puedeSolicitarCambio = false,
   puedeDescansoMedico = false,
   puedeVacaciones = false,
-  rolGuardado = false
+  rolGuardado = false,
+  usuariosActivos = []
 }) => {
   const opcionesHojas = hojasDisponibles.map(h => ({ value: h, label: h }));
   const opcionesMeses = MESES.map((nombre, i) => ({ value: i + 1, label: nombre }));
@@ -272,6 +273,32 @@ const Encabezado = ({
           }`} data-tour="tour-estado-rol">
             {rolHabilitado ? 'Abierto' : 'Cerrado'}
           </span>
+
+          {/* Burbujas: usuarios activos (estilo Google Sheets, rediseñado) */}
+          {usuariosActivos.length > 0 && (
+            <div className="flex items-center gap-2" title={`${usuariosActivos.length} conectado${usuariosActivos.length !== 1 ? 's' : ''} ahora`}>
+              <div className="hidden sm:block h-5 w-px bg-gray-200" />
+              <div className="flex items-center -space-x-1.5">
+                {usuariosActivos.slice(0, 4).map(u => (
+                  <div key={u.user_id}
+                    className="group relative flex-shrink-0 transition-transform duration-150 hover:scale-110 hover:z-10"
+                    title={`${u.nombre}${u.area ? ` — ${u.area}` : ''}`}>
+                    <div
+                      className="w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-white text-[9px] font-bold tracking-wide select-none shadow-sm cursor-default"
+                      style={{ backgroundColor: colorUsuario(u) }}>
+                      {iniciales(u.nombre)}
+                    </div>
+                    <span className="absolute -bottom-px -right-px w-2 h-2 rounded-full bg-emerald-400 ring-[1.5px] ring-white" />
+                  </div>
+                ))}
+              </div>
+              {usuariosActivos.length > 4 && (
+                <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 rounded-full px-1.5 py-0.5">
+                  +{usuariosActivos.length - 4}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0 overflow-visible">

@@ -7,7 +7,7 @@ import {
   X, AlertTriangle, Loader2, RefreshCw, CheckCircle2, XCircle, User,
   Eye, Printer, LogOut, Shield, Undo2, History,
   Search, Zap, Trash2, Copy, Repeat, ChevronUp, Plus, Minus, SaveIcon, 
-  Play, ChevronLeft, ChevronRight, UserPlus, Users, Building2, GraduationCap,
+  Play, ChevronLeft, ChevronRight, UserPlus, Building2, GraduationCap,
   EyeOff
 } from 'lucide-react';
 import { 
@@ -142,6 +142,17 @@ const PanelTrabajo = ({
   const [areaSeleccionadaAdmin, setAreaSeleccionadaAdmin] = useState('TODAS');
   const [rolGuardado, setRolGuardado] = useState(false);
   const [mostrarCambiarPassword, setMostrarCambiarPassword] = useState(false);
+
+  // ============================================================
+  // AREA EFECTIVA — fuente unica del area activa segun rol
+  // (admin usa su selector, jefe usa el selector del header,
+  //  usuario usa su area asignada)
+  // ============================================================
+  const areaEfectiva = useMemo(() => {
+    if (esAdmin) return areaSeleccionadaAdmin;
+    if (esJefe) return areaSeleccionadaJefe || areaAsignada;
+    return areaAsignada;
+  }, [esAdmin, esJefe, areaSeleccionadaAdmin, areaSeleccionadaJefe, areaAsignada]);
 
   const [rolHabilitado, setRolHabilitado] = useState(() => {
     if (esAdmin) return true;
@@ -319,40 +330,40 @@ const PanelTrabajo = ({
 
   const guardarRespaldoLocal = useCallback(() => {
     try { 
-      localStorage.setItem(`${STORAGE_RESPALDO_LOCAL}_${areaAsignada}`, JSON.stringify({ 
-        turnos, cambiosArea, timestamp: Date.now(), area: areaAsignada, hoja: hojaSeleccionada 
+      localStorage.setItem(`${STORAGE_RESPALDO_LOCAL}_${areaEfectiva}`, JSON.stringify({ 
+        turnos, cambiosArea, timestamp: Date.now(), area: areaEfectiva, hoja: hojaSeleccionada 
       })); 
     } catch { /* almacenamiento no disponible */ }
-  }, [turnos, cambiosArea, areaAsignada, hojaSeleccionada]);
+  }, [turnos, cambiosArea, areaEfectiva, hojaSeleccionada]);
 
   const verificarAreaFinalizadaEnSheets = useCallback(async () => {
     if (esAdmin) return false;
     try { 
       const filas = await readSheet('ESTADOS', 'A:C');
       for (const fila of filas) { 
-        if (fila[0] === hojaSeleccionada && fila[1] === areaAsignada && fila[2] === 'FINALIZADO') return true; 
+        if (fila[0] === hojaSeleccionada && fila[1] === areaEfectiva && fila[2] === 'FINALIZADO') return true; 
       } 
       return false; 
     } catch { 
       return false; 
     }
-  }, [areaAsignada, esAdmin, hojaSeleccionada]);
+  }, [areaEfectiva, esAdmin, hojaSeleccionada]);
 
   const marcarAreaComoFinalizada = useCallback(async () => { 
     if (!config.appsScriptUrl) return; 
     try { 
-      await postToAppsScript(config.appsScriptUrl, { accion: 'marcarFinalizado', mes: hojaSeleccionada, area: areaAsignada });
+      await postToAppsScript(config.appsScriptUrl, { accion: 'marcarFinalizado', mes: hojaSeleccionada, area: areaEfectiva });
       setRolGuardado(true);
     } catch (e) { console.error('Error al marcar area:', e); } 
-  }, [config.appsScriptUrl, areaAsignada, hojaSeleccionada]);
+  }, [config.appsScriptUrl, areaEfectiva, hojaSeleccionada]);
   
   const desmarcarArea = useCallback(async () => { 
     if (!config.appsScriptUrl) return; 
     try { 
-      await postToAppsScript(config.appsScriptUrl, { accion: 'desmarcarFinalizado', mes: hojaSeleccionada, area: areaAsignada });
+      await postToAppsScript(config.appsScriptUrl, { accion: 'desmarcarFinalizado', mes: hojaSeleccionada, area: areaEfectiva });
       setRolGuardado(false);
     } catch (e) { console.error('Error al desmarcar area:', e); } 
-  }, [config.appsScriptUrl, areaAsignada, hojaSeleccionada]);
+  }, [config.appsScriptUrl, areaEfectiva, hojaSeleccionada]);
 
   const hojaAMes = useCallback((hoja) => { const mapa = { ENERO:1, FEBRERO:2, MARZO:3, ABRIL:4, MAYO:5, JUNIO:6, JULIO:7, AGOSTO:8, SEPTIEMBRE:9, OCTUBRE:10, NOVIEMBRE:11, DICIEMBRE:12 }; return mapa[String(hoja).toUpperCase()] || new Date().getMonth() + 1; }, []);
 
@@ -411,7 +422,7 @@ const PanelTrabajo = ({
       
       const bloqueadoPorBoton = await verificarAreaFinalizadaEnSheets();
       if (esAdmin) { setRolHabilitado(true); }
-      else { setRolHabilitado(!bloqueadoPorBoton); actualizarEstadoArea(areaAsignada, bloqueadoPorBoton); }
+      else { setRolHabilitado(!bloqueadoPorBoton); actualizarEstadoArea(areaEfectiva, bloqueadoPorBoton); }
       
       setTodoElPersonal(todos); 
       
@@ -461,7 +472,7 @@ const PanelTrabajo = ({
       cargadoRef.current = true;
     } catch (e) { console.error('Error al cargar datos:', e); setErrorCarga(e.message); } 
     finally { cargandoRef.current = false; setCargando(false); }
-  }, [config.sheetId, config.apiKey, hojaSeleccionada, totalDiasMes, areaAsignada, esAdmin, verificarAreaFinalizadaEnSheets, actualizarEstadoArea, esJefe, esUsuario, user, areaSeleccionadaJefe]);
+  }, [config.sheetId, config.apiKey, hojaSeleccionada, totalDiasMes, areaEfectiva, esAdmin, verificarAreaFinalizadaEnSheets, actualizarEstadoArea, esJefe, esUsuario, user]);
 
   // Guardar referencia a cargarDatosIniciales para uso en otros handlers
   useEffect(() => {
@@ -624,7 +635,7 @@ const PanelTrabajo = ({
   const handleHojaChange = useCallback((e) => { 
     if (cargandoRef.current) return;
     const nh = e.target.value; 
-    guardarHojaPreferida(areaAsignada, nh); 
+    guardarHojaPreferida(areaEfectiva, nh); 
     setHojaSeleccionada(nh); 
     setConfig(prev => (prev.sheetName === nh ? prev : { ...prev, sheetName: nh })); 
     setMesSeleccionado(hojaAMes(nh)); 
@@ -642,7 +653,7 @@ const PanelTrabajo = ({
     setErrorCarga(null);
     cargadoRef.current = false; 
     cargandoRef.current = false;
-  }, [hojaAMes, anioSeleccionado, areaAsignada]);
+  }, [hojaAMes, anioSeleccionado, areaEfectiva]);
 
   const handleAreaChangeJefe = useCallback((nuevaArea) => {
     if (nuevaArea !== areaSeleccionadaJefe) {
@@ -949,6 +960,33 @@ const PanelTrabajo = ({
   
   useEffect(() => { const h = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { const t = document.activeElement?.tagName?.toLowerCase(); if (t === 'input' || t === 'select' || t === 'textarea') return; e.preventDefault(); handleDeshacerUltimoCambio(); } }; document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h); }, [handleDeshacerUltimoCambio]);
 
+  // ============================================================
+  // USUARIOS ACTIVOS — burbujas en la cabecera (estilo Google Sheets)
+  // ============================================================
+  const [usuariosActivos, setUsuariosActivos] = useState([]);
+  useEffect(() => {
+    let activo = true;
+    const verificar = async () => {
+      try {
+        const result = await apiClient.getActiveUsers();
+        const yo = apiClient.getUser();
+        const yoId = yo?.id ?? null;
+        const yoUsuario = yo?.usuario || yo?.username || '';
+        const yoNombre = (yo?.nombre || '').toLowerCase().trim();
+        const otros = (result.users || []).filter(u =>
+          u.user_id !== yoId &&
+          (u.usuario || '') !== yoUsuario &&
+          (u.nombre || '').toLowerCase().trim() !== yoNombre
+        );
+        if (activo) setUsuariosActivos(otros);
+      } catch { /* ignore — falla de red o sin permiso */ }
+    };
+
+    verificar();
+    const it = setInterval(verificar, 10000);
+    return () => { activo = false; clearInterval(it); };
+  }, []);
+
   const guardarCeldaInmediato = useCallback((fila, dia, valor) => {
     if (!config.appsScriptUrl || !hojaSeleccionada) return;
 
@@ -1165,7 +1203,7 @@ const PanelTrabajo = ({
     if (cargandoRef.current) return;
     const nm = parseInt(e.target.value);
     const nuevaHoja = MESES[nm - 1].toUpperCase();
-    guardarHojaPreferida(areaAsignada, nuevaHoja);
+    guardarHojaPreferida(areaEfectiva, nuevaHoja);
     setHojaSeleccionada(nuevaHoja);
     setConfig(prev => (prev.sheetName === nuevaHoja ? prev : { ...prev, sheetName: nuevaHoja }));
     setMesSeleccionado(nm);
@@ -1258,11 +1296,11 @@ const PanelTrabajo = ({
         valores: DIAS.map(d => { const c = turnos[emp.id]?.[d]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }), 
         area: cambiosArea[emp.id] && cambiosArea[emp.id] !== emp.areaOriginal ? cambiosArea[emp.id] : null 
       })); 
-      await postToAppsScript(config.appsScriptUrl, { accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaAsignada, responsable: responsable || 'ADMIN', filas });
+      await postToAppsScript(config.appsScriptUrl, { accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaEfectiva, responsable: responsable || 'ADMIN', filas });
       setTurnosBackup(JSON.parse(JSON.stringify(turnos))); guardarRespaldoLocal(); await marcarAreaComoFinalizada(); 
       setCeldasModificadas(new Map());
       limpiarCeldasModificadasPersistidas();
-      if (!esAdmin) { setRolHabilitado(false); actualizarEstadoArea(areaAsignada, true); } 
+      if (!esAdmin) { setRolHabilitado(false); actualizarEstadoArea(areaEfectiva, true); } 
       setRolGuardado(true);
       mostrarMensajeTemporal('success', 'Guardado exitoso. ' + (!esAdmin ? 'Rol bloqueado.' : ''), 6000); 
     } catch { guardarRespaldoLocal(); mostrarMensajeTemporal('error', 'Error al guardar. Se guardo respaldo local.', 5000); } 
@@ -1272,13 +1310,13 @@ const PanelTrabajo = ({
   const handleVistaPrevia = () => setMostrarVistaPrevia(true);
   const handleConfirmarVistaPrevia = async () => { setMostrarVistaPrevia(false); await handleGuardar(); };
   const handleFinalizar = async () => { if (esAdmin) { await handleGuardar(); return; } if (!window.confirm('Finalizar y guardar el rol? Una vez guardado no podra editarlo.')) return; await handleGuardar(); };
-  const handleHabilitar = () => { if (!esAdmin) { mostrarMensajeTemporal('error', 'Solo el administrador puede habilitar.'); return; } if (!window.confirm('Habilitar edicion?')) return; setRolHabilitado(true); actualizarEstadoArea(areaAsignada, false); desmarcarArea(); setRolGuardado(false); mostrarMensajeTemporal('success', 'Rol habilitado para edicion'); };
+  const handleHabilitar = () => { if (!esAdmin) { mostrarMensajeTemporal('error', 'Solo el administrador puede habilitar.'); return; } if (!window.confirm('Habilitar edicion?')) return; setRolHabilitado(true); actualizarEstadoArea(areaEfectiva, false); desmarcarArea(); setRolGuardado(false); mostrarMensajeTemporal('success', 'Rol habilitado para edicion'); };
   const handleAbrirImpresion = () => setMostrarImpresion(true);
   const handleActualizarEstados = useCallback((ne) => { 
     localStorage.setItem(`${STORAGE_ESTADOS}_${hojaSeleccionada}`, JSON.stringify(ne)); 
-    if (ne[areaAsignada] === true && !esAdmin) { setRolHabilitado(false); setRolGuardado(true); } 
-    else if ((ne[areaAsignada] === false || ne[areaAsignada] === undefined) && !esAdmin) { setRolHabilitado(true); setRolGuardado(false); } 
-  }, [hojaSeleccionada, areaAsignada, esAdmin]);
+    if (ne[areaEfectiva] === true && !esAdmin) { setRolHabilitado(false); setRolGuardado(true); } 
+    else if ((ne[areaEfectiva] === false || ne[areaEfectiva] === undefined) && !esAdmin) { setRolHabilitado(true); setRolGuardado(false); } 
+  }, [hojaSeleccionada, areaEfectiva, esAdmin]);
 
   // Memoizar calculos pesados (se recalculan solo cuando cambian dependencias)
   const totalTurnos = useMemo(() => 
@@ -1320,6 +1358,7 @@ const PanelTrabajo = ({
         responsable={responsable} 
         personalLength={personal.length} 
         rolHabilitado={rolHabilitado}
+        usuariosActivos={usuariosActivos}
         onFinalizar={handleFinalizar} 
         onHabilitar={handleHabilitar} 
         onGuardar={handleGuardar} 
