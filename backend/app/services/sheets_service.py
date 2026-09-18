@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import hmac
 import hashlib
 import httpx
@@ -15,7 +16,44 @@ class GoogleSheetsService:
     Uses:
     - Google Sheets API v4 with API Key for READ operations
     - Apps Script web app for WRITE operations (append, update, delete)
+    
+    CACHE DE LECTURAS: con 100+ sesiones activas, las cargas simultaneas
+    saturaban la API de Google Sheets (300 lecturas/min/proyecto) generando
+    502. Todas las lecturas (get_range) se cachean con TTL y cada escritura
+    invalida la hoja afectada, asi los datos quedan casi siempre frescos.
+    El cache es de CLASE: aunque cada modulo cree su propia instancia del
+    servicio (middleware, routers), todas comparten las mismas lecturas.
     """
+    
+    _read_cache: dict[tuple, tuple[float, Any]] = {}
+    _READ_CACHE_TTL_SECONDS = 30
+    
+    # Acciones de alta frecuencia que NO invalidan el cache (tracking interno
+    # tipo heartbeat: no alteran datos que el panel muestre).
+    _NO_INVALIDAN = {"actualizarHeartbeat"}
+    
+    @classmethod
+    def _cache_get(cls, key: tuple) -> Optional[Any]:
+        item = cls._read_cache.get(key)
+        if item and (time.time() - item[0]) < cls._READ_CACHE_TTL_SECONDS:
+            return item[1]
+        return None
+    
+    @classmethod
+    def _cache_set(cls, key: tuple, rows: Any) -> None:
+        cls._read_cache[key] = (time.time(), rows)
+    
+    @classmethod
+    def invalidate_sheet(cls, sheet_name: str) -> None:
+        """Descarta las lecturas cacheadas de una hoja (tras una escritura)."""
+        for key in list(cls._read_cache):
+            if key[0] == sheet_name:
+                cls._read_cache.pop(key, None)
+    
+    @classmethod
+    def invalidate_all(cls) -> None:
+        """Descarta todo el cache (inicializarEstructura cambia el layout)."""
+        cls._read_cache.clear()
     
     def __init__(self):
         self.api_key = settings.GOOGLE_SHEETS_API_KEY
@@ -24,7 +62,16 @@ class GoogleSheetsService:
         self.apps_script_url = settings.GOOGLE_APPS_SCRIPT_URL
     
     async def get_range(self, sheet_name: str, cell_range: str = "") -> list[list]:
-        """Read data from a sheet range (uses Google Sheets API)."""
+        """Read data from a sheet range (Google Sheets API + cache TTL).
+        
+        Los errores NO se cachean: un fallo transitorio de la API se reintenta
+        en la siguiente peticion (los clientes ya reintentan en el frontend).
+        """
+        cache_key = (sheet_name, cell_range)
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+        
         range_str = f"{sheet_name}!{cell_range}" if cell_range else sheet_name
         url = f"{self.base_url}/{self.sheet_id}/values/{range_str}"
         params = {"key": self.api_key, "majorDimension": "ROWS"}
@@ -34,7 +81,9 @@ class GoogleSheetsService:
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 data = response.json()
-                return data.get("values", [])
+                rows = data.get("values", [])
+                self._cache_set(cache_key, rows)
+                return rows
         except httpx.HTTPError as e:
             logger.error(f"Error reading sheet {sheet_name}: {e}")
             return []
@@ -108,6 +157,16 @@ class GoogleSheetsService:
                                    'registrarCambiosOficiales', 'registrarSolicitudCambio',
                                    'actualizarSolicitudCambio',
                                    'bloquearHoja', 'desbloquearHoja', 'guardarRol', 'inicializarEstructura')
+        
+        # Invalidar el cache de la hoja afectada ANTES de escribir: Apps Script
+        # ejecuta antes de devolver la respuesta, asi que aunque la conexion
+        # falle el dato pudo cambiar — nunca servir lecturas viejas tras eso.
+        if es_escritura and action not in self._NO_INVALIDAN:
+            hoja = data.get("hoja")
+            if hoja:
+                self.invalidate_sheet(hoja)
+            elif action == "inicializarEstructura":
+                self.invalidate_all()
         
         try:
             async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
