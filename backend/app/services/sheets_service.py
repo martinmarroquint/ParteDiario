@@ -35,6 +35,10 @@ class GoogleSheetsService:
     # lectura a Google y las demas esperan esa misma promesa. Sin esto, un
     # mes frio con 100 usuarios simultaneos = 100 lecturas a la API.
     _inflight: dict[tuple, asyncio.Task] = {}
+    # Generacion del cache: se incrementa en cada invalidacion. Una lectura que
+    # empezo antes de una escritura NO re-cachea su resultado, evitando servir
+    # datos previos a la escritura durante todo el TTL.
+    _cache_generation: int = 0
     
     # Acciones de alta frecuencia que NO invalidan el cache (tracking interno
     # tipo heartbeat: no alteran datos que el panel muestre).
@@ -62,12 +66,16 @@ class GoogleSheetsService:
             if key[0] == sheet_name:
                 cls._read_cache.pop(key, None)
                 cls._READ_CACHE_TTL_BY_RANGE.pop(key, None)
+        # Invalida tambien las lecturas en curso de esa hoja: si terminan,
+        # no re-cachearan datos previos a esta escritura.
+        cls._cache_generation += 1
     
     @classmethod
     def invalidate_all(cls) -> None:
         """Descarta todo el cache (inicializarEstructura cambia el layout)."""
         cls._read_cache.clear()
         cls._READ_CACHE_TTL_BY_RANGE.clear()
+        cls._cache_generation += 1
     
     def __init__(self):
         self.api_key = settings.GOOGLE_SHEETS_API_KEY
@@ -100,18 +108,28 @@ class GoogleSheetsService:
                 return await asyncio.shield(in_flight)
             except Exception:
                 # Si la lectura compartida fallo, la siguiente peticion
-                # reintenta por su cuenta (el rango ya no esta in-flight).
-                cls._inflight.pop(cache_key, None)
+                # reintenta por su cuenta. Solo se quita la entrada si sigue
+                # siendo la MISMA tarea (nunca la de otra corrutina).
+                if cls._inflight.get(cache_key) is in_flight:
+                    cls._inflight.pop(cache_key, None)
                 raise
         
-        task = asyncio.create_task(self._fetch_range(cache_key, sheet_name, cell_range, ttl))
+        generation = cls._cache_generation
+        task = asyncio.create_task(
+            self._fetch_range(cache_key, sheet_name, cell_range, ttl, generation)
+        )
         cls._inflight[cache_key] = task
         try:
             return await asyncio.shield(task)
         finally:
-            cls._inflight.pop(cache_key, None)
+            # No borrar la entrada si otra corrutina ya la reemplazo.
+            if cls._inflight.get(cache_key) is task:
+                cls._inflight.pop(cache_key, None)
     
-    async def _fetch_range(self, cache_key: tuple, sheet_name: str, cell_range: str, ttl: Optional[float]) -> list[list]:
+    async def _fetch_range(
+        self, cache_key: tuple, sheet_name: str, cell_range: str,
+        ttl: Optional[float], generation: int,
+    ) -> list[list]:
         """Lectura real a Google Sheets (para _inflight, cache incluida)."""
         range_str = f"{sheet_name}!{cell_range}" if cell_range else sheet_name
         url = f"{self.base_url}/{self.sheet_id}/values/{range_str}"
@@ -123,9 +141,13 @@ class GoogleSheetsService:
                 response.raise_for_status()
                 data = response.json()
                 rows = data.get("values", [])
+                cls = self.__class__
+                # Si hubo una escritura (invalidacion) mientras leiamos, NO
+                # cachear: el resultado puede ser anterior a esa escritura.
+                if cls._cache_generation != generation:
+                    return rows
                 if ttl is not None:
                     # Cache con TTL propio (sin tocar el TTL global de la clase)
-                    cls = self.__class__
                     cls._read_cache[cache_key] = (time.time(), rows)
                     cls._READ_CACHE_TTL_BY_RANGE[cache_key] = ttl
                 else:

@@ -48,13 +48,15 @@ class AppsScriptWriteRequest(BaseModel):
 async def read_sheet(
     sheet_name: str,
     range: Optional[str] = Query(None, description="Cell range, e.g. A1:Z100"),
+    current_user: User = Depends(get_current_user),
 ):
     """Read data from a Google Sheets range.
     
     This proxies the request through the backend, keeping the API key server-side.
     The frontend calls this instead of sheets.googleapis.com directly.
     
-    No authentication required for reads (API key is protected server-side).
+    Requiere autenticacion: las hojas contienen datos sensibles (p.ej.
+    USUARIOS_OCR con hashes de contrasena, DNI y datos de contacto).
     """
     try:
         if range:
@@ -76,11 +78,12 @@ async def read_sheet(
 @router.get("/metadata/{sheet_name}")
 async def get_sheet_metadata(
     sheet_name: str,
+    current_user: User = Depends(get_current_user),
 ):
     """Get metadata (sheet list) for a spreadsheet.
     
     This replaces direct calls to sheets.googleapis.com/v4/spreadsheets/{id}
-    No authentication required (API key is protected server-side).
+    Requiere autenticacion.
     """
     try:
         now = time.time()

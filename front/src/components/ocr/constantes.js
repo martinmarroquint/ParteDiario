@@ -44,13 +44,6 @@ export const iniciales = (nombre = '') => {
 };
 
 // ============================================
-// CLAVE DE ACCESO ADMIN - SOLO DESDE .env
-// ============================================
-// ✅ Se lee SOLO del .env. Si no está definida, será undefined.
-// ❌ NO tiene fallback en duro por seguridad.
-export const CLAVE_SECRETA = import.meta.env.VITE_CLAVE_SECRETA;
-
-// ============================================
 // CONSTANTES FIJAS (NO SENSIBLES)
 // ============================================
 export const HOJA_CAMBIOS = 'CAMBIOS';

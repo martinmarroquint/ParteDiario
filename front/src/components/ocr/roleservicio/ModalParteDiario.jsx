@@ -89,6 +89,10 @@ const ModalParteDiario = ({ isOpen, onClose }) => {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const nombreArchivo = data
+    ? `ROL_SERVICIO_${(data.titulo || 'PARTE_DIARIO').replace(/[^A-Za-z0-9]+/g, '_')}.pdf`
+    : 'ROL_SERVICIO.pdf';
+
   // Cuando la instancia del PDF termina y hay una descarga pendiente → descarga.
   useEffect(() => {
     if (descargarPendiente && pdf.url && !pdf.loading && firmaPdfRef.current === firma) {
@@ -111,10 +115,6 @@ const ModalParteDiario = ({ isOpen, onClose }) => {
     setDia(d);
     cargar(mes, Number(d));
   };
-
-  const nombreArchivo = data
-    ? `ROL_SERVICIO_${(data.titulo || 'PARTE_DIARIO').replace(/[^A-Za-z0-9]+/g, '_')}.pdf`
-    : 'ROL_SERVICIO.pdf';
 
   // Solo se genera el PDF cuando el usuario hace clic. Si ya existe uno
   // generado para la data actual, se descarga directo (sin re-render).

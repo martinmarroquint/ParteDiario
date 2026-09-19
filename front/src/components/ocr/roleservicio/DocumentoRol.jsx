@@ -101,7 +101,7 @@ const DocumentoRol = ({ data }) => {
               </tr>
             </thead>
             <tbody>
-              {(data.vehiculos.lista || []).map((v) => (
+              {(data.vehiculos?.lista || []).map((v) => (
                 <tr key={v.n} className="border-t border-gray-200">
                   <td className="px-2 py-2 text-center text-gray-500">{v.n}</td>
                   <td className="px-2 py-2 text-gray-700">{v.tipo}</td>
@@ -111,7 +111,7 @@ const DocumentoRol = ({ data }) => {
             </tbody>
           </table>
         </div>
-        {data.vehiculos.matriz.length > 0 && (
+        {(data.vehiculos?.matriz || []).length > 0 && (
           <div className="border-t border-gray-200 px-3 py-3">
             <p className="text-[10px] font-semibold text-gray-500 uppercase mb-2">Disponibilidad de vehiculos</p>
             <div className="overflow-x-auto">
@@ -148,7 +148,7 @@ const DocumentoRol = ({ data }) => {
           <table className="rol-table w-full text-xs table-fixed">
             <thead>
               <tr className="bg-gray-100 text-gray-700">
-                {data.columnas.map((c, i) => (
+                {(data.columnas || []).map((c, i) => (
                   <th
                     key={i}
                     style={{ width: `${ANCHOS_COLUMNAS[i] || 10}%` }}
@@ -161,7 +161,7 @@ const DocumentoRol = ({ data }) => {
               </tr>
             </thead>
             <tbody>
-              {data.filas.map((f) => (
+              {(data.filas || []).map((f) => (
                 <tr key={f.n} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-2 py-1.5 text-gray-500 truncate">{f.n}</td>
                   <td className="px-2 py-1.5 text-gray-500 truncate" title={f.codigo}>{f.codigo}</td>

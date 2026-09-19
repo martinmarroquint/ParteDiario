@@ -72,6 +72,10 @@ function RolServicioPublico() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const nombreArchivo = data
+    ? `ROL_SERVICIO_${(data.titulo || 'PARTE_DIARIO').replace(/[^A-Za-z0-9]+/g, '_')}.pdf`
+    : 'ROL_SERVICIO.pdf';
+
   // Cuando la instancia del PDF termina y hay descarga pendiente → descarga.
   useEffect(() => {
     if (descargarPendiente && pdf.url && !pdf.loading && firmaPdfRef.current === firma) {
@@ -119,8 +123,6 @@ function RolServicioPublico() {
   }
 
   if (!data) return null;
-
-  const nombreArchivo = `ROL_SERVICIO_${(data.titulo || 'PARTE_DIARIO').replace(/[^A-Za-z0-9]+/g, '_')}.pdf`;
 
   const manejarDescarga = () => {
     if (pdf.loading) return;
