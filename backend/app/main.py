@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -24,6 +25,7 @@ from app.routers import (
     mesa_partes,
     sheets_proxy,
     migration,
+    rol_servicio,
 )
 
 # Configure logging
@@ -39,7 +41,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
+    # Precalienta el cache de /rol-servicio (parte diario) para que la
+    # primera peticion no espere ~7s de lecturas a Google Sheets.
+    prewarm_task = asyncio.create_task(rol_servicio.prewarm())
     yield
+    prewarm_task.cancel()
     logger.info("Shutting down application")
 
 
@@ -100,6 +106,7 @@ app.include_router(estructura_jerarquica.router, prefix="/api/v1")
 app.include_router(mesa_partes.router, prefix="/api/v1")
 app.include_router(sheets_proxy.router, prefix="/api/v1")
 app.include_router(migration.router, prefix="/api/v1")
+app.include_router(rol_servicio.router, prefix="/api/v1")
 
 
 @app.api_route("/", methods=["GET", "HEAD"], tags=["Root"])

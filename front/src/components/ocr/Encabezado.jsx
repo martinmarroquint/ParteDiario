@@ -7,10 +7,11 @@ import {
   Loader2, Search, Shield, ChevronDown, Check,
   Zap, Trash2, Copy, Repeat, ChevronUp, Plus, Minus, SaveIcon, Play, ChevronLeft, ChevronRight,
   UserPlus, X, Users, Building2, GraduationCap, Inbox,
-  UserCog, Calendar, Clock, Key, FileText, HelpCircle
+  UserCog, Calendar, Clock, Key, FileText, HelpCircle, CalendarDays
 } from 'lucide-react';
 import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP, colorUsuario, iniciales } from './constantes';
 import { shouldShowTour } from './tour/TourSteps';
+import ModalParteDiario from './roleservicio/ModalParteDiario';
 
 const TURNOS_RAPIDOS = Object.keys(TURNO_MAP);
 const TURNOS_LISTA = Object.values(TURNO_MAP).filter((v, i, a) => a.findIndex(t => t.codigo === v.codigo) === i);
@@ -146,6 +147,7 @@ const Encabezado = ({
 
   const [mostrarDias, setMostrarDias] = useState(false);
   const [mostrarRotacion, setMostrarRotacion] = useState(false);
+  const [mostrarParteDiario, setMostrarParteDiario] = useState(false);
   const [patron, setPatron] = useState(['M', 'T', 'N']);
   const [inicio, setInicio] = useState(0);
   const [plantillas, setPlantillas] = useState(() => {
@@ -254,6 +256,7 @@ const Encabezado = ({
   const mostrarSelectorJefe = esJefe && areasDisponiblesJefe.length > 1;
 
   return (
+    <>
     <header className="sticky top-0 z-30 print:hidden bg-white border-b border-gray-100">
       {/* ============================================================
           PRIMERA FILA: Logo, área, botones principales
@@ -472,6 +475,16 @@ const Encabezado = ({
               )}
             </button>
           )}
+
+          {/* Parte Diario (modal dentro del sistema) - Visible para todos los usuarios autenticados */}
+          <button 
+            onClick={() => setMostrarParteDiario(true)} 
+            className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+            title="Ver el Parte Diario"
+            data-tour="tour-parte-diario"
+          >
+            <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" /> Parte Diario
+          </button>
 
           {/* Cambiar Contrasena - SIEMPRE VISIBLE */}
           <button 
@@ -948,6 +961,13 @@ const Encabezado = ({
         }
       `}</style>
     </header>
+
+    {/* Modal Parte Diario (se abre dentro del sistema) */}
+    <ModalParteDiario
+      isOpen={mostrarParteDiario}
+      onClose={() => setMostrarParteDiario(false)}
+    />
+    </>
   );
 };
 
