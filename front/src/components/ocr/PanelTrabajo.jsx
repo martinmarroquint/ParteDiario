@@ -1354,7 +1354,7 @@ const PanelTrabajo = ({
           </div>
         </div>
       )}
-      {cargando && <div className="fixed inset-0 bg-white/90 flex items-center justify-center z-50"><div className="text-center"><Loader2 className="w-16 h-16 animate-spin mx-auto mb-4" style={{color:COLOR_PRIMARIO}} /><p className="text-lg font-semibold text-gray-700">Cargando datos del rol...</p><p className="text-sm text-gray-500 mt-2">{esAdmin ? areaSeleccionadaAdmin : areaAsignada} - {MESES[mesSeleccionado-1]} {anioSeleccionado}</p></div></div>}
+      {cargando && <div className="fixed inset-0 bg-white/90 flex items-center justify-center z-50"><div className="text-center"><Loader2 className="w-16 h-16 animate-spin mx-auto mb-4" style={{color:COLOR_PRIMARIO}} /><p className="text-lg font-semibold text-gray-700">Cargando datos del rol...</p><p className="text-sm text-gray-500 mt-2">{areaEfectiva} - {MESES[mesSeleccionado-1]} {anioSeleccionado}</p></div></div>}
       {errorCarga && !cargando && <div className="fixed inset-0 bg-white flex items-center justify-center z-50"><div className="text-center max-w-md p-8"><XCircle className="w-20 h-20 text-red-400 mx-auto mb-4" /><h3 className="text-xl font-bold text-gray-800 mb-2">Error al cargar datos</h3><p className="text-gray-600 mb-6">{errorCarga}</p><button onClick={recargarDatos} className="px-6 py-3 text-white rounded-xl font-bold" style={{backgroundColor:COLOR_PRIMARIO}}><RefreshCw className="w-5 h-5 inline mr-2"/>Reintentar</button></div></div>}
 
       <Encabezado 
@@ -1526,7 +1526,7 @@ const PanelTrabajo = ({
             todasLasAreas={todasLasAreas} 
             mesSeleccionado={mesSeleccionado} 
             anioSeleccionado={anioSeleccionado} 
-            areaAsignada={esAdmin ? areaSeleccionadaAdmin : areaAsignada}
+            areaAsignada={areaEfectiva}
             responsable={responsable} 
             francosInvalidos={francosInvalidos} 
             idsConFrancosInvalidos={idsConFrancosInvalidos}
@@ -1551,15 +1551,15 @@ const PanelTrabajo = ({
         hoja={nombreMesActual}
         mes={mesSeleccionado}
         anio={anioSeleccionado}
-        area={esAdmin ? areaSeleccionadaAdmin : areaAsignada}
+        area={areaEfectiva}
         userName={user?.nombre || responsable || 'ADMIN'}
         personal={personal}
         turnosMap={turnos}
       />
       
-      <ImpresionRol isOpen={mostrarImpresion} onClose={() => setMostrarImpresion(false)} area={esAdmin ? areaSeleccionadaAdmin : areaAsignada} mes={mesSeleccionado} anio={anioSeleccionado} personal={personalFiltrado} turnos={turnos} responsable={responsable} totalDiasMes={totalDiasMes} />
+      <ImpresionRol isOpen={mostrarImpresion} onClose={() => setMostrarImpresion(false)} area={areaEfectiva} mes={mesSeleccionado} anio={anioSeleccionado} personal={personalFiltrado} turnos={turnos} responsable={responsable} totalDiasMes={totalDiasMes} />
       <PanelControlAdmin isOpen={mostrarPanelAdmin} onClose={() => setMostrarPanelAdmin(false)} areas={todasLasAreas} config={config} onActualizar={handleActualizarEstados} hojaSeleccionada={hojaSeleccionada} hojasDisponibles={hojasDisponibles} areaAdmin={areaAsignada} />
-      <ModalVistaPrevia isOpen={mostrarVistaPrevia} onClose={() => setMostrarVistaPrevia(false)} onConfirmar={handleConfirmarVistaPrevia} area={esAdmin ? areaSeleccionadaAdmin : areaAsignada} responsable={responsable} mes={mesSeleccionado} anio={anioSeleccionado} personal={personalFiltrado} turnos={turnos} cambiosArea={cambiosArea} DIAS={DIAS} totalTurnos={totalTurnos} totalHoras={totalHorasRol} francosInvalidos={francosInvalidos} totalFrancosInvalidos={totalFrancosInvalidos} />
+      <ModalVistaPrevia isOpen={mostrarVistaPrevia} onClose={() => setMostrarVistaPrevia(false)} onConfirmar={handleConfirmarVistaPrevia} area={areaEfectiva} responsable={responsable} mes={mesSeleccionado} anio={anioSeleccionado} personal={personalFiltrado} turnos={turnos} cambiosArea={cambiosArea} DIAS={DIAS} totalTurnos={totalTurnos} totalHoras={totalHorasRol} francosInvalidos={francosInvalidos} totalFrancosInvalidos={totalFrancosInvalidos} />
 
       <style>{`@media print{@page{size:landscape;margin:10mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print\\:hidden{display:none!important}}@keyframes slideInRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}.animate-slideInRight{animation:slideInRight 0.3s ease-out}`}</style>
 
