@@ -191,7 +191,14 @@ const SolicitudesCambioTurno = ({
       dni: miPersonal?.dni || '',
       area: miPersonal?.area || area,
       fila: miPersonal?.fila || 0,
-      cambios: cambios.map(c => ({ dia: c.dia, turno_actual: c.turnoActual, turno_nuevo: c.turnoNuevo })),
+      cambios: cambios.map(c => ({
+        dia: c.dia,
+        turno_actual: c.turnoActual,
+        turno_nuevo: c.turnoNuevo,
+        // El backend escribe en la hoja el NOMBRE del turno (los codigos son
+        // dinamicos), por eso se envia el nombre exacto desde aqui.
+        turno_nuevo_nombre: TURNO_MAP[c.turnoNuevo]?.nombre || c.turnoNuevo,
+      })),
     }];
 
     if (modo === 'COLEGA' && compañero && cambiosCompañero.length > 0) {
@@ -200,7 +207,12 @@ const SolicitudesCambioTurno = ({
         dni: compañero.dni,
         area: compañero.area || '',
         fila: compañero.fila || 0,
-        cambios: cambiosCompañero.map(c => ({ dia: c.dia, turno_actual: c.turnoActual, turno_nuevo: c.turnoNuevo })),
+        cambios: cambiosCompañero.map(c => ({
+          dia: c.dia,
+          turno_actual: c.turnoActual,
+          turno_nuevo: c.turnoNuevo,
+          turno_nuevo_nombre: TURNO_MAP[c.turnoNuevo]?.nombre || c.turnoNuevo,
+        })),
       });
     }
 

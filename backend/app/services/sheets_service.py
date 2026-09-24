@@ -311,3 +311,21 @@ class GoogleSheetsService:
             "celda": cell,
             "valor": value
         })
+
+    async def guardar_celda(self, sheet_name: str, fila: int, columna: str,
+                            valor: str, responsable: str = "ADMIN",
+                            area: str = "") -> dict:
+        """Write one turn cell in a month sheet via Apps Script `guardarCelda`.
+
+        Es el MISMO camino que usa el panel (PanelTrabajo): la hoja del mes
+        guarda el NOMBRE del turno y la columna del dia 1 es 'F'.
+        """
+        return await self._apps_script_action("guardarCelda", {
+            "hoja": sheet_name,
+            "fila": fila,
+            "columna": columna,
+            "valor": valor,
+            "responsable": responsable,
+            "area": area,
+            "registrarHistorial": False,
+        })

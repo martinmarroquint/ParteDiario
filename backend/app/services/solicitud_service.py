@@ -43,6 +43,58 @@ COL_CREADO_EN = 17          # R
 COL_ACTUALIZADO_EN = 18     # S
 COL_SOLICITANTE_DNI = 19    # T
 
+# Nombre exacto del turno por codigo (respaldo para solicitudes creadas antes
+# de que el frontend enviara turno_nuevo_nombre). La hoja del mes guarda el
+# NOMBRE del turno, no el codigo.
+_TURNO_NOMBRE = {
+    "M": "MAÑANA", "T": "TARDE", "F": "FRANCO", "MT": "12 HRS M",
+    "N": "12 HRS N", "FE": "FERIADO", "V": "VACACIONES",
+    "FS": "FALTO AL SERVICIO", "LG": "LICENCIA DE GRAVIDEZ",
+    "DM": "DESCANSO MEDICO", "L12": "LEY 12633", "H": "HOSPITALIZADO",
+    "C": "COMISION", "PR": "PERMISO DE RADIACION",
+    "AVC": "ADAPTACION A LA VIDA CIVIL",
+    "LEGF": "LICENCIA ENFERMEDAD GRAVE FAMILIAR",
+    "PCV": "PERMISO A CUENTA DE VACACIONES", "RL": "REFERIDO A LIMA",
+    "SL": "SOMETIDO A LEY", "24": "24 X 48", "SC": "SERVICIO CONTINUO",
+    "EXT": "EXTERNO", "R": "RETEN", "S": "SERVICIO",
+    "M/N": "MAÑANA - 12 HRS N", "T/N": "TARDE - 12 HRS N",
+    "ADM": "ADMINISTRATIVO", "LFC": "LICENCIA FALLECIMIENTO CONYUGUE",
+    "PP": "PAPELETA DE PERMISO", "COU": "CAMBIADO OTRA UNIDAD",
+    "24M": "24 HRS MTN", "LP": "LICENCIA POR PATERNIDAD",
+    "PD": "OFICIAL DE PERMANENCIA (DIURNO)",
+    "PN": "OFICIAL DE PERMANENCIA (NOCTURNO)",
+    "PM": "OFICIAL DE PERMANENCIA (MAÑANA)",
+    "PT": "OFICIAL DE PERMANENCIA (TARDE)", "CD": "CLASE DE DIA",
+}
+
+_ROL_MAP = {
+    "usuario": 0, "jefe_area": 1, "jefe_departamento": 2,
+    "jefe_division": 3, "admin": 4, "tramite_documentario": 5,
+}
+
+
+def _parse_roles(raw) -> list[int]:
+    """Acepta '1', '1,2', 'jefe_area' o 'jefe_area,jefe_division'."""
+    out: list[int] = []
+    for parte in str(raw or "").replace(";", ",").split(","):
+        p = parte.strip()
+        if not p:
+            continue
+        if p.isdigit():
+            out.append(int(p))
+        elif p.lower() in _ROL_MAP:
+            out.append(_ROL_MAP[p.lower()])
+    return out
+
+
+def _col_letter(col_num: int) -> str:
+    """Numero de columna 1-based -> letra Excel (1=A, 6=F)."""
+    result = ""
+    while col_num > 0:
+        col_num, rem = divmod(col_num - 1, 26)
+        result = chr(65 + rem) + result
+    return result
+
 
 class SolicitudService:
 
@@ -75,7 +127,7 @@ class SolicitudService:
                 continue
             user_id = int(row[0]) if row[0].isdigit() else 0
             nombre = row[1].strip() if row[1] else ""
-            rol = int(row[6]) if row[6].isdigit() else 0
+            roles = _parse_roles(row[6])
 
             areas_raw = row[7] if len(row) > 7 else "[]"
             try:
@@ -83,24 +135,38 @@ class SolicitudService:
             except (json.JSONDecodeError, TypeError):
                 areas = [a.strip() for a in areas_raw.split(",") if a.strip()]
 
-            if rol in (1, 2, 3) and area in areas:
-                jefes.append({"nombre": nombre, "nivel": rol, "user_id": user_id})
+            if not nombre or area not in areas:
+                continue
+            # Una persona puede tener varios niveles de jefatura: entra a la
+            # cadena en CADA uno de sus roles (1=jefe_area, 2=depto, 3=div).
+            for r in roles:
+                if r in (1, 2, 3):
+                    jefes.append({"nombre": nombre, "nivel": r, "user_id": user_id})
 
         # Sort by nivel ascending
         jefes.sort(key=lambda x: x["nivel"])
 
-        # Deduplicate by nombre
+        # Deduplicate by (nombre, nivel): la misma persona no se repite en el
+        # mismo nivel, pero puede aparecer en varios niveles distintos.
         seen = set()
         cadena = []
         for j in jefes:
-            if j["nombre"] not in seen:
-                seen.add(j["nombre"])
+            clave = (j["nombre"], j["nivel"])
+            if clave not in seen:
+                seen.add(clave)
                 cadena.append(j)
 
         # Always append admin
         cadena.append({"nombre": "Administrador", "nivel": 4, "user_id": 0})
 
         return cadena
+
+    def _current_step_index(self, solicitud: Solicitud) -> int:
+        """Posicion en la cadena = numero de aprobaciones ya registradas.
+
+        Avanzar por POSICION (no por el valor del nivel) es lo que evita que
+        la cadena se trabe cuando hay dos jefes del mismo nivel."""
+        return sum(1 for h in solicitud.historial if h.get("accion") == "APROBADO")
 
     # ------------------------------------------------------------------
     # CRUD
@@ -277,6 +343,13 @@ class SolicitudService:
         if not can_approve:
             raise PermissionError("No tienes permiso para aprobar esta solicitud en este nivel")
 
+        # Conflicto de interes: el trabajador afectado no puede aprobar su
+        # propia solicitud (otro jefe del mismo nivel o admin si pueden).
+        if aprobador_id == solicitud.solicitante_id and any(
+            p.nombre == solicitud.solicitante_nombre for p in solicitud.participantes
+        ):
+            raise PermissionError("No puedes aprobar tu propia solicitud de cambio de turno")
+
         now = datetime.now().isoformat()
 
         # Record in historial
@@ -290,23 +363,22 @@ class SolicitudService:
         }
         solicitud.historial.append(historial_entry)
 
-        # Find next level in chain
-        next_level = None
-        found_current = False
-        for step in solicitud.cadena:
-            if found_current:
-                next_level = step["nivel"]
-                break
-            if step["nivel"] == solicitud.nivel_actual:
-                found_current = True
-
-        if next_level is not None:
-            # Advance to next level
-            solicitud.nivel_actual = next_level
+        # Avanzar por POSICION en la cadena (no por valor de nivel): si hay
+        # dos jefes del mismo nivel, el siguiente paso es el que sigue en la
+        # lista, no otro paso del mismo nivel. Evita que la cadena se trabe.
+        pasos_aprobados = self._current_step_index(solicitud)
+        if pasos_aprobados < len(solicitud.cadena):
+            solicitud.nivel_actual = solicitud.cadena[pasos_aprobados]["nivel"]
         else:
-            # Was the last level → fully approved
+            # Ultimo nivel: aplicar los cambios al rol real ANTES de marcar
+            # APROBADO. Si algo falla, la solicitud queda PENDIENTE y se puede
+            # reintentar (nunca se pierde el cambio en silencio).
+            errores = await self._aplicar_cambios(solicitud)
+            if errores:
+                raise ValueError(
+                    "No se pudieron aplicar los cambios al rol: " + "; ".join(errores)
+                )
             solicitud.estado = ESTADO_APROBADO
-            await self._aplicar_cambios(solicitud)
 
         solicitud.actualizado_en = now
         await self._update_solicitud(solicitud)
@@ -403,28 +475,46 @@ class SolicitudService:
     # Apply changes to role sheet
     # ------------------------------------------------------------------
 
-    async def _aplicar_cambios(self, solicitud: Solicitud) -> None:
-        """Write approved turn changes to the role sheet via role_service."""
+    async def _aplicar_cambios(self, solicitud: Solicitud) -> list[str]:
+        """Escribe los cambios aprobados en la HOJA DEL MES real (la misma que
+        usa el panel) via Apps Script `guardarCelda`, con el NOMBRE del turno.
+
+        Devuelve la lista de errores (vacia si todo se aplico). El llamador
+        NO debe marcar la solicitud como APROBADA si hay errores."""
+        errores: list[str] = []
+        hoja = solicitud.hoja
+        if not hoja:
+            return ["La solicitud no tiene hoja de mes (campo 'hoja')"]
+
         for participante in solicitud.participantes:
+            fila = participante.fila
+            if not fila or fila < 2:
+                errores.append(f"{participante.nombre}: fila no disponible")
+                continue
             for cambio in participante.cambios:
-                result = await self.role_service.update_celda(
-                    mes=solicitud.mes,
-                    anio=solicitud.anio,
-                    area=participante.area,
-                    persona=participante.nombre,
-                    dia=cambio.dia,
-                    turno=cambio.turno_nuevo,
+                # La hoja guarda el NOMBRE del turno (no el codigo).
+                turno = cambio.turno_nuevo_nombre or _TURNO_NOMBRE.get(
+                    (cambio.turno_nuevo or "").strip().upper(), cambio.turno_nuevo
                 )
-                if result and result.get("error"):
-                    logger.warning(
-                        f"Error aplicando cambio {participante.nombre} día {cambio.dia}: "
-                        f"{result['error']}"
+                columna = _col_letter(5 + cambio.dia)  # dia 1 -> columna F
+                try:
+                    result = await self.sheets.guardar_celda(
+                        hoja, fila, columna, turno,
+                        responsable=solicitud.solicitante_nombre,
+                        area=participante.area,
                     )
-                else:
-                    logger.info(
-                        f"Cambio aplicado: {participante.nombre} día {cambio.dia} "
-                        f"→ {cambio.turno_nuevo}"
-                    )
+                    if isinstance(result, dict) and result.get("error"):
+                        errores.append(
+                            f"{participante.nombre} dia {cambio.dia}: {result['error']}"
+                        )
+                    else:
+                        logger.info(
+                            f"Cambio aplicado: {participante.nombre} dia {cambio.dia} "
+                            f"({columna}{fila}) -> {turno}"
+                        )
+                except Exception as e:
+                    errores.append(f"{participante.nombre} dia {cambio.dia}: {e}")
+        return errores
 
     # ------------------------------------------------------------------
     # Sheet persistence helpers

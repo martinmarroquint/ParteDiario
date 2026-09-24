@@ -621,10 +621,10 @@ const PanelOCRContent = () => {
     // Load badge count on-demand when modal opens
     try {
       const result = await solicitudesService.getBandeja();
-      if (result.data) {
-        const pendientes = result.data.filter(s => s.estado === 'PENDIENTE').length;
-        setPendingSolicitudesCount(pendientes);
-      }
+      // El endpoint devuelve { solicitudes, total } (o { data } segun el caso)
+      const lista = result?.solicitudes || result?.data || [];
+      const pendientes = lista.filter(s => s.estado === 'PENDIENTE').length;
+      setPendingSolicitudesCount(pendientes);
     } catch { /* ignore */ }
   }, []);
   const abrirAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(true), []);

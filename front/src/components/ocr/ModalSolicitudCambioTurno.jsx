@@ -160,9 +160,15 @@ const ModalSolicitudCambioTurno = ({
     setError('');
     try {
       if (nuevoEstado === ESTADOS.APROBADO) {
-        await apiClient.aprobarSolicitud(sol.id, { observaciones: observacion.trim() });
-        setError('Solicitud aprobada. Cambios aplicados al rol.');
+        const res = await apiClient.aprobarSolicitud(sol.id, { observaciones: observacion.trim() });
+        const estado = res?.solicitud?.estado;
+        setError(estado === ESTADOS.APROBADO
+          ? 'Solicitud aprobada. Cambios aplicados al rol.'
+          : 'Solicitud aprobada. Pasa al siguiente nivel de la cadena.');
         onCambioAplicado?.();
+        // Avisa a los paneles (PanelTrabajo / MobileRolView) para que recarguen
+        // la grilla cuando el cambio llega al final de la cadena.
+        window.dispatchEvent(new CustomEvent('solicitud-aprobada'));
       } else {
         await apiClient.rechazarSolicitud(sol.id, { motivo_rechazo: observacion.trim() });
         setError('Solicitud desaprobada.');

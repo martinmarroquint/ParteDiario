@@ -6,6 +6,9 @@ class ParticipanteCambio(BaseModel):
     dia: int = Field(..., ge=1, le=31)
     turno_actual: str = Field(..., min_length=1, max_length=5)
     turno_nuevo: str = Field(..., min_length=1, max_length=5)
+    # Nombre exacto del turno tal como se escribe en la hoja del mes (el
+    # codigo puede cambiar en runtime; el nombre es lo que espera el rol).
+    turno_nuevo_nombre: str = Field("", max_length=60)
 
 
 class Participante(BaseModel):
