@@ -166,6 +166,9 @@ function doPost(e) {
       case 'deleteRow':
         resultado = deleteRowAction(data);
         break;
+      case 'crearHojaSiNoExiste':
+        resultado = crearHojaSiNoExisteAction(data);
+        break;
 
       // ========== GESTION DE USUARIOS ==========
       case 'admin_crearUsuario':
@@ -389,6 +392,31 @@ function appendRowAction(data) {
     if (!sheet) return { success: false, error: 'Hoja no encontrada: ' + sheetName };
     sheet.appendRow(valores);
     return { success: true, message: 'Fila agregada a ' + sheetName };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+// Crea la hoja (con su cabecera) si no existe. Idempotente.
+// data = { hoja: 'SOLICITUDES', header: ['id', 'solicitante_id', ...] }
+function crearHojaSiNoExisteAction(data) {
+  try {
+    var sheetName = String(data.hoja || '').trim();
+    if (!sheetName) return { success: false, error: 'hoja requerida' };
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(sheetName);
+    if (sheet) return { success: true, creada: false, hoja: sheetName };
+
+    sheet = ss.insertSheet(sheetName);
+    var header = data.header;
+    if (typeof header === 'string') {
+      try { header = JSON.parse(header); } catch (e) { header = [header]; }
+    }
+    if (header && Array.isArray(header) && header.length) {
+      sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
+      sheet.setFrozenRows(1);
+    }
+    return { success: true, creada: true, hoja: sheetName };
   } catch (error) {
     return { success: false, error: error.toString() };
   }

@@ -40,6 +40,10 @@ class GoogleSheetsService:
     # datos previos a la escritura durante todo el TTL.
     _cache_generation: int = 0
     
+    # Hojas cuya existencia ya se intento asegurar en este proceso (evita
+    # llamar a Apps Script en cada peticion).
+    _hojas_aseguradas: set[str] = set()
+
     # Acciones de alta frecuencia que NO invalidan el cache (tracking interno
     # tipo heartbeat: no alteran datos que el panel muestre).
     _NO_INVALIDAN = {"actualizarHeartbeat"}
@@ -218,6 +222,7 @@ class GoogleSheetsService:
         
         # Write operations: all actions that modify data in Google Sheets
         es_escritura = action in ('appendRow', 'updateRange', 'updateCell', 'deleteRow', 
+                                   'crearHojaSiNoExiste',
                                    'guardarCelda', 'guardarLote', 'guardarIndividual',
                                    'registrarCeldaModificada', 'limpiarCeldasModificadas',
                                    'actualizarHeartbeat', 'marcarFinalizado', 'desmarcarFinalizado',
@@ -329,3 +334,26 @@ class GoogleSheetsService:
             "area": area,
             "registrarHistorial": False,
         })
+
+    async def asegurar_hoja(self, sheet_name: str, header: list) -> bool:
+        """Crea la hoja (con cabecera) si no existe, via Apps Script.
+
+        Idempotente y cacheado por proceso. Si la accion no esta disponible en
+        el deployment de Apps Script, devuelve False sin romper nada.
+        """
+        cls = self.__class__
+        if sheet_name in cls._hojas_aseguradas:
+            return True
+        cls._hojas_aseguradas.add(sheet_name)  # no reintentar en cada peticion
+        try:
+            result = await self._apps_script_action("crearHojaSiNoExiste", {
+                "hoja": sheet_name,
+                "header": header,
+            })
+            if isinstance(result, dict) and result.get("error"):
+                logger.warning(f"No se pudo asegurar la hoja {sheet_name}: {result['error']}")
+                return False
+            return True
+        except Exception as e:
+            logger.warning(f"No se pudo asegurar la hoja {sheet_name}: {e}")
+            return False

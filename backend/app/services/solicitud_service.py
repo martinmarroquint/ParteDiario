@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 HOJA_SOLICITUDES = "SOLICITUDES"
 
+# Cabecera canonica de la hoja SOLICITUDES (coincide con el mapeo COL_* de abajo).
+SOLICITUDES_HEADER = [
+    "id", "solicitante_id", "solicitante_nombre", "solicitante_grado",
+    "area_solicitante", "fecha_solicitud", "estado", "nivel_actual",
+    "tipo_cambio", "participantes", "motivo", "pormenores", "hoja",
+    "mes", "anio", "cadena", "historial", "creado_en", "actualizado_en",
+    "solicitante_dni",
+]
+
 # SOLICITUDES sheet column mapping (A-T, 20 columns)
 COL_ID = 0               # A
 COL_SOLICITANTE_ID = 1   # B
@@ -211,6 +220,8 @@ class SolicitudService:
         )
 
         row = self._solicitud_to_row(solicitud)
+        # La hoja se crea sola si no existe (auto-reparable).
+        await self.sheets.asegurar_hoja(HOJA_SOLICITUDES, SOLICITUDES_HEADER)
         await self.sheets.append_row(HOJA_SOLICITUDES, row)
         logger.info(f"Solicitud {solicitud_id} creada por {user.nombre}")
         return solicitud
@@ -250,6 +261,9 @@ class SolicitudService:
         is_jefe = any(r in user.roles for r in [1, 2, 3])
         user_roles = set(user.roles)
         user_areas = set(user.areas) if user.areas else set()
+
+        # Asegura que la hoja exista (auto-reparable) antes de leerla.
+        await self.sheets.asegurar_hoja(HOJA_SOLICITUDES, SOLICITUDES_HEADER)
 
         rows = await self.sheets.get_range(HOJA_SOLICITUDES)
         result = []
