@@ -20,7 +20,7 @@ auth_service = AuthService(sheets_service)
 
 
 # ============================================
-# MODELS FOR PERSONAL (employee directory)
+# MODELS
 # ============================================
 
 class PersonalItem(BaseModel):
@@ -36,6 +36,10 @@ class PersonalItem(BaseModel):
 class PersonalListResponse(BaseModel):
     personal: List[PersonalItem]
     total: int
+
+
+class PasswordResetIn(BaseModel):
+    password: Optional[str] = None
 
 
 # ============================================
@@ -177,11 +181,24 @@ async def toggle_user(
 @router.post("/{user_id}/reset-password", response_model=TempPasswordResponse)
 async def reset_user_password(
     user_id: int,
-    current_user: User = Depends(require_admin)
+    payload: PasswordResetIn = PasswordResetIn(),
+    current_user: User = Depends(require_admin),
 ):
-    """Reset user password (admin only)."""
+    """Reset user password (admin only).
+
+    Si el admin envía 'password', se usa esa (ej. DNI).
+    Si no, se genera una temporal aleatoria (legacy).
+    """
     try:
-        result = await auth_service.reset_password_admin(user_id)
+        pwd = payload.password.strip() if payload.password else None
+        if pwd and len(pwd) < 6:
+            raise HTTPException(
+                status_code=400,
+                detail="La contraseña debe tener al menos 6 caracteres",
+            )
+        result = await auth_service.reset_password_admin(user_id, pwd)
         return TempPasswordResponse(**result)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

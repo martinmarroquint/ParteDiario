@@ -113,7 +113,7 @@ class ApiClient {
 
     for (let intento = 0; intento <= _retries; intento++) {
       // Timeout por peticion: evita que la UI se quede "colgada" para siempre
-      // (arbejo en frio de Render puede tardar ~50s en la primera peticion)
+      // (arranque en frio de Render puede tardar ~50s en la primera peticion)
       const controller = !options.signal ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), _timeout) : null;
 
@@ -299,8 +299,8 @@ class ApiClient {
     return this.patch(`/users/${id}/toggle`);
   }
 
-  async resetUserPassword(id) {
-    return this.post(`/users/${id}/reset-password`);
+  async resetUserPassword(id, password) {
+    return this.post(`/users/${id}/reset-password`, password ? { password } : {});
   }
 
   // ============================================

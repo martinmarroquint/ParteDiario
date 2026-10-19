@@ -1,6 +1,6 @@
 // src/components/ocr/TablaRol.jsx
 // TABLA DE ROL - DISEÑO LIMPIO CON SELECT ESTILIZADO COMPACTO
-// v2.1 - Z-INDEX CORREGIDO: no interfiere con dropdowns del Encabezado
+// v2.3 - TOOLTIP PREMIUM (fondo blanco) en columna Area
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -8,6 +8,84 @@ import { Square, CheckSquare, Clock, ChevronDown, Check, Search, X } from 'lucid
 import { DIAS_SEMANA, TURNO_MAP, MESES } from './constantes';
 
 const FILAS_POR_PAGINA = 20;
+
+// ============================================================
+// TOOLTIP PREMIUM (fondo blanco) — reutilizable
+// ============================================================
+const TooltipPremium = ({ text, children, className = '' }) => {
+  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const ref = useRef(null);
+  const timeoutRef = useRef(null);
+
+  const handleEnter = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    // Pequeño delay para evitar flicker al pasar el mouse rápido
+    timeoutRef.current = setTimeout(() => {
+      if (ref.current) {
+        const r = ref.current.getBoundingClientRect();
+        setPos({
+          top: r.top - 8,                    // 8px arriba del elemento
+          left: r.left + r.width / 2,        // centrado horizontalmente
+        });
+        setShow(true);
+      }
+    }, 120);
+  };
+
+  const handleLeave = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setShow(false);
+  };
+
+  // Reposicionar al hacer scroll
+  useEffect(() => {
+    if (!show) return;
+    const onScroll = () => {
+      if (ref.current) {
+        const r = ref.current.getBoundingClientRect();
+        setPos({ top: r.top - 8, left: r.left + r.width / 2 });
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => window.removeEventListener('scroll', onScroll, { capture: true });
+  }, [show]);
+
+  return (
+    <>
+      <span
+        ref={ref}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+        className={className}
+      >
+        {children}
+      </span>
+      {show && text && createPortal(
+        <div
+          className="fixed z-[9999] pointer-events-none"
+          style={{
+            top: pos.top,
+            left: pos.left,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          <div className="relative bg-white border border-gray-200 rounded-lg shadow-xl px-3 py-1.5">
+            <span className="text-xs font-medium text-gray-800 whitespace-nowrap">
+              {text}
+            </span>
+            {/* Flecha */}
+            <div
+              className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-white border-b border-r border-gray-200 rotate-45"
+              style={{ marginTop: '-4px' }}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
 
 // ============================================================
 // SELECT DE ÁREA CON BÚSQUEDA + PORTAL
@@ -47,22 +125,31 @@ const SelectArea = ({ value, opciones, onChange, disabled }) => {
 
   const seleccionado = value || '';
 
+  // Cuando está abierto, no mostrar el tooltip (el dropdown ya muestra la lista)
+  const contenido = (
+    <button
+      type="button"
+      onClick={() => !disabled && setAbierto(!abierto)}
+      disabled={disabled}
+      className={`w-full text-left h-8 flex items-center gap-1.5 px-2.5 text-xs rounded-lg border transition-all truncate ${
+        disabled
+          ? 'border-gray-100 text-gray-400 cursor-not-allowed bg-gray-50'
+          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:shadow-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300'
+      }`}
+      style={{ maxWidth: '150px' }}
+    >
+      <span className="flex-1 truncate font-medium">{seleccionado || 'Sin área'}</span>
+      {!disabled && <ChevronDown className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform ${abierto ? 'rotate-180' : ''}`} />}
+    </button>
+  );
+
   return (
     <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => !disabled && setAbierto(!abierto)}
-        disabled={disabled}
-        className={`w-full text-left h-8 flex items-center gap-1.5 px-2.5 text-xs rounded-lg border transition-all truncate ${
-          disabled
-            ? 'border-gray-100 text-gray-400 cursor-not-allowed bg-gray-50'
-            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:shadow-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300'
-        }`}
-        style={{ maxWidth: '150px' }}
-      >
-        <span className="flex-1 truncate font-medium">{seleccionado || 'Sin área'}</span>
-        {!disabled && <ChevronDown className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform ${abierto ? 'rotate-180' : ''}`} />}
-      </button>
+      {abierto ? contenido : (
+        <TooltipPremium text={seleccionado || 'Sin área'} className="block">
+          {contenido}
+        </TooltipPremium>
+      )}
 
       {abierto && !disabled && createPortal(
         <div
@@ -313,7 +400,12 @@ const TablaRol = ({
                           disabled={!rolHabilitado}
                         />
                       ) : (
-                        <span className="text-gray-600 text-xs">{emp.area}</span>
+                        <TooltipPremium
+                          text={emp.area || 'Sin área'}
+                          className="text-gray-600 text-xs block truncate cursor-help"
+                        >
+                          {emp.area || '-'}
+                        </TooltipPremium>
                       )}
                     </td>
 

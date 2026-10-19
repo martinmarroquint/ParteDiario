@@ -1,8 +1,6 @@
 // src/components/ocr/admin/ModalResetPasswordOCR.jsx
-// Modal para resetear contraseña de usuario OCR
-
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Loader2, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Loader2, Eye, EyeOff, CheckCircle2, AlertCircle, Key, User } from 'lucide-react';
 
 const ModalResetPasswordOCR = ({ isOpen, onClose, onGuardar, usuario }) => {
   const [password, setPassword] = useState('');
@@ -24,14 +22,17 @@ const ModalResetPasswordOCR = ({ isOpen, onClose, onGuardar, usuario }) => {
     }
   }, [isOpen]);
 
-  const generarPasswordAutomatica = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let result = '';
-    for (let i = 0; i < 12; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+  // Usa DNI si existe, si no el username. Rápido, sin aleatoriedad.
+  const usarDNI = () => {
+    const base = (usuario?.dni || usuario?.usuario || '').toString().trim();
+    if (!base) {
+      setError('Este usuario no tiene DNI ni nombre de usuario para usar como contraseña');
+      return;
     }
-    setPassword(result);
-    setConfirmPassword(result);
+    setPassword(base);
+    setConfirmPassword(base);
+    setError('');
+    setMostrarPassword(true);
   };
 
   const handleSubmit = async (e) => {
@@ -52,9 +53,7 @@ const ModalResetPasswordOCR = ({ isOpen, onClose, onGuardar, usuario }) => {
     try {
       await onGuardar(usuario.id, password);
       setExito(true);
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      setTimeout(() => onClose(), 800);
     } catch (err) {
       setError(err.message || 'Error al resetear contraseña');
     } finally {
@@ -64,16 +63,18 @@ const ModalResetPasswordOCR = ({ isOpen, onClose, onGuardar, usuario }) => {
 
   if (!isOpen || !usuario) return null;
 
+  const dniDisponible = !!(usuario?.dni || usuario?.usuario);
+
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[500] p-2 sm:p-4"
       onClick={onClose}
     >
-      <div 
+      <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div 
+        <div
           className="px-4 py-3 sm:px-5 sm:py-4 text-white flex items-center justify-between"
           style={{ backgroundColor: '#188C5D' }}
         >
@@ -97,6 +98,11 @@ const ModalResetPasswordOCR = ({ isOpen, onClose, onGuardar, usuario }) => {
             <p className="text-sm text-amber-700">
               <strong>Rol:</strong> {usuario.rol}
             </p>
+            {usuario.dni && (
+              <p className="text-sm text-amber-700">
+                <strong>DNI:</strong> {usuario.dni}
+              </p>
+            )}
           </div>
 
           <div>
@@ -110,16 +116,19 @@ const ModalResetPasswordOCR = ({ isOpen, onClose, onGuardar, usuario }) => {
                 value={password}
                 onChange={e => { setPassword(e.target.value); setError(''); }}
                 placeholder="Mínimo 6 caracteres"
-                className="w-full px-3 py-2.5 pr-24 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 bg-white font-mono"
+                className="w-full px-3 py-2.5 pr-28 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 bg-white font-mono"
                 disabled={guardando || exito}
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={generarPasswordAutomatica}
-                  className="p-1.5 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 text-xs font-medium"
+                  onClick={usarDNI}
+                  title="Usar DNI como contraseña"
+                  disabled={!dniDisponible || guardando || exito}
+                  className="p-1.5 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
                 >
-                  Generar
+                  <User className="w-3.5 h-3.5" />
+                  DNI
                 </button>
                 <button
                   type="button"

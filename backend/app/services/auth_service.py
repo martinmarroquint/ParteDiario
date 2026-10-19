@@ -164,28 +164,39 @@ class AuthService:
         
         return {"message": "Contrasena actualizada correctamente"}
     
-    async def reset_password_admin(self, user_id: int) -> dict:
-        """Admin resets a user's password."""
+    async def reset_password_admin(self, user_id: int, password: Optional[str] = None) -> dict:
+        """Admin resets a user's password.
+
+        Si 'password' viene informado, se usa esa (ej. DNI del usuario).
+        Si no, se genera una temporal aleatoria.
+        """
         user = await self.user_service.get_user_by_id(user_id)
-        
+
         if user is None:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        
-        temp_password = generate_temp_password()
-        
+
+        if password:
+            final_password = password
+            force_change = False
+        else:
+            final_password = generate_temp_password()
+            force_change = True
+
         # bcrypt — secure password hashing
-        new_hash = hash_password_bcrypt(temp_password)
-        
+        new_hash = hash_password_bcrypt(final_password)
+
         await self.user_service.update_user_field(user_id, "password", new_hash)
         # Clear salt field since bcrypt stores it in the hash
         await self.user_service.update_user_field(user_id, "salt", "")
-        
-        # Marcar que debe cambiar password en el próximo login
-        await self.user_service.update_user_field(user_id, "requiere_cambio_password", "TRUE")
-        
+
+        # Solo forzar cambio si la contraseña la generó el sistema
+        await self.user_service.update_user_field(
+            user_id, "requiere_cambio_password", "TRUE" if force_change else "FALSE"
+        )
+
         return {
             "message": f"Contraseña reseteada para {user.usuario}",
-            "temp_password": temp_password
+            "temp_password": final_password if force_change else None,
         }
     
     async def refresh_token(self, token: str) -> dict:

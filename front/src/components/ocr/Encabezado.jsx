@@ -1,7 +1,9 @@
 // src/components/ocr/Encabezado.jsx
 // Barra de herramientas - CON CAMBIAR CONTRASEÑA SIEMPRE VISIBLE
+// v2.0 - TOOLTIPS PREMIUM (fondo blanco) en todos los botones
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Save, RefreshCw, Printer, LogOut, 
   Loader2, Search, Shield, ChevronDown, Check,
@@ -20,6 +22,93 @@ const VISIBLES = 10;
 
 const btnBase = "p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors";
 
+// ============================================================
+// TOOLTIP PREMIUM (fondo blanco) — reutilizable en Encabezado
+// ============================================================
+const TooltipPremium = ({ text, children, className = '', delay = 120 }) => {
+  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, placement: 'top' });
+  const ref = useRef(null);
+  const timeoutRef = useRef(null);
+
+  const updatePos = () => {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const spaceAbove = r.top;
+    const spaceBelow = window.innerHeight - r.bottom;
+    // Si hay menos de 60px arriba → poner abajo. Si no → arriba.
+    const placement = spaceAbove < 60 && spaceBelow > spaceAbove ? 'bottom' : 'top';
+    setPos({
+      top: placement === 'top' ? r.top - 8 : r.bottom + 8,
+      left: r.left + r.width / 2,
+      placement,
+    });
+  };
+
+  const handleEnter = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      updatePos();
+      setShow(true);
+    }, delay);
+  };
+
+  const handleLeave = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setShow(false);
+  };
+
+  useEffect(() => {
+    if (!show) return;
+    const onScroll = () => updatePos();
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll, { capture: true });
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [show]);
+
+  return (
+    <>
+      <span
+        ref={ref}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+        className={className}
+      >
+        {children}
+      </span>
+      {show && text && createPortal(
+        <div
+          className="fixed z-[99999] pointer-events-none"
+          style={{
+            top: pos.top,
+            left: pos.left,
+            transform: pos.placement === 'top' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
+          }}
+        >
+          <div className="relative bg-white border border-gray-200 rounded-lg shadow-xl px-3 py-1.5">
+            <span className="text-xs font-medium text-gray-800 whitespace-nowrap">
+              {text}
+            </span>
+            {/* Flecha: apunta hacia el elemento */}
+            {pos.placement === 'top' ? (
+              <div className="absolute left-1/2 -translate-x-1/2 w-2 h-2 bg-white border-b border-r border-gray-200 rotate-45 top-full -mt-1" />
+            ) : (
+              <div className="absolute left-1/2 -translate-x-1/2 w-2 h-2 bg-white border-t border-l border-gray-200 rotate-45 bottom-full -mb-1" />
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+
+// ============================================================
+// SELECT PERSONALIZADO (sin cambios)
+// ============================================================
 const SelectPersonalizado = ({ value, onChange, opciones, placeholder, disabled = false, conBusqueda = false }) => {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -279,20 +368,20 @@ const Encabezado = ({
 
           {/* Burbujas: usuarios activos (estilo Google Sheets, rediseñado) — solo admin */}
           {esAdmin && usuariosActivos.length > 0 && (
-            <div className="flex items-center gap-2" title={`${usuariosActivos.length} conectado${usuariosActivos.length !== 1 ? 's' : ''} ahora`}>
+            <div className="flex items-center gap-2">
               <div className="hidden sm:block h-5 w-px bg-gray-200" />
               <div className="flex items-center -space-x-1.5">
                 {usuariosActivos.slice(0, 4).map(u => (
-                  <div key={u.user_id}
-                    className="group relative flex-shrink-0 transition-transform duration-150 hover:scale-110 hover:z-10"
-                    title={`${u.nombre}${u.area ? ` — ${u.area}` : ''}`}>
-                    <div
-                      className="w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-white text-[9px] font-bold tracking-wide select-none shadow-sm cursor-default"
-                      style={{ backgroundColor: colorUsuario(u) }}>
-                      {iniciales(u.nombre)}
+                  <TooltipPremium key={u.user_id} text={`${u.nombre}${u.area ? ` — ${u.area}` : ''}`}>
+                    <div className="group relative flex-shrink-0 transition-transform duration-150 hover:scale-110 hover:z-10">
+                      <div
+                        className="w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-white text-[9px] font-bold tracking-wide select-none shadow-sm cursor-default"
+                        style={{ backgroundColor: colorUsuario(u) }}>
+                        {iniciales(u.nombre)}
+                      </div>
+                      <span className="absolute -bottom-px -right-px w-2 h-2 rounded-full bg-emerald-400 ring-[1.5px] ring-white" />
                     </div>
-                    <span className="absolute -bottom-px -right-px w-2 h-2 rounded-full bg-emerald-400 ring-[1.5px] ring-white" />
-                  </div>
+                  </TooltipPremium>
                 ))}
               </div>
               {usuariosActivos.length > 4 && (
@@ -352,45 +441,54 @@ const Encabezado = ({
           {esAdmin && (
             <>
               {onPanelAdmin && (
-                <button onClick={onPanelAdmin} className={btnBase} title="Panel de Control">
-                  <Shield className="w-4 h-4" />
-                </button>
+                <TooltipPremium text="Panel de Control">
+                  <button onClick={onPanelAdmin} className={btnBase}>
+                    <Shield className="w-4 h-4" />
+                  </button>
+                </TooltipPremium>
               )}
 
               {onAbrirAdminUsuarios && (
-                <button 
-                  onClick={onAbrirAdminUsuarios} 
-                  className={`${btnBase} relative`} 
-                  title="Administrar Usuarios"
-                  data-tour="tour-admin-usuarios"
-                >
-                  <UserCog className="w-4 h-4" />
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-emerald-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
-                    {personalLength || 0}
-                  </span>
-                </button>
+                <TooltipPremium text="Administrar Usuarios">
+                  <button 
+                    onClick={onAbrirAdminUsuarios} 
+                    className={`${btnBase} relative`}
+                    data-tour="tour-admin-usuarios"
+                  >
+                    <UserCog className="w-4 h-4" />
+                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-emerald-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                      {personalLength || 0}
+                    </span>
+                  </button>
+                </TooltipPremium>
               )}
 
               <span className="w-px h-5 bg-gray-200 mx-1 flex-shrink-0" />
 
               {onRecargar && (
-                <button onClick={onRecargar} disabled={cargando} className={btnBase} title="Recargar">
-                  <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
-                </button>
+                <TooltipPremium text="Recargar">
+                  <button onClick={onRecargar} disabled={cargando} className={btnBase}>
+                    <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
+                  </button>
+                </TooltipPremium>
               )}
 
               {/* Admin: Sin botón Guardar (tiempo real), Imprimir siempre visible */}
               {puedeImprimir && onImprimir && (
-                <button onClick={onImprimir} className={`${btnBase} flex-shrink-0`} title="Imprimir" data-tour="tour-imprimir">
-                  <Printer className="w-4 h-4" />
-                </button>
+                <TooltipPremium text="Imprimir">
+                  <button onClick={onImprimir} className={`${btnBase} flex-shrink-0`} data-tour="tour-imprimir">
+                    <Printer className="w-4 h-4" />
+                  </button>
+                </TooltipPremium>
               )}
 
               {puedeBandeja && onAbrirCambiosTurno && (
-                <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`} title="Bandeja" data-tour="tour-bandeja">
-                  <Inbox className="w-4 h-4" />
-                  {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
-                </button>
+                <TooltipPremium text="Bandeja de solicitudes">
+                  <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`} data-tour="tour-bandeja">
+                    <Inbox className="w-4 h-4" />
+                    {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
+                  </button>
+                </TooltipPremium>
               )}
             </>
           )}
@@ -401,33 +499,41 @@ const Encabezado = ({
           {esJefe && !esAdmin && (
             <>
               {onRecargar && (
-                <button onClick={onRecargar} disabled={cargando} className={btnBase} title="Recargar">
-                  <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
-                </button>
+                <TooltipPremium text="Recargar">
+                  <button onClick={onRecargar} disabled={cargando} className={btnBase}>
+                    <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
+                  </button>
+                </TooltipPremium>
               )}
 
               {/* Jefe: Guardar para bloquear el rol */}
               {onGuardar && !rolGuardado && (
-                <button onClick={onGuardar} disabled={guardando}
-                  className="h-8 px-4 text-xs font-semibold text-white rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
-                  style={{ backgroundColor: COLOR_PRIMARIO }}
-                  data-tour="tour-guardar">
-                  {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" /> : <Save className="w-3.5 h-3.5 flex-shrink-0" />}
-                  Guardar
-                </button>
+                <TooltipPremium text="Guardar y cerrar rol">
+                  <button onClick={onGuardar} disabled={guardando}
+                    className="h-8 px-4 text-xs font-semibold text-white rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+                    style={{ backgroundColor: COLOR_PRIMARIO }}
+                    data-tour="tour-guardar">
+                    {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" /> : <Save className="w-3.5 h-3.5 flex-shrink-0" />}
+                    Guardar
+                  </button>
+                </TooltipPremium>
               )}
 
               {puedeBandeja && onAbrirCambiosTurno && (
-                <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`} title="Bandeja">
-                  <Inbox className="w-4 h-4" />
-                  {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
-                </button>
+                <TooltipPremium text="Bandeja de solicitudes">
+                  <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`}>
+                    <Inbox className="w-4 h-4" />
+                    {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
+                  </button>
+                </TooltipPremium>
               )}
 
               {puedeImprimir && onImprimir && rolGuardado && (
-                <button onClick={onImprimir} className={`${btnBase} flex-shrink-0`} title="Imprimir">
-                  <Printer className="w-4 h-4" />
-                </button>
+                <TooltipPremium text="Imprimir">
+                  <button onClick={onImprimir} className={`${btnBase} flex-shrink-0`}>
+                    <Printer className="w-4 h-4" />
+                  </button>
+                </TooltipPremium>
               )}
             </>
           )}
@@ -438,19 +544,23 @@ const Encabezado = ({
           {!esAdmin && (
             <>
               {puedeSolicitarCambio && onAbrirCambiosTurno && (
-                <button onClick={onAbrirCambiosTurno} 
-                  className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
-                  data-tour="tour-solicitar-cambio">
-                  <Calendar className="w-3.5 h-3.5 flex-shrink-0" /> Solicitar Cambio
-                </button>
+                <TooltipPremium text="Solicitar cambio de turno">
+                  <button onClick={onAbrirCambiosTurno} 
+                    className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+                    data-tour="tour-solicitar-cambio">
+                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" /> Solicitar Cambio
+                  </button>
+                </TooltipPremium>
               )}
 
               {puedeDescansoMedico && onRegistrarDescanso && (
-                <button onClick={onRegistrarDescanso} 
-                  className="h-8 px-3 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
-                  data-tour="tour-descanso-medico">
-                  <Clock className="w-3.5 h-3.5 flex-shrink-0" /> Descanso Medico
-                </button>
+                <TooltipPremium text="Registrar descanso médico">
+                  <button onClick={onRegistrarDescanso} 
+                    className="h-8 px-3 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+                    data-tour="tour-descanso-medico">
+                    <Clock className="w-3.5 h-3.5 flex-shrink-0" /> Descanso Medico
+                  </button>
+                </TooltipPremium>
               )}
             </>
           )}
@@ -461,44 +571,47 @@ const Encabezado = ({
           
           {/* Mesa de Partes - Visible para todos los usuarios autenticados */}
           {onAbrirMesaPartes && (
-            <button 
-              onClick={onAbrirMesaPartes} 
-              className={`${btnBase} relative`} 
-              title="Mesa de Partes"
-              data-tour="tour-mesa-partes"
-            >
-              <FileText className="w-4 h-4" />
-              {pendingMesaPartesCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
-                  {pendingMesaPartesCount > 99 ? '99+' : pendingMesaPartesCount}
-                </span>
-              )}
-            </button>
+            <TooltipPremium text="Mesa de Partes">
+              <button 
+                onClick={onAbrirMesaPartes} 
+                className={`${btnBase} relative`}
+                data-tour="tour-mesa-partes"
+              >
+                <FileText className="w-4 h-4" />
+                {pendingMesaPartesCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                    {pendingMesaPartesCount > 99 ? '99+' : pendingMesaPartesCount}
+                  </span>
+                )}
+              </button>
+            </TooltipPremium>
           )}
 
           {/* Parte Diario (modal dentro del sistema) - Visible para todos los usuarios autenticados */}
-          <button 
-            onClick={() => setMostrarParteDiario(true)} 
-            className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
-            title="Ver el Parte Diario"
-            data-tour="tour-parte-diario"
-          >
-            <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" /> Parte Diario
-          </button>
+          <TooltipPremium text="Ver el Parte Diario">
+            <button 
+              onClick={() => setMostrarParteDiario(true)} 
+              className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+              data-tour="tour-parte-diario"
+            >
+              <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" /> Parte Diario
+            </button>
+          </TooltipPremium>
 
           {/* Cambiar Contrasena - SIEMPRE VISIBLE */}
-          <button 
-            onClick={() => {
-              if (onAbrirCambiarPassword) {
-                onAbrirCambiarPassword();
-              }
-            }} 
-            className={`${btnBase} relative`} 
-            title="Cambiar Contrasena"
-            data-tour="tour-cambiar-password"
-          >
-            <Key className="w-4 h-4" />
-          </button>
+          <TooltipPremium text="Cambiar Contraseña">
+            <button 
+              onClick={() => {
+                if (onAbrirCambiarPassword) {
+                  onAbrirCambiarPassword();
+                }
+              }} 
+              className={`${btnBase} relative`}
+              data-tour="tour-cambiar-password"
+            >
+              <Key className="w-4 h-4" />
+            </button>
+          </TooltipPremium>
 
           {/* Tour guiado - Boton de ayuda profesional */}
           {onRestartTour && (
@@ -539,9 +652,11 @@ const Encabezado = ({
           )}
 
           {/* Salir - Siempre visible */}
-          <button onClick={onSalir} className={`${btnBase} hover:text-red-500 flex-shrink-0`} title="Salir" data-tour="tour-salir">
-            <LogOut className="w-4 h-4" />
-          </button>
+          <TooltipPremium text="Cerrar sesión">
+            <button onClick={onSalir} className={`${btnBase} hover:text-red-500 flex-shrink-0`} data-tour="tour-salir">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </TooltipPremium>
         </div>
       </div>
 
@@ -630,19 +745,21 @@ const Encabezado = ({
               {/* Agregar Personal */}
               {(esAdmin || esJefe) && onToggleAgregar && (
                 <div className="relative flex-shrink-0">
-                  <button 
-                    id="btn-agregar-personal"
-                    onClick={onToggleAgregar}
-                    className={`h-8 px-3 text-[11px] font-medium rounded-lg border flex items-center gap-1.5 transition-all whitespace-nowrap ${
-                      mostrarAgregar 
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300' 
-                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                    }`}
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    Agregar personal
-                    <ChevronDown className={`w-3 h-3 transition-transform ${mostrarAgregar ? 'rotate-180' : ''}`} />
-                  </button>
+                  <TooltipPremium text="Agregar personal de otras áreas">
+                    <button 
+                      id="btn-agregar-personal"
+                      onClick={onToggleAgregar}
+                      className={`h-8 px-3 text-[11px] font-medium rounded-lg border flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                        mostrarAgregar 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300' 
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                      }`}
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Agregar personal
+                      <ChevronDown className={`w-3 h-3 transition-transform ${mostrarAgregar ? 'rotate-180' : ''}`} />
+                    </button>
+                  </TooltipPremium>
 
                   {mostrarAgregar && (
                     <div id="panel-agregar-personal" className="absolute top-full mt-2 left-0 bg-white border border-gray-200 rounded-2xl shadow-2xl z-[9999]" style={{ width: '420px' }}>

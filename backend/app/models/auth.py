@@ -47,4 +47,4 @@ class MessageResponse(BaseModel):
 
 class TempPasswordResponse(BaseModel):
     message: str
-    temp_password: str
+    temp_password: Optional[str] = None

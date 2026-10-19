@@ -1,0 +1,4 @@
+# Artefactos locales / de herramientas (no van al repo)
+.atl/
+.engram/
+front/.firebase/

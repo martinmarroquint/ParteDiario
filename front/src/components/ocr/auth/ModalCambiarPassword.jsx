@@ -77,16 +77,6 @@ const ModalCambiarPassword = ({
     }
   };
 
-  const generarPasswordAutomatica = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let result = '';
-    for (let i = 0; i < 12; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setPasswordNueva(result);
-    setConfirmPassword(result);
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -158,19 +148,20 @@ const ModalCambiarPassword = ({
                 value={passwordNueva}
                 onChange={e => setPasswordNueva(e.target.value)}
                 placeholder="Mínimo 6 caracteres"
-                className="w-full px-3 py-2.5 pr-20 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 bg-white font-mono"
+                className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 bg-white font-mono"
                 disabled={guardando || exito}
               />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={generarPasswordAutomatica}
-                  className="p-1.5 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 text-xs font-medium"
-                >
-                  Generar
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarPassword(!mostrarPassword)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+              >
+                {mostrarPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Elige una contraseña que puedas recordar. Mínimo 6 caracteres.
+            </p>
           </div>
 
           {/* Confirmar Contraseña */}

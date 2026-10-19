@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import apiClient from '../services/apiClient';
 import { adminUsuariosService } from './adminUsuariosService';
+import ModalResetPasswordOCR from './ModalResetPasswordOCR';
 
 // ============================================================
 // CONFIGURACION
@@ -74,6 +75,10 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   const [guardando, setGuardando] = useState(false);
   const [erroresForm, setErroresForm] = useState({});
   const [busquedaArea, setBusquedaArea] = useState('');
+
+  // Modal de reset password
+  const [modalResetOpen, setModalResetOpen] = useState(false);
+  const [usuarioResetSeleccionado, setUsuarioResetSeleccionado] = useState(null);
   // ============================================================
 
   // ============================================================
@@ -236,7 +241,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
     setFormData({
       nombre: empleado.nombre,
       usuario: usuarioBase,
-      password: generarPassword(),
+      password: empleado.dni || generarPassword(),
       rol: 'usuario',
       area: empleado.area,
       areas: [empleado.area],  // Default: solo su area
@@ -349,37 +354,27 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
     }
   };
 
-  const resetearPassword = async (empleado) => {
-    const userId = parseInt(empleado.usuario.id);
-    if (!userId) {
+  // Abre el modal bonito de reset password
+  const resetearPassword = (empleado) => {
+    if (!empleado?.usuario?.id) {
       setMensajeError('No se pudo identificar el usuario');
       return;
     }
+    setUsuarioResetSeleccionado(empleado);
+    setModalResetOpen(true);
+  };
 
-    if (!window.confirm(`¿Resetear contraseña para ${empleado.nombre}?\n\nSe generará una contraseña temporal que deberá comunicar al usuario.`)) {
-      return;
-    }
-
-    setGuardando(true);
-
-    try {
-      const data = await apiClient.resetUserPassword(userId);
-
-      // Mostrar contraseña en modal dedicado
-      setPasswordResetResult({
-        nombre: empleado.nombre,
-        usuario: empleado.usuario.usuario,
-        tempPassword: data.temp_password
-      });
-      setModalUsuario(null);
-
-      cargarDatos();
-
-    } catch (err) {
-      setMensajeError(err.message || 'Error al resetear contraseña');
-    } finally {
-      setGuardando(false);
-    }
+  // Handler que el modal llama al confirmar
+  const guardarNuevaPassword = async (userId, newPassword) => {
+    const data = await apiClient.resetUserPassword(userId, newPassword);
+    setPasswordResetResult({
+      nombre: usuarioResetSeleccionado?.nombre || '',
+      usuario: usuarioResetSeleccionado?.usuario?.usuario || '',
+      tempPassword: data?.temp_password || newPassword,
+    });
+    setModalResetOpen(false);
+    setUsuarioResetSeleccionado(null);
+    // Sin cargarDatos() → evita el refetch lento a Google Sheets
   };
 
   const toggleActivo = async (empleado) => {
@@ -1056,6 +1051,29 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
           </div>
         </div>
       )}
+
+      {/* ============================================================
+          MODAL: RESET PASSWORD (reemplaza window.prompt)
+          ============================================================ */}
+      <ModalResetPasswordOCR
+        isOpen={modalResetOpen}
+        onClose={() => {
+          setModalResetOpen(false);
+          setUsuarioResetSeleccionado(null);
+        }}
+        onGuardar={guardarNuevaPassword}
+        usuario={
+          usuarioResetSeleccionado
+            ? {
+                id: parseInt(usuarioResetSeleccionado.usuario.id),
+                nombre: usuarioResetSeleccionado.nombre,
+                usuario: usuarioResetSeleccionado.usuario.usuario,
+                dni: usuarioResetSeleccionado.dni,
+                rol: usuarioResetSeleccionado.usuario.rol,
+              }
+            : null
+        }
+      />
 
       {/* ============================================================
           MODAL: CONTRASEÑA GENERADA
