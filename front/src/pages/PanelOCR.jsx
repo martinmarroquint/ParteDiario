@@ -56,9 +56,11 @@ const getStoredSession = () => {
       // El visualizador (6) no debe tapar un rol de jefe si convive con el.
       const rolesEfectivos = user.roles.filter(r => r !== 6);
       const maxRol = rolesEfectivos.length ? Math.max(...rolesEfectivos) : 6;
-      if (!user.rol) user.rol = rolMap[maxRol] || 'usuario';
-      if (!user.rol_principal) user.rol_principal = maxRol;
-      if (!user.areas) user.areas = user.area ? [user.area] : [];
+      // Recalcular SIEMPRE desde `roles`: un rol cacheado viejo no debe mandar
+      // (es la causa de que un visualizador viera la vista de "usuario"/todo).
+      user.rol = rolMap[maxRol] || 'usuario';
+      user.rol_principal = maxRol;
+      if (!Array.isArray(user.areas)) user.areas = user.area ? [user.area] : [];
     }
     const sessionData = session ? JSON.parse(session) : null;
     return { user, sessionData };
@@ -171,6 +173,13 @@ const PanelOCRContent = () => {
         }
       } catch (e) {
         console.warn('Backend no disponible, usando datos locales:', e.message);
+        // Si el token expiro, no dejar la sesion con datos viejos: un rol
+        // cacheado haria que un visualizador viera/edite con permisos previos.
+        if (String(e.message || '').toLowerCase().includes('expirada')) {
+          localStorage.removeItem('ocr_auth_token');
+          localStorage.removeItem('ocr_user_data');
+          window.location.href = '/';
+        }
       }
     };
 

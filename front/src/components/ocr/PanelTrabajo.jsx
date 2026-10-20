@@ -70,11 +70,20 @@ const guardarSesion = (mes, anio) => {
   } catch { /* almacenamiento no disponible */ }
 };
 
+/** true si la fila del rol corresponde al propio usuario (por DNI o, si no, por nombre). */
+const esFilaPropia = (persona, usuario) => {
+  if (!persona || !usuario) return false;
+  const dni = String(usuario.dni || '').trim();
+  if (dni && String(persona.dni || '').trim() === dni) return true;
+  const nombre = String(usuario.nombre || '').trim().toLowerCase();
+  return !!nombre && String(persona.nombre || '').trim().toLowerCase() === nombre;
+};
+
 const PanelTrabajo = ({ 
   areaAsignada, 
   responsable, 
   esAdmin, 
-  esVisualizador = false,
+  esVisualizador: esVisualizadorProp = false,
   onSalir, 
   todasLasAreas, 
   medicos = [], 
@@ -89,6 +98,14 @@ const PanelTrabajo = ({
   pendingSolicitudesCount = 0,
   pendingMesaPartesCount = 0
 }) => {
+  // Rol efectivo: si el usuario tiene SOLO el rol 6, es visualizador aunque el
+  // flag de sesion haya quedado desactualizado. Evita que un cache viejo le
+  // muestre la vista completa o le oculte el selector de mes.
+  const esVisualizador = esVisualizadorProp || (
+    Array.isArray(user?.roles) &&
+    user.roles.includes(6) &&
+    !user.roles.some(r => r !== 6)
+  );
   const [config, setConfig] = useState(DEFAULT_GOOGLE_CONFIG);
   const [hojasDisponibles, setHojasDisponibles] = useState([]);
   const [hojaSeleccionada, setHojaSeleccionada] = useState(config.sheetName || hojaDelMesActual());
@@ -268,12 +285,14 @@ const PanelTrabajo = ({
         const asignadas = (user?.areas || []).filter(Boolean);
         if (!asignadas.length) return personal;
         const set = new Set(asignadas.map(a => a.trim().toUpperCase()));
-        return personal.filter(p => set.has((p.area || '').trim().toUpperCase()));
+        return personal.filter(p => set.has((p.area || '').trim().toUpperCase()) || esFilaPropia(p, user));
       }
-      return personal.filter(p => p.area === areaSeleccionadaAdmin);
+      return personal.filter(p => p.area === areaSeleccionadaAdmin || esFilaPropia(p, user));
     } else if (esJefe) {
       const areaActual = areaSeleccionadaJefe || areaAsignada;
-      return personal.filter(p => p.area === areaActual);
+      // El jefe siempre ve su propio horario, aunque su legajo pertenezca
+      // a un area distinta de la que gestiona.
+      return personal.filter(p => p.area === areaActual || esFilaPropia(p, user));
     } else if (esUsuario) {
       // Filtrar por nombre (consistente entre USUARIOS_OCR y PERSONAL)
       const nombreUser = (user?.nombre || '').toLowerCase().trim();

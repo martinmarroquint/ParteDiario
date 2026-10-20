@@ -88,11 +88,20 @@ const columnaLetra = (numero) => {
 // ============================================
 // COMPONENTE
 // ============================================
+/** true si la fila del rol corresponde al propio usuario (por DNI o, si no, por nombre). */
+const esFilaPropia = (persona, usuario) => {
+  if (!persona || !usuario) return false;
+  const dni = String(usuario.dni || '').trim();
+  if (dni && String(persona.dni || '').trim() === dni) return true;
+  const nombre = String(usuario.nombre || '').trim().toLowerCase();
+  return !!nombre && String(persona.nombre || '').trim().toLowerCase() === nombre;
+};
+
 const MobileRolView = ({
   areaAsignada,
   responsable,
   esAdmin,
-  esVisualizador = false,
+  esVisualizador: esVisualizadorProp = false,
   onSalir,
   onAbrirCambiosTurno,
   todasLasAreas = [],
@@ -105,6 +114,12 @@ const MobileRolView = ({
   onAbrirMesaPartes = null,
   esTramite = false
 }) => {
+  // Rol efectivo derivado de `roles`, no solo del flag de sesion.
+  const esVisualizador = esVisualizadorProp || (
+    Array.isArray(user?.roles) &&
+    user.roles.includes(6) &&
+    !user.roles.some(r => r !== 6)
+  );
   // ============================================
   // REFS PARA CONTROL DE CARGA
   // ============================================
@@ -398,14 +413,16 @@ const MobileRolView = ({
           incluir = true;
         } else if (esVisualizador) {
           // Lector: sus areas asignadas; sin areas asignadas ve todo.
+          // Su propia fila siempre se incluye aunque trabaje en otra area.
           const asignadas = (user?.areas || [])
             .filter(Boolean)
             .map(a => a.trim().toUpperCase());
-          incluir = asignadas.length === 0
+          incluir = (asignadas.length === 0
             ? true
-            : asignadas.includes((af || '').trim().toUpperCase()) || af === 'SIN_SERVICIO';
+            : asignadas.includes((af || '').trim().toUpperCase()) || af === 'SIN_SERVICIO')
+            || esFilaPropia(emp, user);
         } else if (esJefe) {
-          incluir = af === areaAsignada || af === 'SIN_SERVICIO';
+          incluir = af === areaAsignada || af === 'SIN_SERVICIO' || esFilaPropia(emp, user);
         } else if (esUsuario && user) {
           const nombreUser = (user.nombre || '').toLowerCase().trim();
           const nombreEmp = (emp.nombre || '').toLowerCase().trim();

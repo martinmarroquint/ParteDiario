@@ -113,6 +113,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
           password_hash: '',  // Never exposed by backend
           salt: '',           // Never exposed by backend
           rol: rolStr,
+          areas: Array.isArray(u.areas) ? u.areas : [],
           area: Array.isArray(u.areas) ? u.areas.join(',') : (u.areas || ''),
           fecha_creacion: u.creado_en || '',
           ultimo_acceso: '',
@@ -258,15 +259,19 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
 
   const abrirEditarUsuario = (empleado) => {
     const user = empleado.usuario;
-    // Parsear areas del JSON guardado
-    let areasArr = [empleado.area];
-    try {
-      if (user.area && user.area.startsWith('[')) {
-        areasArr = JSON.parse(user.area);
-      } else if (user.area) {
-        areasArr = [user.area];
-      }
-    } catch { areasArr = [empleado.area]; }
+    // Areas ASIGNADAS del usuario (no el area de trabajo del legajo).
+    // Antes se partia de [empleado.area], lo que convertia el area de trabajo
+    // en un area asignada y, con 0 areas, la guardaba como si se hubiera elegido.
+    let areasArr = Array.isArray(user.areas) ? [...user.areas] : [];
+    if (!areasArr.length && user.area) {
+      try {
+        if (String(user.area).startsWith('[')) {
+          areasArr = JSON.parse(user.area);
+        } else {
+          areasArr = String(user.area).split(',').map(a => a.trim()).filter(Boolean);
+        }
+      } catch { areasArr = []; }
+    }
     
     setFormData({
       nombre: empleado.nombre,
@@ -1000,6 +1005,11 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
                   )}
                   {erroresForm.areas && (
                     <p className="text-xs text-red-500 mt-1">{erroresForm.areas}</p>
+                  )}
+                  {formData.rol === 'visualizador' && formData.areas.length === 0 && (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-2">
+                      Sin áreas marcadas: este usuario verá <strong>todas las áreas</strong> en solo lectura.
+                    </p>
                   )}
                 </div>
               )}
