@@ -434,6 +434,13 @@ const ModalSolicitudCambioTurno = ({
     return () => window.removeEventListener('keydown', h);
   }, [isOpen, onClose, vista]);
 
+  // Al mostrar la bandeja se marcan las respuestas como vistas (limpia el badge).
+  useEffect(() => {
+    if (isOpen && vista === 'lista') {
+      window.dispatchEvent(new CustomEvent('solicitudes-bandeja-abierta'));
+    }
+  }, [isOpen, vista]);
+
   if (!isOpen) return null;
 
   if (vista === 'registro') {
@@ -451,6 +458,15 @@ const ModalSolicitudCambioTurno = ({
       />
     );
   }
+
+  const notificarCambio = () => {
+    try {
+      const ch = new BroadcastChannel('ocr_solicitudes');
+      ch.postMessage({ type: 'changed' });
+      ch.close();
+    } catch { /* sin BroadcastChannel */ }
+    window.dispatchEvent(new CustomEvent('solicitud-aprobada'));
+  };
 
   const procesar = async (sol, nuevoEstado) => {
     if (procesandoRef.current) return;
@@ -470,10 +486,11 @@ const ModalSolicitudCambioTurno = ({
           ? 'Solicitud aprobada. Cambios aplicados al rol.'
           : 'Solicitud aprobada. Pasa al siguiente nivel de la cadena.');
         onCambioAplicado?.();
-        window.dispatchEvent(new CustomEvent('solicitud-aprobada'));
+        notificarCambio();
       } else {
         await apiClient.rechazarSolicitud(sol.id, { motivo_rechazo: observacion.trim() });
         setError('Solicitud desaprobada.');
+        notificarCambio();
       }
       setObservacion('');
       setExpandida(null);
@@ -495,6 +512,7 @@ const ModalSolicitudCambioTurno = ({
     try {
       await apiClient.cancelarSolicitud(sol.id, {});
       setError('Solicitud cancelada.');
+      notificarCambio();
       await cargar();
       setTimeout(() => setError(''), 4000);
     } catch (e) {

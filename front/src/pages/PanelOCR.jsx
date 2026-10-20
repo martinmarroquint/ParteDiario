@@ -643,18 +643,65 @@ const PanelOCRContent = () => {
   // ============================================================
   // Contador de la bandeja de cambios de turno (badge en PC y en movil).
   const refrescarContadorSolicitudes = useCallback(async () => {
-    if (!isAdmin && !isJefe) {
-      setPendingSolicitudesCount(0);
-      return;
-    }
+    const esGestor = isAdmin || isJefe;
     try {
-      const result = await solicitudesService.getBandeja();
+      if (esGestor) {
+        // Jefe/admin: solicitudes pendientes en su paso de la cadena.
+        const result = await solicitudesService.getBandeja();
+        const lista = result?.solicitudes || result?.data || [];
+        setPendingSolicitudesCount(lista.filter(s => s.estado === 'PENDIENTE').length);
+        return;
+      }
+      // Usuario/visor: respuestas nuevas a SUS solicitudes (no vistas aun).
+      const result = await solicitudesService.getMisSolicitudes();
       const lista = result?.solicitudes || result?.data || [];
-      setPendingSolicitudesCount(lista.filter(s => s.estado === 'PENDIENTE').length);
+      const key = `ocr_solicitudes_vistas_${user?.id || user?.usuario || 'anon'}`;
+      const vistoMs = localStorage.getItem(key) ? new Date(localStorage.getItem(key)).getTime() : 0;
+      const nuevas = lista.filter(s => {
+        if (s.estado === 'PENDIENTE') return false;
+        const ultimoHistorial = Array.isArray(s.historial) && s.historial.length
+          ? s.historial[s.historial.length - 1]?.fecha
+          : '';
+        const fecha = s.actualizado_en || ultimoHistorial || s.creado_en || '';
+        const ms = fecha ? new Date(fecha).getTime() : 0;
+        return ms > vistoMs;
+      }).length;
+      setPendingSolicitudesCount(nuevas);
     } catch { /* sin permiso o sin red: se conserva el valor previo */ }
-  }, [isAdmin, isJefe]);
+  }, [isAdmin, isJefe, user]);
 
   useEffect(() => { refrescarContadorSolicitudes(); }, [refrescarContadorSolicitudes]);
+
+  // Polling: el badge se actualiza solo aunque otro usuario cree/responda.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const tick = () => { if (document.visibilityState === 'visible') refrescarContadorSolicitudes(); };
+    const it = setInterval(tick, 60000);
+    const onVis = () => { if (document.visibilityState === 'visible') refrescarContadorSolicitudes(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(it); document.removeEventListener('visibilitychange', onVis); };
+  }, [isAuthenticated, refrescarContadorSolicitudes]);
+
+  // Al abrir la bandeja se marcan como vistas las respuestas.
+  useEffect(() => {
+    const marcarVistas = () => {
+      const key = `ocr_solicitudes_vistas_${user?.id || user?.usuario || 'anon'}`;
+      localStorage.setItem(key, new Date().toISOString());
+      setPendingSolicitudesCount(0);
+    };
+    window.addEventListener('solicitudes-bandeja-abierta', marcarVistas);
+    return () => window.removeEventListener('solicitudes-bandeja-abierta', marcarVistas);
+  }, [user]);
+
+  // Sincronizacion entre pestanas: al aprobar/rechazar en otra, refrescar.
+  useEffect(() => {
+    let ch = null;
+    try {
+      ch = new BroadcastChannel('ocr_solicitudes');
+      ch.onmessage = () => refrescarContadorSolicitudes();
+    } catch { /* sin BroadcastChannel */ }
+    return () => { try { ch?.close(); } catch { /* noop */ } };
+  }, [refrescarContadorSolicitudes]);
 
   useEffect(() => {
     const handler = () => refrescarContadorSolicitudes();
