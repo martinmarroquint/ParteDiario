@@ -100,3 +100,20 @@ async def require_jefe_or_admin(current_user: User = Depends(get_current_user)) 
             detail="Se requiere rol de jefe o administrador",
         )
     return current_user
+
+
+async def require_escritura(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency for endpoints that WRITE data.
+
+    Un usuario que SOLO tiene el rol visualizador (6) es de solo lectura:
+    ve todo (o sus areas) pero no modifica nada. Para cualquier otro rol el
+    comportamiento es identico al de get_current_user, asi que ningun usuario
+    existente cambia de permisos.
+    """
+    roles = current_user.roles or []
+    if roles and all(r == 6 for r in roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Rol de solo lectura: no puede modificar datos",
+        )
+    return current_user

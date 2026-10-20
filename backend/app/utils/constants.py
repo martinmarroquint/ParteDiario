@@ -7,7 +7,8 @@ ROLES = {
     2: "jefe_departamento",
     3: "jefe_division",
     4: "admin",
-    5: "tramite_documentario"
+    5: "tramite_documentario",
+    6: "visualizador"
 }
 
 # Turn codes

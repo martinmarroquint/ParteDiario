@@ -7,7 +7,7 @@ from app.models.descanso import (
 )
 from app.services.descanso_service import DescansoService
 from app.services.sheets_service import GoogleSheetsService
-from app.middleware.auth import get_current_user, require_jefe_or_admin
+from app.middleware.auth import get_current_user, require_jefe_or_admin, require_escritura
 from app.models.user import User
 
 router = APIRouter(prefix="/descansos", tags=["Descansos Médicos"])
@@ -56,9 +56,9 @@ async def get_descanso(
 @router.post("", response_model=DescansoMedicoResponse, status_code=201)
 async def registrar_descanso(
     data: DescansoMedicoCreate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_escritura)
 ):
-    """Register a medical rest (any user for their area)."""
+    """Register a medical rest (any user for their area, salvo solo-lectura)."""
     try:
         descanso = await descanso_service.registrar_descanso(current_user.id, data)
         return DescansoMedicoResponse(descanso=descanso)

@@ -52,9 +52,12 @@ const getStoredSession = () => {
     if (!user || !user.nombre) return null;
     // Asegurar que los campos 'rol' y 'rol_principal' existan
     if (user.roles && user.roles.length) {
-      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin', 5: 'tramite_documentario' };
-      if (!user.rol) user.rol = rolMap[Math.max(...user.roles)] || 'usuario';
-      if (!user.rol_principal) user.rol_principal = Math.max(...user.roles);
+      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin', 5: 'tramite_documentario', 6: 'visualizador' };
+      // El visualizador (6) no debe tapar un rol de jefe si convive con el.
+      const rolesEfectivos = user.roles.filter(r => r !== 6);
+      const maxRol = rolesEfectivos.length ? Math.max(...rolesEfectivos) : 6;
+      if (!user.rol) user.rol = rolMap[maxRol] || 'usuario';
+      if (!user.rol_principal) user.rol_principal = maxRol;
       if (!user.areas) user.areas = user.area ? [user.area] : [];
     }
     const sessionData = session ? JSON.parse(session) : null;
@@ -84,6 +87,7 @@ const PanelOCRContent = () => {
   const [responsable, setResponsable] = useState(initialSession?.user?.nombre || '');
   const [esAdmin, setEsAdmin] = useState(initialSession?.user?.rol === 'admin');
   const [esTramite, setEsTramite] = useState(initialSession?.user?.rol === 'tramite_documentario');
+  const [esVisualizador, setEsVisualizador] = useState(initialSession?.user?.rol === 'visualizador');
   const [areas, setAreas] = useState([]);
   const [responsables, setResponsables] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -146,8 +150,9 @@ const PanelOCRContent = () => {
       try {
         const result = await apiClient.get('/users/me', {}, { _skipAuthRedirect: true });
         if (result && result.roles) {
-      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin', 5: 'tramite_documentario' };
-          const maxRol = Math.max(...result.roles);
+      const rolMap = { 0: 'usuario', 1: 'jefe_area', 2: 'jefe_departamento', 3: 'jefe_division', 4: 'admin', 5: 'tramite_documentario', 6: 'visualizador' };
+          const rolesEfectivos = (result.roles || []).filter(r => r !== 6);
+          const maxRol = rolesEfectivos.length ? Math.max(...rolesEfectivos) : 6;
           const freshUser = {
             ...result,
             rol: rolMap[maxRol] || 'usuario',
@@ -160,6 +165,7 @@ const PanelOCRContent = () => {
           setIsAdmin(maxRol === 4);
           setIsJefe([1, 2, 3].includes(maxRol));
           setIsUsuario(maxRol === 0);
+          setEsVisualizador(maxRol === 6);
           // Cargar turnos dinámicos desde BD sheet (sesión restaurada)
           initTurnosDinamicos();
         }
@@ -295,12 +301,14 @@ const PanelOCRContent = () => {
             2: 'jefe_departamento',
             3: 'jefe_division',
             4: 'admin',
-            5: 'tramite_documentario'
+            5: 'tramite_documentario',
+            6: 'visualizador'
           };
           
           const rolString = rolMap[userData.rol_principal] || 'usuario';
           
-          const maxRol = userData.rol_principal || (userData.roles?.length ? Math.max(...userData.roles) : 0);
+          const rolesEfectivos = (userData.roles || []).filter(r => r !== 6);
+          const maxRol = userData.rol_principal || (rolesEfectivos.length ? Math.max(...rolesEfectivos) : 6);
           const normalizedUser = {
             ...userData,
             rol: rolString,
@@ -318,6 +326,7 @@ const PanelOCRContent = () => {
           setResponsable(userData.nombre);
           setEsAdmin(userData.rol_principal === 4);
           setEsTramite(userData.rol_principal === 5);
+          setEsVisualizador(userData.rol_principal === 6);
           
           if (userData.areas && userData.areas.length > 0) {
             setAreaSeleccionada(userData.areas[0]);
@@ -455,6 +464,13 @@ const PanelOCRContent = () => {
     };
     cargar();
   }, []);
+
+  // Un visualizador global no tiene areas asignadas: arrancar en la primera.
+  useEffect(() => {
+    if (esVisualizador && !areaSeleccionada && areas.length > 0) {
+      setAreaSeleccionada(areas[0]);
+    }
+  }, [esVisualizador, areaSeleccionada, areas]);
 
   // ============================================================
   // HANDLERS MEMOIZADOS
@@ -677,6 +693,7 @@ const PanelOCRContent = () => {
           areaAsignada={areaSeleccionada}
           responsable={responsable}
           esAdmin={esAdmin}
+          esVisualizador={esVisualizador}
           onSalir={handleSalir}
           onAbrirCambiosTurno={abrirCambiosTurno}
           todasLasAreas={areas.filter(a => a !== 'TODAS')}
@@ -696,6 +713,7 @@ const PanelOCRContent = () => {
         areaAsignada={areaSeleccionada}
         responsable={responsable}
         esAdmin={esAdmin}
+        esVisualizador={esVisualizador}
         esTramite={esTramite}
         onSalir={handleSalir}
         todasLasAreas={areas.filter(a => a !== 'TODAS')}
@@ -716,6 +734,8 @@ const PanelOCRContent = () => {
     areaSeleccionada, 
     responsable, 
     esAdmin, 
+    esVisualizador,
+    esTramite,
     handleSalir, 
     abrirCambiosTurno, 
     areas, 

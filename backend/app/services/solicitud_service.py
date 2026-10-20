@@ -80,6 +80,8 @@ _TURNO_NOMBRE = {
 _ROL_MAP = {
     "usuario": 0, "jefe_area": 1, "jefe_departamento": 2,
     "jefe_division": 3, "admin": 4, "tramite_documentario": 5,
+    # Solo lectura: nunca entra a una cadena de aprobacion.
+    "visualizador": 6, "visor": 6, "lector": 6, "viewer": 6, "solo_lectura": 6,
 }
 
 

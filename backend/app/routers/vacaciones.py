@@ -7,7 +7,7 @@ from app.models.vacacion import (
 )
 from app.services.vacacion_service import VacacionService
 from app.services.sheets_service import GoogleSheetsService
-from app.middleware.auth import get_current_user, require_jefe_or_admin
+from app.middleware.auth import get_current_user, require_jefe_or_admin, require_escritura
 from app.models.user import User
 
 router = APIRouter(prefix="/vacaciones", tags=["Vacaciones"])
@@ -42,9 +42,9 @@ async def get_mis_vacaciones(
 @router.post("", response_model=VacacionResponse, status_code=201)
 async def registrar_vacacion(
     data: VacacionCreate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_escritura)
 ):
-    """Register vacation (any user for their area)."""
+    """Register vacation (any user for their area, salvo solo-lectura)."""
     try:
         vacacion = await vacacion_service.registrar_vacacion(current_user.id, data)
         return VacacionResponse(vacacion=vacacion)

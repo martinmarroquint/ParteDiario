@@ -16,7 +16,7 @@ from typing import Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_escritura
 from app.models.user import User
 from app.services.sheets_service import GoogleSheetsService
 
@@ -123,7 +123,7 @@ async def get_sheet_metadata(
 @router.post("/write")
 async def apps_script_write_proxy(
     body: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_escritura),
 ):
     """Generic write proxy to Apps Script.
     

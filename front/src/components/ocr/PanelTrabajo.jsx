@@ -74,6 +74,7 @@ const PanelTrabajo = ({
   areaAsignada, 
   responsable, 
   esAdmin, 
+  esVisualizador = false,
   onSalir, 
   todasLasAreas, 
   medicos = [], 
@@ -149,10 +150,19 @@ const PanelTrabajo = ({
   //  usuario usa su area asignada)
   // ============================================================
   const areaEfectiva = useMemo(() => {
-    if (esAdmin) return areaSeleccionadaAdmin;
+    if (esAdmin || esVisualizador) return areaSeleccionadaAdmin;
     if (esJefe) return areaSeleccionadaJefe || areaAsignada;
     return areaAsignada;
-  }, [esAdmin, esJefe, areaSeleccionadaAdmin, areaSeleccionadaJefe, areaAsignada]);
+  }, [esAdmin, esVisualizador, esJefe, areaSeleccionadaAdmin, areaSeleccionadaJefe, areaAsignada]);
+
+  // Un visualizador con areas asignadas no debe quedar en 'TODAS'.
+  useEffect(() => {
+    if (!esVisualizador) return;
+    const asignadas = (user?.areas || []).filter(Boolean);
+    if (asignadas.length && (areaSeleccionadaAdmin === 'TODAS' || !asignadas.includes(areaSeleccionadaAdmin))) {
+      setAreaSeleccionadaAdmin(asignadas[0]);
+    }
+  }, [esVisualizador, user, areaSeleccionadaAdmin]);
 
   const [rolHabilitado, setRolHabilitado] = useState(() => {
     if (esAdmin) return true;
@@ -220,13 +230,29 @@ const PanelTrabajo = ({
   const areasDisponiblesSelector = useMemo(() => {
     if (esAdmin) {
       return todasLasAreas;
+    } else if (esVisualizador) {
+      const asignadas = (user?.areas || []).filter(Boolean);
+      return asignadas.length ? todasLasAreas.filter(a => asignadas.includes(a)) : todasLasAreas;
     } else if (esJefe && user) {
       return user.areas || [];
     } else if (esUsuario) {
       return user?.area ? [user.area] : [];
     }
     return [];
-  }, [esAdmin, esJefe, esUsuario, todasLasAreas, user]);
+  }, [esAdmin, esVisualizador, esJefe, esUsuario, todasLasAreas, user]);
+
+  // Opciones del selector de area grande (admin / visualizador).
+  const areasSelectorAdmin = useMemo(() => {
+    const base = todasLasAreas.filter(a => a !== 'TODAS' && a !== 'SIN_SERVICIO');
+    if (esVisualizador) {
+      const asignadas = (user?.areas || []).filter(Boolean);
+      if (asignadas.length) {
+        const filtradas = base.filter(a => asignadas.includes(a));
+        return filtradas.length ? filtradas : asignadas;
+      }
+    }
+    return ['TODAS', ...base];
+  }, [todasLasAreas, esVisualizador, user]);
 
   // Personal filtrado según rol y área seleccionada
   const personalFiltradoPorRol = useMemo(() => {
@@ -234,6 +260,15 @@ const PanelTrabajo = ({
       // Admin: si areaSeleccionadaAdmin es 'TODAS' o null, mostrar todo
       if (!areaSeleccionadaAdmin || areaSeleccionadaAdmin === 'TODAS') {
         return personal;
+      }
+      return personal.filter(p => p.area === areaSeleccionadaAdmin);
+    } else if (esVisualizador) {
+      // Lector: ve sus areas asignadas; sin areas asignadas ve todo.
+      if (!areaSeleccionadaAdmin || areaSeleccionadaAdmin === 'TODAS') {
+        const asignadas = (user?.areas || []).filter(Boolean);
+        if (!asignadas.length) return personal;
+        const set = new Set(asignadas.map(a => a.trim().toUpperCase()));
+        return personal.filter(p => set.has((p.area || '').trim().toUpperCase()));
       }
       return personal.filter(p => p.area === areaSeleccionadaAdmin);
     } else if (esJefe) {
@@ -245,7 +280,7 @@ const PanelTrabajo = ({
       return personal.filter(p => (p.nombre || '').toLowerCase().trim() === nombreUser);
     }
     return personal;
-  }, [esAdmin, esJefe, esUsuario, personal, areaSeleccionadaAdmin, areaSeleccionadaJefe, areaAsignada, user]);
+  }, [esAdmin, esVisualizador, esJefe, esUsuario, personal, areaSeleccionadaAdmin, areaSeleccionadaJefe, areaAsignada, user]);
 
   const personalFiltrado = useMemo(() => {
     // Si no hay busqueda, devolver directamente (ya esta ordenado)
@@ -276,17 +311,23 @@ const PanelTrabajo = ({
   const { totalFrancosInvalidos, totalInfraccionesFrancos, idsConFrancosInvalidos } = useFrancosStats(francosInvalidos);
 
   // Permisos según rol — solo se puede editar si el rol está habilitado (abierto)
-  const puedeEditar = rolHabilitado && (esAdmin || esJefe);
-  const puedeAgregarPersonal = esAdmin || esJefe;
-  const puedeAdministrarUsuarios = esAdmin;
-  const puedePanelControl = esAdmin;
-  const puedeImprimir = esJefe || esAdmin;
-  const puedeGuardar = esAdmin || esJefe;
-  const puedeRecargar = esAdmin || esJefe;
+  // El visualizador ve todo pero NUNCA escribe.
+  const puedeEditar = rolHabilitado && (esAdmin || esJefe) && !esVisualizador;
+  const puedeAgregarPersonal = (esAdmin || esJefe) && !esVisualizador;
+  const puedeAdministrarUsuarios = esAdmin && !esVisualizador;
+  const puedePanelControl = esAdmin && !esVisualizador;
+  const puedeImprimir = esJefe || esAdmin || esVisualizador;
+  const puedeGuardar = (esAdmin || esJefe) && !esVisualizador;
+  const puedeRecargar = esAdmin || esJefe || esVisualizador;
   const puedeBandeja = esAdmin || esJefe;
+  // Solicitar un cambio no modifica el rol: lo aprueban los jefes.
   const puedeSolicitarCambio = true;
-  const puedeDescansoMedico = true;
-  const puedeVacaciones = esAdmin || esJefe;
+  const puedeDescansoMedico = !esVisualizador;
+  const puedeVacaciones = (esAdmin || esJefe) && !esVisualizador;
+
+  // El visualizador siempre ve el rol como "abierto" (solo consulta): asi
+  // tiene el buscador y las celdas sin candado, pero no puede escribir nada.
+  const rolHabilitadoVista = esVisualizador ? true : rolHabilitado;
 
   const mostrarMensajeTemporal = useCallback((tipo, texto, duracion = 5000) => {
     if (mensajeTimeoutRef.current) clearTimeout(mensajeTimeoutRef.current);
@@ -1359,10 +1400,11 @@ const PanelTrabajo = ({
 
       <Encabezado 
         esAdmin={esAdmin} 
-        areaAsignada={esAdmin ? areaSeleccionadaAdmin : (esJefe ? areaSeleccionadaJefe : areaAsignada)}
+        esVisualizador={esVisualizador}
+        areaAsignada={(esAdmin || esVisualizador) ? areaSeleccionadaAdmin : (esJefe ? areaSeleccionadaJefe : areaAsignada)}
         responsable={responsable} 
         personalLength={personal.length} 
-        rolHabilitado={rolHabilitado}
+        rolHabilitado={rolHabilitadoVista}
         usuariosActivos={usuariosActivos}
         onFinalizar={handleFinalizar} 
         onHabilitar={handleHabilitar} 
@@ -1385,8 +1427,8 @@ const PanelTrabajo = ({
         areasDisponiblesJefe={areasDisponiblesSelector}
         // Selector de área para admin
         areaSeleccionadaAdmin={areaSeleccionadaAdmin}
-        onAreaChangeAdmin={esAdmin ? handleAreaChangeAdmin : null}
-        areasDisponiblesAdmin={['TODAS', ...todasLasAreas.filter(a => a !== 'TODAS' && a !== 'SIN_SERVICIO')]}
+        onAreaChangeAdmin={(esAdmin || esVisualizador) ? handleAreaChangeAdmin : null}
+        areasDisponiblesAdmin={areasSelectorAdmin}
         hojaSeleccionada={hojaSeleccionada} 
         hojasDisponibles={hojasDisponibles} 
         onHojaChange={handleHojaChange}
@@ -1394,7 +1436,7 @@ const PanelTrabajo = ({
         onMesChange={esUsuario ? handleMesChangeUsuario : handleMesChange}
         anioSeleccionado={anioSeleccionado} 
         onAnioChange={esUsuario ? handleAnioChangeUsuario : handleAnioChange}
-        onRecargar={esAdmin || esJefe ? recargarDatos : null} 
+        onRecargar={puedeRecargar ? recargarDatos : null} 
         cargando={cargando} 
         onDeshacer={null}
         onHistorial={handleAbrirHistorial}
@@ -1478,7 +1520,7 @@ const PanelTrabajo = ({
               <p className="text-base text-gray-400">
                 {esUsuario ? 'No se encontró su información' : 'Sin personal en esta area'}
               </p>
-              {!rolHabilitado && <p className="text-sm text-gray-400 mt-2">El rol esta bloqueado</p>}
+              {!rolHabilitadoVista && <p className="text-sm text-gray-400 mt-2">El rol esta bloqueado</p>}
             </div>
           </div>
         ) : esUsuario && personalFiltrado.length === 1 ? (
@@ -1497,7 +1539,7 @@ const PanelTrabajo = ({
               onMesChange={handleMesChangeUsuario}
               onAnioChange={handleAnioChangeUsuario}
               cargando={cargando}
-              rolHabilitado={rolHabilitado}
+              rolHabilitado={rolHabilitadoVista}
               celdasModificadas={celdasModificadas}
             />
           </div>
@@ -1508,7 +1550,7 @@ const PanelTrabajo = ({
             DIAS={DIAS} 
             turnos={turnos} 
             cambiosArea={cambiosArea} 
-            rolHabilitado={rolHabilitado} 
+            rolHabilitado={rolHabilitadoVista} 
             esAdmin={esAdmin} 
             seleccionados={seleccionados} 
             onToggleSeleccion={toggleSeleccion} 

@@ -92,6 +92,7 @@ const MobileRolView = ({
   areaAsignada,
   responsable,
   esAdmin,
+  esVisualizador = false,
   onSalir,
   onAbrirCambiosTurno,
   todasLasAreas = [],
@@ -150,6 +151,8 @@ const MobileRolView = ({
   const [turnoActivo, setTurnoActivo] = useState('M');
   const [rolHabilitado, setRolHabilitado] = useState(() => {
     if (esAdmin) return true;
+    // El visualizador siempre entra en modo lectura.
+    if (esVisualizador) return false;
     try {
       const key = `${STORAGE_ESTADOS}_${hojaDelMesActual()}`;
       const g = localStorage.getItem(key);
@@ -393,6 +396,14 @@ const MobileRolView = ({
         let incluir = false;
         if (esAdmin) {
           incluir = true;
+        } else if (esVisualizador) {
+          // Lector: sus areas asignadas; sin areas asignadas ve todo.
+          const asignadas = (user?.areas || [])
+            .filter(Boolean)
+            .map(a => a.trim().toUpperCase());
+          incluir = asignadas.length === 0
+            ? true
+            : asignadas.includes((af || '').trim().toUpperCase()) || af === 'SIN_SERVICIO';
         } else if (esJefe) {
           incluir = af === areaAsignada || af === 'SIN_SERVICIO';
         } else if (esUsuario && user) {
@@ -423,6 +434,7 @@ const MobileRolView = ({
       // Verificar si el área está bloqueada
       const bloqueadoPorBoton = await verificarAreaFinalizadaEnSheets();
       if (esAdmin) { setRolHabilitado(true); }
+      else if (esVisualizador) { setRolHabilitado(false); }
       else { setRolHabilitado(!bloqueadoPorBoton); actualizarEstadoArea(areaAsignada, bloqueadoPorBoton); }
       
       setPersonal(ordenarPersonalPorGrado(filtrados)); 
@@ -475,7 +487,7 @@ const MobileRolView = ({
       cargandoRef.current = false; 
       setCargando(false); 
     }
-  }, [config.sheetId, config.apiKey, hojaSeleccionada, totalDiasMes, areaAsignada, esAdmin, verificarAreaFinalizadaEnSheets, actualizarEstadoArea, esJefe, esUsuario, user]);
+  }, [config.sheetId, config.apiKey, hojaSeleccionada, totalDiasMes, areaAsignada, esAdmin, esVisualizador, verificarAreaFinalizadaEnSheets, actualizarEstadoArea, esJefe, esUsuario, user]);
 
   // Guardar referencia a cargarDatos
   useEffect(() => {
@@ -507,7 +519,7 @@ const MobileRolView = ({
   // ============================================
   useEffect(() => {
     const handleDesbloqueo = (e) => {
-      if (e.detail.area === areaAsignada) { 
+      if (!esVisualizador && e.detail.area === areaAsignada) { 
         setRolHabilitado(true);
         cargadoRef.current = false;
         cargarDatos();
@@ -515,7 +527,7 @@ const MobileRolView = ({
     };
     window.addEventListener('area-desbloqueada', handleDesbloqueo);
     return () => window.removeEventListener('area-desbloqueada', handleDesbloqueo);
-  }, [areaAsignada, cargarDatos]);
+  }, [areaAsignada, cargarDatos, esVisualizador]);
 
   // ============================================
   // SOLICITUD APROBADA
@@ -1315,12 +1327,14 @@ const MobileRolView = ({
       <div className="text-white px-4 pt-4 pb-3 shadow-lg" style={{ backgroundColor: COLOR_PRIMARIO }}>
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1 mr-3">
-            <h1 className="text-lg font-bold truncate">{areaAsignada}</h1>
+            <h1 className="text-lg font-bold truncate">
+              {esVisualizador && !(user?.areas || []).filter(Boolean).length ? 'Todas las areas' : areaAsignada}
+            </h1>
             <p className="text-xs text-white/70 truncate">{responsable}</p>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {esAdmin && <span className="text-[9px] bg-yellow-400/30 text-yellow-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Shield className="w-3 h-3" />A</span>}
-            <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${rolHabilitado ? 'bg-white/20 text-white' : 'bg-red-400/30 text-white'}`}>{rolHabilitado ? 'Abierto' : 'Cerrado'}</span>
+            <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${esVisualizador ? 'bg-sky-400/30 text-white' : rolHabilitado ? 'bg-white/20 text-white' : 'bg-red-400/30 text-white'}`}>{esVisualizador ? 'Solo lectura' : (rolHabilitado ? 'Abierto' : 'Cerrado')}</span>
             {esAdmin && <button onClick={handleAbrirHistorial} className="p-1.5 hover:bg-white/20 rounded-lg"><History className="w-4 h-4" /></button>}
             {esAdmin && <button onClick={() => setMostrarPanelAdmin(true)} className="p-1.5 hover:bg-white/20 rounded-lg"><Shield className="w-4 h-4" /></button>}
             {(esAdmin || esJefe) && onAbrirCambiosTurno && <button onClick={onAbrirCambiosTurno} className="relative p-1.5 hover:bg-white/20 rounded-lg" title="Bandeja de cambios de turno"><Inbox className="w-4 h-4" />{pendingSolicitudesCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}</button>}

@@ -108,8 +108,10 @@ class AuthService:
                 logger.warning(f"Failed to migrate password for {user.usuario}: {e}")
                 # Don't fail login if migration fails — just log it
         
-        # Determine primary role (highest role)
-        rol_principal = max(user.roles) if user.roles else 0
+        # Determine primary role. El visualizador (6) NO debe tapar un rol de
+        # jefe: un usuario [2, 6] sigue siendo jefe de departamento.
+        roles_efectivos = [r for r in user.roles if r != 6] or list(user.roles)
+        rol_principal = max(roles_efectivos) if roles_efectivos else 0
         
         token_data = {
             "sub": str(user.id),
@@ -218,7 +220,8 @@ class AuthService:
                 detail="Usuario no válido"
             )
         
-        rol_principal = max(user.roles) if user.roles else 0
+        roles_efectivos = [r for r in user.roles if r != 6] or list(user.roles)
+        rol_principal = max(roles_efectivos) if roles_efectivos else 0
         
         new_token_data = {
             "sub": str(user.id),

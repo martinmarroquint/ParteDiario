@@ -203,6 +203,7 @@ const Encabezado = ({
   onAbrirAdminUsuarios = null,
   onAbrirMesaPartes = null,
   esTramite = false,
+  esVisualizador = false,
   onAbrirCambiarPassword = null,
   onRestartTour = null,
   esJefe = false,
@@ -341,7 +342,9 @@ const Encabezado = ({
     return acc;
   }, {});
 
-  const mostrarAreaLabel = esAdmin ? `Admin${areaSeleccionadaAdmin && areaSeleccionadaAdmin !== 'TODAS' ? ` - ${areaSeleccionadaAdmin}` : ''}` : (esJefe ? `Jefe de ${areaSeleccionadaJefe || areaAsignada}` : areaAsignada);
+  const mostrarAreaLabel = (esAdmin || esVisualizador)
+    ? `${esVisualizador ? 'Lectura' : 'Admin'}${areaSeleccionadaAdmin && areaSeleccionadaAdmin !== 'TODAS' ? ` - ${areaSeleccionadaAdmin}` : ''}`
+    : (esJefe ? `Jefe de ${areaSeleccionadaJefe || areaAsignada}` : areaAsignada);
   const mostrarSelectorJefe = esJefe && areasDisponiblesJefe.length > 1;
 
   return (
@@ -361,9 +364,11 @@ const Encabezado = ({
           </span>
           
           <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap ${
-            rolHabilitado ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600 border border-red-200'
+            esVisualizador
+              ? 'bg-sky-50 text-sky-600 border border-sky-200'
+              : rolHabilitado ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600 border border-red-200'
           }`} data-tour="tour-estado-rol">
-            {rolHabilitado ? 'Abierto' : 'Cerrado'}
+            {esVisualizador ? 'Solo lectura' : (rolHabilitado ? 'Abierto' : 'Cerrado')}
           </span>
 
           {/* Burbujas: usuarios activos (estilo Google Sheets, rediseñado) — solo admin */}
@@ -395,7 +400,7 @@ const Encabezado = ({
 
         <div className="flex items-center gap-1 flex-shrink-0 overflow-visible">
           {/* Selector de Área - Admin (antes del mes) */}
-          {esAdmin && onAreaChangeAdmin && areasDisponiblesAdmin.length > 1 && (
+          {(esAdmin || esVisualizador) && onAreaChangeAdmin && areasDisponiblesAdmin.length > 1 && (
             <div className="flex-shrink-0" data-tour="tour-selector-area">
               <SelectPersonalizado 
                 value={areaSeleccionadaAdmin || 'TODAS'} 
@@ -423,7 +428,7 @@ const Encabezado = ({
           )}
 
           {/* Selector de Hoja (Mes) - Admin y Jefes */}
-          {(esAdmin || esJefe) && (
+          {(esAdmin || esJefe || esVisualizador) && (
             <div className="flex-shrink-0">
               <SelectPersonalizado 
                 value={hojaSeleccionada} 
@@ -529,6 +534,26 @@ const Encabezado = ({
               )}
 
               {puedeImprimir && onImprimir && rolGuardado && (
+                <TooltipPremium text="Imprimir">
+                  <button onClick={onImprimir} className={`${btnBase} flex-shrink-0`}>
+                    <Printer className="w-4 h-4" />
+                  </button>
+                </TooltipPremium>
+              )}
+            </>
+          )}
+
+          {/* BOTONES VISUALIZADOR (solo lectura) */}
+          {esVisualizador && (
+            <>
+              {onRecargar && (
+                <TooltipPremium text="Recargar">
+                  <button onClick={onRecargar} disabled={cargando} className={btnBase}>
+                    <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
+                  </button>
+                </TooltipPremium>
+              )}
+              {puedeImprimir && onImprimir && (
                 <TooltipPremium text="Imprimir">
                   <button onClick={onImprimir} className={`${btnBase} flex-shrink-0`}>
                     <Printer className="w-4 h-4" />
@@ -663,13 +688,13 @@ const Encabezado = ({
       {/* ============================================================
           SEGUNDA FILA: Buscador, turnos, AGREGAR PERSONAL
           ============================================================ */}
-      {rolHabilitado && (esAdmin || esJefe) && (
+      {rolHabilitado && (esAdmin || esJefe || esVisualizador) && (
         <>
           <div className="px-5 py-2 border-t border-gray-100 bg-gray-50/50">
             <div className="flex items-center gap-3">
               
               {/* Buscador */}
-              {(esAdmin || esJefe) && (
+              {(esAdmin || esJefe || esVisualizador) && (
                 <div className="relative flex-1 max-w-[200px] min-w-[160px] flex-shrink-0">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                   <input 

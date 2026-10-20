@@ -25,6 +25,7 @@ const ROLES_DISPONIBLES = [
   { value: 'jefe_division', label: 'Jefe de División', nivel: 3, color: 'bg-purple-100 text-purple-700' },
   { value: 'jefe_departamento', label: 'Jefe de Departamento', nivel: 2, color: 'bg-blue-100 text-blue-700' },
   { value: 'jefe_area', label: 'Jefe de Área', nivel: 1, color: 'bg-emerald-100 text-emerald-700' },
+  { value: 'visualizador', label: 'Visualizador (solo lectura)', nivel: 6, color: 'bg-sky-100 text-sky-700' },
   { value: 'usuario', label: 'Usuario Base', nivel: 0, color: 'bg-gray-100 text-gray-600' }
 ];
 
@@ -35,6 +36,8 @@ const ROL_NUM_A_STRING = {
   '3': 'jefe_division', 'division': 'jefe_division',
   '2': 'jefe_departamento', 'departamento': 'jefe_departamento', 'depto': 'jefe_departamento',
   '1': 'jefe_area', 'area': 'jefe_area',
+  '6': 'visualizador', 'visor': 'visualizador', 'lector': 'visualizador',
+  'viewer': 'visualizador', 'solo_lectura': 'visualizador',
   '0': 'usuario', 'user': 'usuario',
 };
 const ROL_STRING_A_NUM = {};
@@ -308,7 +311,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
 
     try {
       // Mapear rol string a numerico para el backend
-      const ROL_MAP = { admin: 4, tramite_documentario: 5, jefe_division: 3, jefe_departamento: 2, jefe_area: 1, usuario: 0 };
+      const ROL_MAP = { admin: 4, tramite_documentario: 5, jefe_division: 3, jefe_departamento: 2, jefe_area: 1, visualizador: 6, usuario: 0 };
       const rolNumerico = ROL_MAP[formData.rol] || 0;
 
       if (modalUsuario.accion === 'crear') {
@@ -618,7 +621,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-500">{item.grado || '-'}</td>
                             <td className="px-4 py-3">
-                              {tieneUsuario && ['jefe_area', 'jefe_departamento', 'jefe_division'].includes(item.usuario.rol) ? (
+                              {tieneUsuario && ['jefe_area', 'jefe_departamento', 'jefe_division', 'visualizador'].includes(item.usuario.rol) ? (
                                 <div className="flex flex-wrap gap-1">
                                   {(() => {
                                     try {
@@ -889,12 +892,17 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
                 )}
               </div>
 
-              {/* Selector de Areas que gestiona (solo para jefe_area/depto/division) */}
-              {['jefe_area', 'jefe_departamento', 'jefe_division'].includes(formData.rol) && (
+              {/* Selector de Areas (jefes: las que gestiona | visualizador: las que puede ver) */}
+              {['jefe_area', 'jefe_departamento', 'jefe_division', 'visualizador'].includes(formData.rol) && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Areas que gestiona <span className="text-red-400">*</span>
-                    <span className="text-gray-400 normal-case ml-1 font-normal">(Selecciona una o mas areas)</span>
+                    {formData.rol === 'visualizador' ? 'Áreas que puede ver' : 'Areas que gestiona'}{' '}
+                    {formData.rol !== 'visualizador' && <span className="text-red-400">*</span>}
+                    <span className="text-gray-400 normal-case ml-1 font-normal">
+                      {formData.rol === 'visualizador'
+                        ? '(Vacío = todas las áreas)'
+                        : '(Selecciona una o mas areas)'}
+                    </span>
                   </label>
                   {/* Buscador de areas */}
                   <div className="relative mb-2">

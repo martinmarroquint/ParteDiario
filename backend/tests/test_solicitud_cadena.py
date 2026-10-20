@@ -208,6 +208,32 @@ async def main():
     )
     check("admin sin jefes -> cadena vacia (se rechaza al crear)", c5, [])
 
+    print("\n=== ROL VISUALIZADOR (solo lectura, nunca aprueba) ===")
+    check("_parse_roles('visualizador')", _parse_roles("visualizador"), [6])
+    check("_parse_roles('6')", _parse_roles("6"), [6])
+    check("_parse_roles('jefe_area,visualizador')", _parse_roles("jefe_area,visualizador"), [1, 6])
+
+    usuarios_con_visor = [
+        ["id_usuario", "nombre_completo", "email", "usuario", "hash", "salt", "rol", "areas_json"],
+        ["1", "REQUERIDO JEFE AREA", "a@x", "1", "h", "s", "1", '["AREA DE PRUEBA"]'],
+        ["7", "TERRAZAS DIAZ", "v@x", "7", "h", "s", "visualizador", "[]"],
+        ["8", "VISOR CON AREA", "v2@x", "8", "h", "s", "6", '["AREA DE PRUEBA"]'],
+        ["9", "JEFE AREA QUE TAMBIEN VISUALIZA", "v3@x", "9", "h", "s", "1,6", '["AREA DE PRUEBA"]'],
+        ["10", "ADMINISTRADOR", "d@x", "10", "h", "s", "admin", "[]"],
+    ]
+    svc_visor = SolicitudService(FakeSheets(usuarios_con_visor))
+    c6 = await svc_visor._build_cadena_aprobacion("AREA DE PRUEBA")
+    ids = [x["user_id"] for x in c6]
+    check("visualizador global NO entra a la cadena", 7 in ids, False)
+    check("visualizador CON area asignada NO entra a la cadena", 8 in ids, False)
+    check("un jefe que ademas visualiza SI entra", 9 in ids, True)
+    check("la cadena mantiene su forma", [x["nivel"] for x in c6], [1, 1, 4])
+
+    visor = U(8, "VISOR CON AREA", [6], ["AREA DE PRUEBA"])
+    s_visor = sol([_lima_hoy().day + 2], c6)
+    s_visor.nivel_actual = 1
+    check("el visualizador NO puede aprobar ningun paso", svc_visor._puede_actuar(s_visor, visor), False)
+
     fallos = RESULTADOS.count(False)
     print(f"\nRESULTADO: {len(RESULTADOS) - fallos}/{len(RESULTADOS)} pruebas OK")
     return 0 if fallos == 0 else 1
