@@ -57,6 +57,7 @@ const ModalSolicitudCambioTurno = ({
   const [expandida, setExpandida] = useState(null);
   const [observacion, setObservacion] = useState('');
   const [procesando, setProcesando] = useState(false);
+  const procesandoRef = useRef(false);
 
   // ---- Load: Simple async function, no useCallback dependency issues ----
   const cargar = async () => {
@@ -86,21 +87,21 @@ const ModalSolicitudCambioTurno = ({
       }
 
       // Merge: bandeja + mis solicitudes, deduplicate by id
+      // La bandeja del backend ya trae SOLO lo que este usuario debe resolver
+      // en su turno (el jefe actual o el admin en el ultimo escalon). No se
+      // recalcula el permiso en el cliente: si vino de /bandeja, es accionable.
+      const idsBandeja = new Set(bandeja.map(s => s.id));
+      const idsMias = new Set(mias.map(s => s.id));
+
       const merged = [...bandeja];
       for (const s of mias) {
         if (!merged.find(m => m.id === s.id)) merged.push(s);
       }
 
-      // Tag each item
       const tagged = merged.map(s => ({
         ...s,
-        _esMia: s.solicitante_id === userId,
-        _puedeActuar: esAdmin
-          ? s.estado === ESTADOS.PENDIENTE
-          : (userRol >= 1 && userRol <= 3)
-            ? s.estado === ESTADOS.PENDIENTE && s.nivel_actual === userRol &&
-              (s.area_solicitante === area || s.participantes?.some(p => userAreas.includes(p.area)))
-            : false,
+        _esMia: idsMias.has(s.id),
+        _puedeActuar: s.estado === ESTADOS.PENDIENTE && idsBandeja.has(s.id),
       }));
 
       setLista(tagged);
@@ -150,12 +151,13 @@ const ModalSolicitudCambioTurno = ({
 
   // ---- Actions ----
   const procesar = async (sol, nuevoEstado) => {
-    if (procesando) return;
+    if (procesandoRef.current) return;
     if (nuevoEstado === ESTADOS.DESAPROBADO && !observacion.trim()) {
       setError('Debe escribir la observacion / motivo para desaprobar.');
       setExpandida(sol.id);
       return;
     }
+    procesandoRef.current = true;
     setProcesando(true);
     setError('');
     try {
@@ -180,13 +182,15 @@ const ModalSolicitudCambioTurno = ({
     } catch (e) {
       setError(e.message || 'No se pudo procesar la solicitud.');
     } finally {
+      procesandoRef.current = false;
       setProcesando(false);
     }
   };
 
   const cancelarSolicitud = async (sol) => {
-    if (procesando) return;
+    if (procesandoRef.current) return;
     if (!confirm('Desea cancelar esta solicitud?')) return;
+    procesandoRef.current = true;
     setProcesando(true);
     try {
       await apiClient.cancelarSolicitud(sol.id, {});
@@ -196,6 +200,7 @@ const ModalSolicitudCambioTurno = ({
     } catch (e) {
       setError(e.message || 'No se pudo cancelar.');
     } finally {
+      procesandoRef.current = false;
       setProcesando(false);
     }
   };
@@ -251,6 +256,15 @@ const ModalSolicitudCambioTurno = ({
     const cadena = s.cadena || [];
     const historial = s.historial || [];
     const nivelActual = s.nivel_actual || 4;
+    // La cadena avanza por POSICION (igual que el backend): contar aprobaciones
+    // es lo unico que distingue dos jefes del mismo nivel.
+    const aprobadosCount = historial.filter(
+      h => (h.accion || h.estado) === 'APROBADO'
+    ).length;
+    const ultimoRechazo = [...historial].reverse().find(
+      h => (h.accion || h.estado) === 'DESAPROBADO'
+    );
+    const motivoFinal = ultimoRechazo?.observaciones || ultimoRechazo?.observacion || '';
 
     return (
       <div className={`bg-white border rounded-2xl overflow-hidden transition-all ${abierta ? 'border-emerald-300 shadow-md' : 'border-gray-100 hover:border-gray-200'}`}>
@@ -339,9 +353,9 @@ const ModalSolicitudCambioTurno = ({
                 </p>
                 <div className="flex items-center gap-1 flex-wrap">
                   {cadena.map((nivel, idx) => {
-                    const esNivelActual = s.estado === ESTADOS.PENDIENTE && nivel.nivel === nivelActual;
-                    const fueAprobado = historial.find(h => h.nivel === nivel.nivel && (h.accion === 'APROBADO' || h.estado === 'APROBADO'));
-                    const fueRechazado = historial.find(h => h.nivel === nivel.nivel && (h.accion === 'DESAPROBADO' || h.estado === 'DESAPROBADO'));
+                    const fueAprobado = idx < aprobadosCount;
+                    const fueRechazado = !!ultimoRechazo && idx === aprobadosCount;
+                    const esNivelActual = s.estado === ESTADOS.PENDIENTE && idx === aprobadosCount;
                     return (
                       <React.Fragment key={idx}>
                         <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border ${
@@ -446,6 +460,12 @@ const ModalSolicitudCambioTurno = ({
                 <p className={`text-[9px] uppercase font-semibold mb-1 ${s.estado === ESTADOS.APROBADO ? 'text-emerald-600' : 'text-red-500'}`}>
                   {s.estado === ESTADOS.APROBADO ? 'Aprobada' : s.estado === ESTADOS.CANCELADO ? 'Cancelada' : 'Desaprobada'}
                 </p>
+                {s.estado === ESTADOS.DESAPROBADO && motivoFinal && (
+                  <p className="text-xs text-red-700 font-medium">{motivoFinal}</p>
+                )}
+                {s.estado === ESTADOS.APROBADO && (
+                  <p className="text-[11px] text-emerald-700">Los cambios fueron aplicados al rol.</p>
+                )}
               </div>
             )}
           </div>
@@ -486,6 +506,7 @@ const ModalSolicitudCambioTurno = ({
           <TabButton estado={ESTADOS.PENDIENTE} conteo={pendientes.length} etiqueta="Pendientes" />
           <TabButton estado={ESTADOS.APROBADO} conteo={aprobadas.length} etiqueta="Aprobadas" />
           <TabButton estado={ESTADOS.DESAPROBADO} conteo={desaprobadas.length} etiqueta="Desaprobadas" />
+          <TabButton estado={ESTADOS.CANCELADO} conteo={canceladas.length} etiqueta="Canceladas" />
         </div>
 
         {error && (

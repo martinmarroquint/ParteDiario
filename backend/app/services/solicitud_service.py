@@ -1,7 +1,8 @@
 import json
 import logging
+import unicodedata
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from app.models.solicitud import (
@@ -14,7 +15,7 @@ from app.services.user_service import UserService, HOJA_USUARIOS
 from app.services.role_service import RoleService
 from app.utils.constants import (
     ESTADO_PENDIENTE, ESTADO_APROBADO, ESTADO_DESAPROBADO, ESTADO_CANCELADO,
-    TRANSICIONES_VALIDAS, SHEETS_TABS,
+    TRANSICIONES_VALIDAS, SHEETS_TABS, MESES,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,34 @@ def _parse_roles(raw) -> list[int]:
     return out
 
 
+_LIMA_TZ = timezone(timedelta(hours=-5))
+
+
+def _norm(texto) -> str:
+    """Normaliza un nombre de area: mayusculas, sin tildes, espacios simples.
+
+    La hoja tiene variantes del mismo nombre ('AREA' / 'ÁREA', 'ANESTESIOLOGIA'
+    / 'ANESTECIOLOGIA'): comparar el string crudo hacia que la cadena se cayera
+    a solo Administrador.
+    """
+    s = unicodedata.normalize("NFKD", str(texto or ""))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return " ".join(s.upper().split())
+
+
+def _lima_hoy() -> date:
+    """Fecha de hoy en hora de Peru (UTC-5, sin horario de verano)."""
+    return datetime.now(_LIMA_TZ).date()
+
+
+def _hoja_mes(mes: int) -> str:
+    """1 -> 'ENERO'. El nombre de la pestana del rol mensual."""
+    try:
+        return (MESES.get(int(mes), "") or "").upper()
+    except (TypeError, ValueError):
+        return ""
+
+
 def _col_letter(col_num: int) -> str:
     """Numero de columna 1-based -> letra Excel (1=A, 6=F)."""
     result = ""
@@ -116,7 +145,13 @@ class SolicitudService:
     # Chain builder
     # ------------------------------------------------------------------
 
-    async def _build_cadena_aprobacion(self, area: str) -> list[dict]:
+    async def _build_cadena_aprobacion(
+        self,
+        area: str,
+        excluir_user_id: int | None = None,
+        excluir_nombre: str = "",
+        incluir_admin: bool = True,
+    ) -> list[dict]:
         """Build approval chain from USUARIOS_OCR.
 
         Logic (mirrors servicioSolicitudes.js):
@@ -125,12 +160,17 @@ class SolicitudService:
         3. Sort by role ascending (1 → 2 → 3)
         4. Deduplicate by nombre
         5. Always append Administrador (nivel 4)
+
+        El solicitante NUNCA aprueba su propia solicitud: si es jefe de area,
+        su nivel se omite y la cadena continua con el siguiente escalon. Si no
+        queda ningun jefe, la cadena queda solo con el Administrador.
         """
         rows = await self.sheets.get_range(HOJA_USUARIOS)
         if not rows:
             return [{"nombre": "Administrador", "nivel": 4, "user_id": 0}]
 
         jefes = []
+        area_norm = _norm(area)
         for row in rows[1:]:  # skip header
             if len(row) < 8:
                 continue
@@ -144,8 +184,17 @@ class SolicitudService:
             except (json.JSONDecodeError, TypeError):
                 areas = [a.strip() for a in areas_raw.split(",") if a.strip()]
 
-            if not nombre or area not in areas:
+            if not nombre or not area_norm:
                 continue
+            if all(_norm(a) != area_norm for a in areas):
+                continue
+
+            # El solicitante no entra a su propia cadena de aprobacion.
+            if excluir_user_id is not None and user_id == excluir_user_id:
+                continue
+            if excluir_nombre and _norm(nombre) == _norm(excluir_nombre):
+                continue
+
             # Una persona puede tener varios niveles de jefatura: entra a la
             # cadena en CADA uno de sus roles (1=jefe_area, 2=depto, 3=div).
             for r in roles:
@@ -165,8 +214,10 @@ class SolicitudService:
                 seen.add(clave)
                 cadena.append(j)
 
-        # Always append admin
-        cadena.append({"nombre": "Administrador", "nivel": 4, "user_id": 0})
+        # Always append admin (salvo que el solicitante sea el propio admin:
+        # nadie aprueba su propia solicitud).
+        if incluir_admin:
+            cadena.append({"nombre": "Administrador", "nivel": 4, "user_id": 0})
 
         return cadena
 
@@ -176,6 +227,109 @@ class SolicitudService:
         Avanzar por POSICION (no por el valor del nivel) es lo que evita que
         la cadena se trabe cuando hay dos jefes del mismo nivel."""
         return sum(1 for h in solicitud.historial if h.get("accion") == "APROBADO")
+
+    def _paso_actual(self, solicitud: Solicitud) -> Optional[dict]:
+        """Paso de la cadena que debe actuar ahora (None si ya termino)."""
+        idx = self._current_step_index(solicitud)
+        if 0 <= idx < len(solicitud.cadena):
+            return solicitud.cadena[idx]
+        return None
+
+    def _puede_actuar(self, solicitud: Solicitud, actor) -> bool:
+        """True si `actor` es exactamente quien ocupa el paso actual.
+
+        Antes bastaba con tener el rol y el area, o ser admin: el admin podia
+        aprobar en cualquier escalon y se saltaba la cadena. Ahora manda la
+        posicion en la cadena, no el rol.
+        """
+        if solicitud.estado != ESTADO_PENDIENTE:
+            return False
+        if int(solicitud.solicitante_id) == int(actor.id):
+            return False
+
+        paso = self._paso_actual(solicitud)
+        if not paso:
+            return False
+
+        uid = paso.get("user_id") or 0
+        if uid:
+            return int(uid) == int(actor.id)
+
+        # Cadenas antiguas sin user_id: se resuelve por nivel + area.
+        nivel = paso.get("nivel")
+        if nivel == 4:
+            return 4 in actor.roles
+        if nivel not in (actor.roles or []):
+            return False
+        areas_actor = {_norm(a) for a in (actor.areas or [])}
+        return (
+            _norm(solicitud.area_solicitante) in areas_actor
+            or any(_norm(p.area) in areas_actor for p in solicitud.participantes)
+        )
+
+    def _dias_de(self, solicitud: Solicitud) -> list[date]:
+        """Fechas reales de todos los cambios pedidos en la solicitud."""
+        out: list[date] = []
+        for p in solicitud.participantes:
+            for c in p.cambios:
+                try:
+                    out.append(date(int(solicitud.anio), int(solicitud.mes), int(c.dia)))
+                except (TypeError, ValueError):
+                    continue
+        return out
+
+    def _fuera_de_plazo(self, solicitud: Solicitud) -> bool:
+        """La solicitud debio validarse antes del dia del turno.
+
+        Si el turno mas cercano ya llego (o paso), la solicitud no tiene valor.
+        """
+        dias = self._dias_de(solicitud)
+        if not dias:
+            return False
+        return min(dias) <= _lima_hoy()
+
+    async def _expirar_si_corresponde(self, solicitud: Solicitud) -> bool:
+        """Cierra por plazo una solicitud que ya no puede aplicarse.
+
+        No hay scheduler: el vencimiento se evalua de forma perezosa cada vez
+        que la solicitud se lee o se intenta actuar sobre ella.
+        """
+        if solicitud.estado != ESTADO_PENDIENTE or not self._fuera_de_plazo(solicitud):
+            return False
+
+        now = datetime.now().isoformat()
+        solicitud.estado = ESTADO_DESAPROBADO
+        solicitud.historial.append({
+            "accion": "DESAPROBADO",
+            "aprobador_id": 0,
+            "aprobador_nombre": "Sistema",
+            "nivel": solicitud.nivel_actual,
+            "fecha": now,
+            "observaciones": (
+                "FUERA DE PLAZO: la solicitud no fue validada antes del dia del turno"
+            ),
+        })
+        solicitud.actualizado_en = now
+        await self._update_solicitud(solicitud)
+        logger.info(f"Solicitud {solicitud.id} cerrada por plazo")
+        return True
+
+    async def _mes_finalizado(self, area: str, mes: int) -> bool:
+        """True si el rol de esa area/mes ya esta FINALIZADO en ESTADOS."""
+        try:
+            rows = await self.sheets.get_range("ESTADOS")
+        except Exception as e:
+            logger.warning(f"No se pudo leer ESTADOS: {e}")
+            return False
+
+        hoja = _hoja_mes(mes)
+        objetivo = _norm(area)
+        for row in rows[1:] if rows else []:
+            if len(row) < 3:
+                continue
+            if _norm(row[0]) == hoja and _norm(row[1]) == objetivo:
+                return str(row[2]).strip().upper() == "FINALIZADO"
+        return False
 
     # ------------------------------------------------------------------
     # CRUD
@@ -190,8 +344,42 @@ class SolicitudService:
         area = data.participantes[0].area if data.participantes else ""
         if not area:
             area = user.areas[0] if user.areas else ""
+        if not area:
+            raise ValueError(
+                "No se pudo determinar el area del solicitante; contacta al administrador"
+            )
 
-        cadena = await self._build_cadena_aprobacion(area)
+        # Regla de plazo: el cambio se pide (y se valida) antes del dia del turno.
+        hoy = _lima_hoy()
+        for participante in data.participantes:
+            for cambio in participante.cambios:
+                try:
+                    fecha_turno = date(int(data.anio), int(data.mes), int(cambio.dia))
+                except (TypeError, ValueError):
+                    raise ValueError(f"Dia invalido: {cambio.dia}/{data.mes}/{data.anio}")
+                if fecha_turno <= hoy:
+                    raise ValueError(
+                        "El cambio debe solicitarse al menos 1 dia antes del turno; "
+                        f"el dia {cambio.dia}/{data.mes}/{data.anio} ya no es valido"
+                    )
+
+        if await self._mes_finalizado(area, data.mes):
+            raise ValueError(
+                f"El rol de {_hoja_mes(data.mes)} para {area} esta FINALIZADO"
+            )
+
+        es_admin_solicitante = 4 in (user.roles or [])
+        cadena = await self._build_cadena_aprobacion(
+            area,
+            excluir_user_id=user_id,
+            excluir_nombre=(user.nombre or "").strip(),
+            incluir_admin=not es_admin_solicitante,
+        )
+        if not cadena:
+            raise ValueError(
+                "No hay jefes configurados para tu area; no se puede armar la "
+                "cadena de aprobacion. Contacta al administrador."
+            )
         primer_nivel = cadena[0]["nivel"] if cadena else 4
 
         now = datetime.now().isoformat()
@@ -231,7 +419,9 @@ class SolicitudService:
         row = await self.sheets.find_row(HOJA_SOLICITUDES, COL_ID, solicitud_id)
         if not row:
             return None
-        return self._row_to_solicitud(row)
+        solicitud = self._row_to_solicitud(row)
+        await self._expirar_si_corresponde(solicitud)
+        return solicitud
 
     async def get_solicitudes_propias(self, user_id: int) -> list[Solicitud]:
         """Get solicitudes where the user is the requester."""
@@ -241,26 +431,23 @@ class SolicitudService:
             if len(row) <= COL_SOLICITANTE_ID:
                 continue
             sol = self._row_to_solicitud(row)
-            if sol.solicitante_id == user_id:
-                result.append(sol)
+            if sol.solicitante_id != user_id:
+                continue
+            await self._expirar_si_corresponde(sol)
+            result.append(sol)
         result.sort(key=lambda s: s.id, reverse=True)
         return result
 
     async def get_bandeja(self, user_id: int) -> list[Solicitud]:
-        """Get solicitudes the user can act on (inbox).
+        """Solicitudes que este usuario debe resolver AHORA.
 
-        - Admin (rol 4): ALL pending solicitudes
-        - Jefe (rol 1-3): solicitudes in their areas where nivel_actual matches their role
-        - Regular (rol 0): own solicitudes only (same as get_solicitudes_propias)
+        La bandeja es "mi turno": solo el paso actual de la cadena. Sirve para
+        jefes y para el admin (que recien ve la solicitud en el ultimo escalon,
+        no antes). El solicitante nunca ve su propia solicitud aqui.
         """
         user = await self.user_service.get_user_by_id(user_id)
         if not user:
             return []
-
-        is_admin = 4 in user.roles
-        is_jefe = any(r in user.roles for r in [1, 2, 3])
-        user_roles = set(user.roles)
-        user_areas = set(user.areas) if user.areas else set()
 
         # Asegura que la hoja exista (auto-reparable) antes de leerla.
         await self.sheets.asegurar_hoja(HOJA_SOLICITUDES, SOLICITUDES_HEADER)
@@ -275,18 +462,12 @@ class SolicitudService:
 
             if sol.estado != ESTADO_PENDIENTE:
                 continue
-
-            if is_admin:
+            if sol.solicitante_id == user_id:
+                continue
+            if await self._expirar_si_corresponde(sol):
+                continue
+            if self._puede_actuar(sol, user):
                 result.append(sol)
-            elif is_jefe:
-                # Can act if solicitud's nivel_actual matches one of the user's roles
-                # and the solicitud is in their area
-                in_area = sol.area_solicitante in user_areas or any(
-                    p.area in user_areas for p in sol.participantes
-                )
-                nivel_match = sol.nivel_actual in user_roles
-                if in_area and nivel_match:
-                    result.append(sol)
 
         result.sort(key=lambda s: s.id, reverse=True)
         return result
@@ -331,38 +512,22 @@ class SolicitudService:
         if not solicitud:
             raise ValueError("Solicitud no encontrada")
         if solicitud.estado != ESTADO_PENDIENTE:
+            if self._fuera_de_plazo(solicitud):
+                raise ValueError("La solicitud esta fuera de plazo y fue cerrada")
             raise ValueError(f"La solicitud ya fue procesada (estado: {solicitud.estado})")
 
         aprobador = await self.user_service.get_user_by_id(aprobador_id)
         if not aprobador:
             raise ValueError("Aprobador no encontrado")
 
-        # Permission check
-        is_admin = 4 in aprobador.roles
-        can_approve = False
-
-        if is_admin:
-            can_approve = True
-        else:
-            # User must be a jefe and nivel_actual must match one of their roles
-            if solicitud.nivel_actual in aprobador.roles:
-                # Area must match
-                in_area = (
-                    solicitud.area_solicitante in aprobador.areas
-                    or any(p.area in aprobador.areas for p in solicitud.participantes)
-                )
-                if in_area:
-                    can_approve = True
-
-        if not can_approve:
-            raise PermissionError("No tienes permiso para aprobar esta solicitud en este nivel")
-
-        # Conflicto de interes: el trabajador afectado no puede aprobar su
-        # propia solicitud (otro jefe del mismo nivel o admin si pueden).
-        if aprobador_id == solicitud.solicitante_id and any(
-            p.nombre == solicitud.solicitante_nombre for p in solicitud.participantes
-        ):
+        # Conflicto de interes: nadie aprueba su propia solicitud.
+        if int(aprobador_id) == int(solicitud.solicitante_id):
             raise PermissionError("No puedes aprobar tu propia solicitud de cambio de turno")
+
+        # Solo actua quien ocupa el paso ACTUAL de la cadena. El admin ya no
+        # puede saltarse escalones: recien actua cuando la cadena llega a el.
+        if not self._puede_actuar(solicitud, aprobador):
+            raise PermissionError("No es tu turno para aprobar esta solicitud")
 
         now = datetime.now().isoformat()
 
@@ -410,29 +575,19 @@ class SolicitudService:
         if not solicitud:
             raise ValueError("Solicitud no encontrada")
         if solicitud.estado != ESTADO_PENDIENTE:
+            if self._fuera_de_plazo(solicitud):
+                raise ValueError("La solicitud esta fuera de plazo y fue cerrada")
             raise ValueError(f"La solicitud ya fue procesada (estado: {solicitud.estado})")
 
         aprobador = await self.user_service.get_user_by_id(aprobador_id)
         if not aprobador:
             raise ValueError("Aprobador no encontrado")
 
-        # Same permission check as approve
-        is_admin = 4 in aprobador.roles
-        can_reject = False
-
-        if is_admin:
-            can_reject = True
-        else:
-            if solicitud.nivel_actual in aprobador.roles:
-                in_area = (
-                    solicitud.area_solicitante in aprobador.areas
-                    or any(p.area in aprobador.areas for p in solicitud.participantes)
-                )
-                if in_area:
-                    can_reject = True
-
-        if not can_reject:
-            raise PermissionError("No tienes permiso para rechazar esta solicitud en este nivel")
+        # Mismo criterio que aprobar: solo el paso actual de la cadena.
+        if int(aprobador_id) == int(solicitud.solicitante_id):
+            raise PermissionError("No puedes rechazar tu propia solicitud de cambio de turno")
+        if not self._puede_actuar(solicitud, aprobador):
+            raise PermissionError("No es tu turno para rechazar esta solicitud")
 
         now = datetime.now().isoformat()
 
@@ -496,9 +651,16 @@ class SolicitudService:
         Devuelve la lista de errores (vacia si todo se aplico). El llamador
         NO debe marcar la solicitud como APROBADA si hay errores."""
         errores: list[str] = []
-        hoja = solicitud.hoja
+        # La pestana se deriva de mes/anio: `hoja` puede venir del mes que el
+        # panel tenia abierto y escribir en el rol equivocado.
+        hoja = _hoja_mes(solicitud.mes) or solicitud.hoja
         if not hoja:
-            return ["La solicitud no tiene hoja de mes (campo 'hoja')"]
+            return ["La solicitud no tiene mes/anio para ubicar la hoja del rol"]
+
+        if await self._mes_finalizado(solicitud.area_solicitante, solicitud.mes):
+            return [
+                f"El rol de {hoja} para {solicitud.area_solicitante} esta FINALIZADO"
+            ]
 
         for participante in solicitud.participantes:
             fila = participante.fila

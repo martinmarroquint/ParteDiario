@@ -616,17 +616,31 @@ const PanelOCRContent = () => {
   // ============================================================
   // MEMOIZAR CALLBACKS PARA ABRIR MODALES
   // ============================================================
-  const abrirCambiosTurno = useCallback(async () => {
-    setMostrarCambiosTurno(true);
-    // Load badge count on-demand when modal opens
+  // Contador de la bandeja de cambios de turno (badge en PC y en movil).
+  const refrescarContadorSolicitudes = useCallback(async () => {
+    if (!isAdmin && !isJefe) {
+      setPendingSolicitudesCount(0);
+      return;
+    }
     try {
       const result = await solicitudesService.getBandeja();
-      // El endpoint devuelve { solicitudes, total } (o { data } segun el caso)
       const lista = result?.solicitudes || result?.data || [];
-      const pendientes = lista.filter(s => s.estado === 'PENDIENTE').length;
-      setPendingSolicitudesCount(pendientes);
-    } catch { /* ignore */ }
-  }, []);
+      setPendingSolicitudesCount(lista.filter(s => s.estado === 'PENDIENTE').length);
+    } catch { /* sin permiso o sin red: se conserva el valor previo */ }
+  }, [isAdmin, isJefe]);
+
+  useEffect(() => { refrescarContadorSolicitudes(); }, [refrescarContadorSolicitudes]);
+
+  useEffect(() => {
+    const handler = () => refrescarContadorSolicitudes();
+    window.addEventListener('solicitud-aprobada', handler);
+    return () => window.removeEventListener('solicitud-aprobada', handler);
+  }, [refrescarContadorSolicitudes]);
+
+  const abrirCambiosTurno = useCallback(async () => {
+    setMostrarCambiosTurno(true);
+    refrescarContadorSolicitudes();
+  }, [refrescarContadorSolicitudes]);
   const abrirAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(true), []);
   const cerrarAdminUsuarios = useCallback(() => setMostrarAdminUsuarios(false), []);
   const abrirMesaPartes = useCallback(() => setMostrarMesaPartes(true), []);
@@ -637,7 +651,10 @@ const PanelOCRContent = () => {
   const cerrarVacaciones = useCallback(() => setMostrarVacaciones(false), []);
   const abrirParteDiario = useCallback(() => setMostrarParteDiario(true), []);
   const cerrarParteDiario = useCallback(() => setMostrarParteDiario(false), []);
-  const cerrarCambiosTurno = useCallback(() => setMostrarCambiosTurno(false), []);
+  const cerrarCambiosTurno = useCallback(() => {
+    setMostrarCambiosTurno(false);
+    refrescarContadorSolicitudes();
+  }, [refrescarContadorSolicitudes]);
 
   // Callback when a solicitude is approved → refresh the grid
   const handleCambioAplicado = useCallback(() => {

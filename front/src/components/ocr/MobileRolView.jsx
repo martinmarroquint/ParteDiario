@@ -10,7 +10,7 @@ import {
   Search, X, ChevronLeft, ChevronRight, Save, Calendar,
   CheckCircle2, AlertTriangle, Clock, User, Loader2, Shield, FileText, Inbox,
   History, RefreshCw, XCircle, Square, CheckSquare, Trash2, ArrowLeft, ArrowRight,
-  Key, UserCog
+  ArrowRightLeft, Key, UserCog
 } from 'lucide-react';
 import { 
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, MESES, ANIOS, COLOR_PRIMARIO, 
@@ -1266,6 +1266,31 @@ const MobileRolView = ({
         </div>
 
         {renderUsuarioVista()}
+
+        <div className="sticky bottom-0 bg-white border-t shadow-lg safe-area-bottom">
+          <div className="px-4 py-2.5">
+            <button onClick={() => setModalSolicitudAbierto(true)}
+              className="w-full py-3 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
+              style={{ backgroundColor: COLOR_PRIMARIO }}>
+              <ArrowRightLeft className="w-4 h-4" /> Solicitud de cambio de turno
+            </button>
+          </div>
+        </div>
+
+        <ModalSolicitudCambioTurno
+          isOpen={modalSolicitudAbierto}
+          onClose={() => setModalSolicitudAbierto(false)}
+          config={config}
+          hoja={hojaSeleccionada}
+          mes={mesSeleccionado}
+          anio={anioSeleccionado}
+          area={areaAsignada}
+          userName={user?.nombre || responsable || ''}
+          userRol={user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0)}
+          userAreas={user?.areas || []}
+          personal={personal}
+          turnosMap={turnos}
+        />
       </div>
     );
   }
@@ -1298,7 +1323,7 @@ const MobileRolView = ({
             <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${rolHabilitado ? 'bg-white/20 text-white' : 'bg-red-400/30 text-white'}`}>{rolHabilitado ? 'Abierto' : 'Cerrado'}</span>
             {esAdmin && <button onClick={handleAbrirHistorial} className="p-1.5 hover:bg-white/20 rounded-lg"><History className="w-4 h-4" /></button>}
             {esAdmin && <button onClick={() => setMostrarPanelAdmin(true)} className="p-1.5 hover:bg-white/20 rounded-lg"><Shield className="w-4 h-4" /></button>}
-            {esAdmin && onAbrirCambiosTurno && <button onClick={onAbrirCambiosTurno} className="relative p-1.5 hover:bg-white/20 rounded-lg"><Inbox className="w-4 h-4" />{pendingSolicitudesCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}</button>}
+            {(esAdmin || esJefe) && onAbrirCambiosTurno && <button onClick={onAbrirCambiosTurno} className="relative p-1.5 hover:bg-white/20 rounded-lg" title="Bandeja de cambios de turno"><Inbox className="w-4 h-4" />{pendingSolicitudesCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}</button>}
             {(esAdmin || esTramite) && onAbrirMesaPartes && <button onClick={onAbrirMesaPartes} className="relative p-1.5 hover:bg-white/20 rounded-lg" title="Mesa de Partes"><FileText className="w-4 h-4" />{pendingMesaPartesCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingMesaPartesCount > 99 ? '99+' : pendingMesaPartesCount}</span>}</button>}
             {esAdmin && <button onClick={() => setMostrarAdminUsuarios(true)} className="p-1.5 hover:bg-white/20 rounded-lg" title="Administrar Usuarios"><UserCog className="w-4 h-4" /></button>}
             <button onClick={() => setMostrarCambiarPassword(true)} className="p-1.5 hover:bg-white/20 rounded-lg" title="Cambiar Contraseña"><Key className="w-4 h-4" /></button>
@@ -1594,7 +1619,9 @@ const MobileRolView = ({
         mes={mesSeleccionado}
         anio={anioSeleccionado}
         area={esAdmin ? (todasLasAreas[0] || areaAsignada) : areaAsignada}
-        userName={responsable || 'ADMIN'}
+        userName={user?.nombre || responsable || 'ADMIN'}
+        userRol={user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0)}
+        userAreas={user?.areas || []}
         personal={personal}
         turnosMap={turnos}
       />

@@ -66,9 +66,11 @@ const SolicitudesCambioTurno = ({
   const diaActual = fechaActual.getDate();
   const totalDias = useMemo(() => new Date(anio, mes, 0).getDate(), [anio, mes]);
   const DIAS = useMemo(() => Array.from({ length: totalDias }, (_, i) => i + 1), [totalDias]);
+  // El cambio debe pedirse al menos 1 dia antes del turno (el backend lo
+  // valida igual): por eso se excluye el dia de hoy.
   const DIAS_FUTUROS = useMemo(() => DIAS.filter(d => {
     if (mes > mesActual || anio > anioActual) return true;
-    if (mes === mesActual && anio === anioActual) return d >= diaActual;
+    if (mes === mesActual && anio === anioActual) return d > diaActual;
     return false;
   }), [DIAS, mes, anio, mesActual, anioActual, diaActual]);
 

@@ -1548,11 +1548,13 @@ const PanelTrabajo = ({
         isOpen={modalSolicitudAbierto}
         onClose={() => setModalSolicitudAbierto(false)}
         config={config}
-        hoja={nombreMesActual}
+        hoja={hojaSeleccionada}
         mes={mesSeleccionado}
         anio={anioSeleccionado}
         area={areaEfectiva}
         userName={user?.nombre || responsable || 'ADMIN'}
+        userRol={user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0)}
+        userAreas={user?.areas || []}
         personal={personal}
         turnosMap={turnos}
       />
