@@ -437,7 +437,7 @@ const Encabezado = ({
                 value={vistaPropia ? 'propia' : 'area'}
                 onChange={(v) => onVistaChange(v === 'propia')}
                 opciones={[
-                  { value: 'area', label: `Rol del area: ${areaAsignada && areaAsignada !== 'TODAS' ? areaAsignada : 'Todas las areas'}` },
+                  { value: 'area', label: areaAsignada && areaAsignada !== 'TODAS' ? areaAsignada : 'Todas las areas' },
                   { value: 'propia', label: 'Mi rol' },
                 ]}
                 placeholder="Vista"

@@ -1393,7 +1393,7 @@ const MobileRolView = ({
               className="bg-white/15 text-white text-xs font-bold px-2 py-1 rounded-lg border border-white/20 focus:outline-none max-w-[130px]"
               title="Vista"
             >
-              <option value="area" className="text-gray-800">Area: {areaAsignada && areaAsignada !== 'TODAS' ? areaAsignada : 'Todas'}</option>
+              <option value="area" className="text-gray-800">{areaAsignada && areaAsignada !== 'TODAS' ? areaAsignada : 'Todas'}</option>
               <option value="propia" className="text-gray-800">Mi rol</option>
             </select>
           )}
