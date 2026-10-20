@@ -343,7 +343,7 @@ const PanelTrabajo = ({
   const puedeBandeja = esAdmin || esJefe;
   // Solicitar un cambio no modifica el rol: lo aprueban los jefes.
   const puedeSolicitarCambio = true;
-  const puedeDescansoMedico = !esVisualizador;
+  const puedeDescansoMedico = true;
   const puedeVacaciones = (esAdmin || esJefe) && !esVisualizador;
 
   // El visualizador siempre ve el rol como "abierto" (solo consulta): asi

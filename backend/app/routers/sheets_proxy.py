@@ -16,7 +16,7 @@ from typing import Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.middleware.auth import get_current_user, require_escritura
+from app.middleware.auth import get_current_user
 from app.models.user import User
 from app.services.sheets_service import GoogleSheetsService
 
@@ -123,7 +123,7 @@ async def get_sheet_metadata(
 @router.post("/write")
 async def apps_script_write_proxy(
     body: dict,
-    current_user: User = Depends(require_escritura),
+    current_user: User = Depends(get_current_user),
 ):
     """Generic write proxy to Apps Script.
     
@@ -135,12 +135,28 @@ async def apps_script_write_proxy(
     This replaces ALL direct fetch() calls from the frontend to Apps Script.
     The HMAC secret NEVER reaches the browser.
     
-    Requires authentication (any valid user).
+    Requires authentication. Un usuario que SOLO tiene el rol visualizador (6)
+    queda limitado a registrar descansos medicos (la accion de registro y el
+    marcado de la celda como DESCANSO MEDICO); el resto de escrituras se
+    rechaza para ese rol.
     """
     accion = body.get("accion")
     if not accion:
         raise HTTPException(status_code=400, detail="Falta campo 'accion'")
-    
+
+    roles = current_user.roles or []
+    if roles and all(r == 6 for r in roles):
+        valor = str(body.get("valor", "")).strip().upper()
+        permitido = (
+            accion == "registrarDescansoMedico"
+            or (accion == "guardarCelda" and (valor == "DM" or valor.startswith("DESCANSO")))
+        )
+        if not permitido:
+            raise HTTPException(
+                status_code=403,
+                detail="Rol de solo lectura: no puede modificar datos",
+            )
+
     try:
         # Extract accion, pass the rest as data to _apps_script_action
         data = {k: v for k, v in body.items() if k != "accion"}
