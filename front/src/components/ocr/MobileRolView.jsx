@@ -1093,7 +1093,7 @@ const MobileRolView = ({
   // VISTA DE USUARIO MEJORADA
   // ============================================
   const renderUsuarioVista = () => {
-    const emp = personal[0];
+    const emp = personalFiltrado[0] || personal[0];
     if (!emp) return null;
 
     const firstDay = new Date(anioSeleccionado, mesSeleccionado - 1, 1).getDay();
@@ -1265,7 +1265,7 @@ const MobileRolView = ({
   // ============================================
   // VISTA DE USUARIO
   // ============================================
-  if (esUsuario && personal.length === 1) {
+  if ((esUsuario || vistaPropia) && personalFiltrado.length === 1) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <div className="text-white px-4 pt-4 pb-3 shadow-lg" style={{ backgroundColor: COLOR_PRIMARIO }}>

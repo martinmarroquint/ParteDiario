@@ -1566,7 +1566,7 @@ const PanelTrabajo = ({
               {!rolHabilitadoVista && <p className="text-sm text-gray-400 mt-2">El rol esta bloqueado</p>}
             </div>
           </div>
-        ) : esUsuario && personalFiltrado.length === 1 ? (
+        ) : (esUsuario || vistaPropia) && personalFiltrado.length === 1 ? (
           <div data-tour="tour-vista-usuario">
             <VistaUsuario
               personalFiltrado={personalFiltrado}
@@ -1574,10 +1574,10 @@ const PanelTrabajo = ({
               DIAS={DIAS}
               mesSeleccionado={mesSeleccionado}
               anioSeleccionado={anioSeleccionado}
-              areaAsignada={areaAsignada}
+              areaAsignada={vistaPropia ? (personalFiltrado[0]?.area || areaAsignada) : areaAsignada}
               responsable={responsable}
               user={user}
-              onCeldaClick={handleCeldaClick}
+              onCeldaClick={vistaPropia ? null : handleCeldaClick}
               // USAR HANDLERS DE USUARIO (cambian hoja + recargan)
               onMesChange={handleMesChangeUsuario}
               onAnioChange={handleAnioChangeUsuario}
