@@ -158,6 +158,8 @@ const PanelTrabajo = ({
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
   const [areaSeleccionadaJefe, setAreaSeleccionadaJefe] = useState(areaAsignada);
   const [areaSeleccionadaAdmin, setAreaSeleccionadaAdmin] = useState('TODAS');
+  // Vista separada: 'area' (documento del area) vs 'propia' (solo mi horario).
+  const [vistaPropia, setVistaPropia] = useState(false);
   const [rolGuardado, setRolGuardado] = useState(false);
   const [mostrarCambiarPassword, setMostrarCambiarPassword] = useState(false);
 
@@ -280,26 +282,26 @@ const PanelTrabajo = ({
       }
       return personal.filter(p => p.area === areaSeleccionadaAdmin);
     } else if (esVisualizador) {
+      if (vistaPropia) return personal.filter(p => esFilaPropia(p, user));
       // Lector: ve sus areas asignadas; sin areas asignadas ve todo.
       if (!areaSeleccionadaAdmin || areaSeleccionadaAdmin === 'TODAS') {
         const asignadas = (user?.areas || []).filter(Boolean);
         if (!asignadas.length) return personal;
         const set = new Set(asignadas.map(a => a.trim().toUpperCase()));
-        return personal.filter(p => set.has((p.area || '').trim().toUpperCase()) || esFilaPropia(p, user));
+        return personal.filter(p => set.has((p.area || '').trim().toUpperCase()));
       }
-      return personal.filter(p => p.area === areaSeleccionadaAdmin || esFilaPropia(p, user));
+      return personal.filter(p => p.area === areaSeleccionadaAdmin);
     } else if (esJefe) {
+      if (vistaPropia) return personal.filter(p => esFilaPropia(p, user));
       const areaActual = areaSeleccionadaJefe || areaAsignada;
-      // El jefe siempre ve su propio horario, aunque su legajo pertenezca
-      // a un area distinta de la que gestiona.
-      return personal.filter(p => p.area === areaActual || esFilaPropia(p, user));
+      return personal.filter(p => p.area === areaActual);
     } else if (esUsuario) {
       // Filtrar por nombre (consistente entre USUARIOS_OCR y PERSONAL)
       const nombreUser = (user?.nombre || '').toLowerCase().trim();
       return personal.filter(p => (p.nombre || '').toLowerCase().trim() === nombreUser);
     }
     return personal;
-  }, [esAdmin, esVisualizador, esJefe, esUsuario, personal, areaSeleccionadaAdmin, areaSeleccionadaJefe, areaAsignada, user]);
+  }, [esAdmin, esVisualizador, esJefe, esUsuario, personal, areaSeleccionadaAdmin, areaSeleccionadaJefe, areaAsignada, user, vistaPropia]);
 
   const personalFiltrado = useMemo(() => {
     // Si no hay busqueda, devolver directamente (ya esta ordenado)
@@ -493,7 +495,7 @@ const PanelTrabajo = ({
         personalInicial = todos.filter(p => (p.nombre || '').toLowerCase().trim() === nombreUser);
       } else if (esJefe) {
         const areaActual = areaSeleccionadaJefe || areaAsignada;
-        personalInicial = todos.filter(p => p.area === areaActual);
+        personalInicial = todos.filter(p => p.area === areaActual || esFilaPropia(p, user));
       }
       
       setPersonal(ordenarPersonalPorGrado(personalInicial)); 
@@ -736,6 +738,7 @@ const PanelTrabajo = ({
   const handleAreaChangeAdmin = useCallback((nuevaArea) => {
     if (nuevaArea !== areaSeleccionadaAdmin) {
       setAreaSeleccionadaAdmin(nuevaArea);
+      setVistaPropia(false);
       // Preserve mes/anio when saving area change
       const sesionActual = JSON.parse(sessionStorage.getItem(STORAGE_SESION) || '{}');
       sessionStorage.setItem(STORAGE_SESION, JSON.stringify({
@@ -1531,13 +1534,37 @@ const PanelTrabajo = ({
       )}
       {appsScriptError && <div className="px-4 py-2.5 text-center text-xs font-medium print:hidden bg-amber-50 border-b border-amber-300 flex items-center justify-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0"/><span className="text-amber-800"><strong>Apps Script:</strong> {appsScriptError}</span></div>}
 
+      {/* Dos vistas separadas: el rol del area y "Mi rol" (nunca mezclados) */}
+      {(esVisualizador || esJefe) && (
+        <div className="px-4 py-2 bg-white border-b border-gray-200 flex items-center gap-2 print:hidden">
+          <button
+            onClick={() => setVistaPropia(false)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              !vistaPropia ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {esVisualizador
+              ? `Area: ${areaSeleccionadaAdmin || 'Todas'}`
+              : `Area: ${areaSeleccionadaJefe || areaAsignada}`}
+          </button>
+          <button
+            onClick={() => setVistaPropia(true)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              vistaPropia ? 'bg-sky-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Mi rol
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto print:overflow-visible">
         {personalFiltrado.length === 0 && !cargando ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <User className="w-16 h-16 text-gray-300 mx-auto mb-4"/>
               <p className="text-base text-gray-400">
-                {esUsuario ? 'No se encontró su información' : 'Sin personal en esta area'}
+                {esUsuario ? 'No se encontró su información' : (vistaPropia ? 'No se encontro su fila en este mes' : 'Sin personal en esta area')}
               </p>
               {!rolHabilitadoVista && <p className="text-sm text-gray-400 mt-2">El rol esta bloqueado</p>}
             </div>

@@ -190,6 +190,8 @@ const MobileRolView = ({
   const mesActualNum = new Date().getMonth() + 1;
   const anioActualNum = new Date().getFullYear();
   const [mesNavegacion, setMesNavegacion] = useState(mesActualNum);
+  // Vista separada: 'area' vs 'propia' (solo mi horario).
+  const [vistaPropia, setVistaPropia] = useState(false);
   const [anioNavegacion, setAnioNavegacion] = useState(anioActualNum);
 
   // ============================================
@@ -700,12 +702,23 @@ const MobileRolView = ({
 
   const personalFiltrado = useMemo(() => {
     let r = personal;
+    if (vistaPropia) {
+      r = r.filter(p => esFilaPropia(p, user));
+    } else if (esVisualizador || esJefe) {
+      // En la vista del area no se mezcla la fila propia si es de otra area.
+      const asignadas = (user?.areas || []).filter(Boolean).map(a => a.trim().toUpperCase());
+      const areaGestionada = String(areaAsignada || '').trim().toUpperCase();
+      r = r.filter(p => !esFilaPropia(p, user)
+        || (asignadas.length
+          ? asignadas.includes(String(p.area || '').trim().toUpperCase())
+          : String(p.area || '').trim().toUpperCase() === areaGestionada));
+    }
     if (busqueda.trim()) {
       const term = busqueda.toLowerCase();
       r = r.filter(p => (p.nombre || '').toLowerCase().includes(term) || (p.grado || '').toLowerCase().includes(term) || (p.dni || '').includes(term));
     }
     return ordenarPersonalPorGrado(r);
-  }, [personal, busqueda]);
+  }, [personal, busqueda, vistaPropia, esVisualizador, esJefe, user, areaAsignada]);
 
   // Usar hook compartido para francos invalidos
   const francosInvalidos = useFrancosInvalidos(personal, turnos, totalDiasMes, esPersonalCivil);
@@ -1403,6 +1416,23 @@ const MobileRolView = ({
             </span>
           )}
         </div>
+
+        {(esVisualizador || esJefe) && (
+          <div className="flex items-center justify-center gap-1.5 mt-2">
+            <button
+              onClick={() => setVistaPropia(false)}
+              className={`px-3 py-1 rounded-lg text-[11px] font-semibold ${!vistaPropia ? 'bg-white text-emerald-700' : 'bg-white/15 text-white'}`}
+            >
+              Area
+            </button>
+            <button
+              onClick={() => setVistaPropia(true)}
+              className={`px-3 py-1 rounded-lg text-[11px] font-semibold ${vistaPropia ? 'bg-white text-sky-700' : 'bg-white/15 text-white'}`}
+            >
+              Mi rol
+            </button>
+          </div>
+        )}
       </div>
 
       {appsScriptError && (
