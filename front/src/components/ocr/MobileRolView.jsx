@@ -1393,6 +1393,17 @@ const MobileRolView = ({
           >
             {MESES.map((m, i) => <option key={i} value={i + 1} className="text-gray-800">{m}</option>)}
           </select>
+          {(esVisualizador || esJefe) && (
+            <select
+              value={vistaPropia ? 'propia' : 'area'}
+              onChange={(e) => setVistaPropia(e.target.value === 'propia')}
+              className="bg-white/15 text-white text-xs font-bold px-2 py-1 rounded-lg border border-white/20 focus:outline-none"
+              title="Vista"
+            >
+              <option value="area" className="text-gray-800">Rol del area</option>
+              <option value="propia" className="text-gray-800">Mi rol</option>
+            </select>
+          )}
           <button onClick={() => navigateMonth(1)} className="p-1.5 hover:bg-white/20 rounded-lg active:scale-90 transition-all">
             <ChevronRight className="w-5 h-5" />
           </button>
@@ -1417,22 +1428,6 @@ const MobileRolView = ({
           )}
         </div>
 
-        {(esVisualizador || esJefe) && (
-          <div className="flex items-center justify-center gap-1.5 mt-2">
-            <button
-              onClick={() => setVistaPropia(false)}
-              className={`px-3 py-1 rounded-lg text-[11px] font-semibold ${!vistaPropia ? 'bg-white text-emerald-700' : 'bg-white/15 text-white'}`}
-            >
-              Area
-            </button>
-            <button
-              onClick={() => setVistaPropia(true)}
-              className={`px-3 py-1 rounded-lg text-[11px] font-semibold ${vistaPropia ? 'bg-white text-sky-700' : 'bg-white/15 text-white'}`}
-            >
-              Mi rol
-            </button>
-          </div>
-        )}
       </div>
 
       {appsScriptError && (

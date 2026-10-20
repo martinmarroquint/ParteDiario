@@ -204,6 +204,9 @@ const Encabezado = ({
   onAbrirMesaPartes = null,
   esTramite = false,
   esVisualizador = false,
+  vistaPropia = false,
+  onVistaChange = null,
+  mostrarVistaSelector = false,
   onAbrirCambiarPassword = null,
   onRestartTour = null,
   esJefe = false,
@@ -400,7 +403,7 @@ const Encabezado = ({
 
         <div className="flex items-center gap-1 flex-shrink-0 overflow-visible">
           {/* Selector de Área - Admin (antes del mes) */}
-          {(esAdmin || esVisualizador) && onAreaChangeAdmin && areasDisponiblesAdmin.length > 1 && (
+          {esAdmin && onAreaChangeAdmin && areasDisponiblesAdmin.length > 1 && (
             <div className="flex-shrink-0" data-tour="tour-selector-area">
               <SelectPersonalizado 
                 value={areaSeleccionadaAdmin || 'TODAS'} 
@@ -435,6 +438,22 @@ const Encabezado = ({
                 onChange={handleHojaChange} 
                 opciones={opcionesHojas} 
                 placeholder="Mes"
+                disabled={cargando || guardando}
+              />
+            </div>
+          )}
+
+          {/* Selector de Vista (misma altura que el mes): Area vs Mi rol */}
+          {mostrarVistaSelector && onVistaChange && (
+            <div className="flex-shrink-0">
+              <SelectPersonalizado
+                value={vistaPropia ? 'propia' : 'area'}
+                onChange={(v) => onVistaChange(v === 'propia')}
+                opciones={[
+                  { value: 'area', label: 'Rol del area' },
+                  { value: 'propia', label: 'Mi rol' },
+                ]}
+                placeholder="Vista"
                 disabled={cargando || guardando}
               />
             </div>

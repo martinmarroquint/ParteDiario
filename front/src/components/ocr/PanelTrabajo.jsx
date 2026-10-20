@@ -1423,6 +1423,9 @@ const PanelTrabajo = ({
       <Encabezado 
         esAdmin={esAdmin} 
         esVisualizador={esVisualizador}
+        vistaPropia={vistaPropia}
+        onVistaChange={setVistaPropia}
+        mostrarVistaSelector={esVisualizador || esJefe}
         areaAsignada={(esAdmin || esVisualizador) ? areaSeleccionadaAdmin : (esJefe ? areaSeleccionadaJefe : areaAsignada)}
         responsable={responsable} 
         personalLength={personal.length} 
@@ -1449,7 +1452,7 @@ const PanelTrabajo = ({
         areasDisponiblesJefe={areasDisponiblesSelector}
         // Selector de área para admin
         areaSeleccionadaAdmin={areaSeleccionadaAdmin}
-        onAreaChangeAdmin={(esAdmin || esVisualizador) ? handleAreaChangeAdmin : null}
+        onAreaChangeAdmin={esAdmin ? handleAreaChangeAdmin : null}
         areasDisponiblesAdmin={areasSelectorAdmin}
         hojaSeleccionada={hojaSeleccionada} 
         hojasDisponibles={hojasDisponibles} 
@@ -1533,30 +1536,6 @@ const PanelTrabajo = ({
         </div>
       )}
       {appsScriptError && <div className="px-4 py-2.5 text-center text-xs font-medium print:hidden bg-amber-50 border-b border-amber-300 flex items-center justify-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0"/><span className="text-amber-800"><strong>Apps Script:</strong> {appsScriptError}</span></div>}
-
-      {/* Dos vistas separadas: el rol del area y "Mi rol" (nunca mezclados) */}
-      {(esVisualizador || esJefe) && (
-        <div className="px-4 py-2 bg-white border-b border-gray-200 flex items-center gap-2 print:hidden">
-          <button
-            onClick={() => setVistaPropia(false)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              !vistaPropia ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {esVisualizador
-              ? `Area: ${areaSeleccionadaAdmin || 'Todas'}`
-              : `Area: ${areaSeleccionadaJefe || areaAsignada}`}
-          </button>
-          <button
-            onClick={() => setVistaPropia(true)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              vistaPropia ? 'bg-sky-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Mi rol
-          </button>
-        </div>
-      )}
 
       <div className="flex-1 overflow-auto print:overflow-visible">
         {personalFiltrado.length === 0 && !cargando ? (
