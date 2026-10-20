@@ -1,26 +1,338 @@
 // src/components/ocr/ModalSolicitudCambioTurno.jsx
-// BANDEJA DE SOLICITUDES - Rebuilt from scratch following mesa_de_partes pattern
-// No _skipAuthRedirect, no polling, no useCallback dependency loops
+// BANDEJA DE SOLICITUDES — v2.1
+// Cambio principal: tabs de pills compactas sin underline ni overflow-x.
+// Filtros con conteo condicional, activo bg-slate-100, sin scroll horizontal.
+// Toda la lógica intacta (no _skipAuthRedirect, no polling, sin useCallback loops).
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X, Inbox, RefreshCw, Loader2, ChevronDown, Shield,
-  AlertCircle, Check, Ban, Calendar, User, ArrowRightLeft,
+  AlertCircle, Check, Ban, Calendar, User, ArrowRight,
   UserPlus, ChevronRight, Clock, CheckCircle2, XCircle,
 } from 'lucide-react';
 import { COLOR_PRIMARIO, MESES, TURNO_MAP } from './constantes';
 import { apiClient } from './services/apiClient';
-import {
-  ESTADOS, ESTADOS_META, getNivelLabel,
-} from './services/solicitudesService';
+import { ESTADOS, ESTADOS_META } from './services/solicitudesService';
 import SolicitudesCambioTurno from './SolicitudesCambioTurno';
 
 const NIVEL_LABELS_APP = {
-  1: 'Jefe de Area',
+  1: 'Jefe de Área',
   2: 'Jefe de Departamento',
-  3: 'Jefe de Division',
+  3: 'Jefe de División',
   4: 'Administrador',
 };
 
+/* ============================================================
+   CHIP DE TURNO
+   ============================================================ */
+const ChipTurno = ({ codigo }) => {
+  const sin = !codigo;
+  const etiqueta = sin ? 'S/T' : codigo;
+  const t = TURNO_MAP[codigo];
+  return (
+    <span
+      className="inline-flex items-center justify-center rounded-sm border-l-2 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-slate-700"
+      style={{ borderLeftColor: t?.color || '#CBD5E1' }}
+    >
+      {etiqueta}
+    </span>
+  );
+};
+
+/* ============================================================
+   FILTRO TIPO PILL (reemplaza los tabs con underline)
+   ============================================================ */
+const FiltroPill = ({ conteo, etiqueta, activo, onClick }) => (
+  <button
+    type="button"
+    role="tab"
+    aria-selected={activo}
+    onClick={onClick}
+    className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+      activo
+        ? 'bg-slate-100 text-slate-800'
+        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+    }`}
+  >
+    {etiqueta}
+    {conteo > 0 && (
+      <span
+        className={`rounded px-1 py-px text-[9px] font-semibold tabular-nums ${
+          activo ? 'bg-white text-slate-700' : 'bg-slate-100 text-slate-500'
+        }`}
+      >
+        {conteo}
+      </span>
+    )}
+  </button>
+);
+
+/* ============================================================
+   TARJETA
+   ============================================================ */
+const Tarjeta = ({
+  s, abierta, observacion, setObservacion, procesando,
+  onToggle, onProcesar, onCancelar, formatearFecha,
+}) => {
+  const meta = ESTADOS_META[s.estado] || ESTADOS_META[ESTADOS.PENDIENTE];
+  const participantes = s.participantes || [];
+  const resumen = participantes.map(p => p.nombre || p.trabajador).filter(Boolean).join(' y ') || 'Sin trabajadores';
+  const cadena = s.cadena || [];
+  const historial = s.historial || [];
+  const nivelActual = s.nivel_actual || 4;
+
+  const aprobadosCount = historial.filter(h => (h.accion || h.estado) === 'APROBADO').length;
+  const ultimoRechazo = [...historial].reverse().find(h => (h.accion || h.estado) === 'DESAPROBADO');
+  const motivoFinal = ultimoRechazo?.observaciones || ultimoRechazo?.observacion || '';
+
+  return (
+    <div className={`overflow-hidden rounded-md border bg-white transition-colors ${
+      abierta ? 'border-slate-300' : 'border-slate-100 hover:border-slate-200'
+    }`}>
+      <button type="button" onClick={onToggle} className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left">
+        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-slate-100 text-slate-500">
+          <User className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold text-slate-800">{resumen}</p>
+          <p className="flex items-center gap-1 truncate text-[11px] text-slate-400">
+            <Calendar className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+            {MESES[(s.mes || 1) - 1]} {s.anio} · #{s.id}
+            {s.area_solicitante && (
+              <span className="ml-1 flex-shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                {s.area_solicitante}
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {s.estado === ESTADOS.PENDIENTE && s._puedeActuar && (
+            <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+              Nivel {nivelActual}/{cadena.length}
+            </span>
+          )}
+          {s._esMia && <span className="text-[10px] text-slate-400">Mi solicitud</span>}
+          <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${meta.cls}`}>{meta.etiqueta}</span>
+          <ChevronDown className={`h-4 w-4 text-slate-300 transition-transform ${abierta ? 'rotate-180' : ''}`} aria-hidden="true" />
+        </div>
+      </button>
+
+      {abierta && (
+        <div className="space-y-3 border-t border-slate-100 px-3.5 pb-3.5 pt-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              { k: 'Solicitante', v: s.solicitante_nombre || '-' },
+              { k: 'Tipo', v: s.tipo_cambio || '-' },
+              { k: 'Área', v: s.area_solicitante || '-' },
+              { k: 'Fecha', v: formatearFecha(s.fecha_solicitud) || '-' },
+            ].map(({ k, v }) => (
+              <div key={k} className="rounded bg-slate-50 px-2.5 py-2">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{k}</p>
+                <p className="mt-0.5 truncate text-[11px] font-medium text-slate-700">{v}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-1.5">
+            {participantes.map((p, i) => (
+              <div key={i} className="rounded border border-slate-100 bg-white p-2.5">
+                <p className="mb-1.5 text-[12px] font-semibold text-slate-700">
+                  {i + 1}. {p.nombre || 'Sin nombre'}
+                </p>
+                {(p.cambios || []).length > 0 ? (
+                  <div className="space-y-1">
+                    {p.cambios.map((c, ci) => (
+                      <div key={ci} className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500">Día {c.dia || c.dia_semana}:</span>
+                        <ChipTurno codigo={c.turno_actual} />
+                        <ArrowRight className="h-3 w-3 text-slate-300" aria-hidden="true" />
+                        <ChipTurno codigo={c.turno_nuevo} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <ChipTurno codigo={p.turno_actual} />
+                    <ArrowRight className="h-3 w-3 text-slate-300" aria-hidden="true" />
+                    <ChipTurno codigo={p.turno_solicitado} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded bg-slate-50 px-3 py-2">
+            <p className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Motivo</p>
+            <p className="text-[12px] text-slate-700">{s.motivo || '-'}</p>
+          </div>
+
+          {cadena.length > 0 && (
+            <div className="rounded border border-slate-100 bg-slate-50/60 p-2.5">
+              <p className="mb-2 flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                <Shield className="h-3 w-3" aria-hidden="true" /> Cadena de aprobación
+              </p>
+              <div className="flex flex-wrap items-center gap-1">
+                {cadena.map((nivel, idx) => {
+                  const fueAprobado = idx < aprobadosCount;
+                  const fueRechazado = !!ultimoRechazo && idx === aprobadosCount;
+                  const esNivelActual = s.estado === ESTADOS.PENDIENTE && idx === aprobadosCount;
+                  return (
+                    <React.Fragment key={idx}>
+                      <div className={`flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium ${
+                        fueRechazado
+                          ? 'bg-red-50 text-red-700'
+                          : fueAprobado
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : esNivelActual
+                              ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                              : 'bg-white text-slate-500'
+                      }`}>
+                        {fueAprobado && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                        {fueRechazado && <XCircle className="h-3 w-3" aria-hidden="true" />}
+                        {esNivelActual && <Clock className="h-3 w-3" aria-hidden="true" />}
+                        <span>{nivel.nombre}</span>
+                        <span className="text-[9px] opacity-60">
+                          ({NIVEL_LABELS_APP[nivel.nivel] || `N${nivel.nivel}`})
+                        </span>
+                      </div>
+                      {idx < cadena.length - 1 && (
+                        <ChevronRight className="h-3 w-3 flex-shrink-0 text-slate-300" aria-hidden="true" />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {historial.length > 0 && (
+            <div className="rounded border border-slate-100 bg-slate-50/60 p-2.5">
+              <p className="mb-2 flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                <Clock className="h-3 w-3" aria-hidden="true" /> Historial
+              </p>
+              <div className="space-y-1.5">
+                {historial.map((h, i) => {
+                  const esAprobado = h.accion === 'APROBADO' || h.estado === 'APROBADO';
+                  return (
+                    <div key={i} className={`flex items-start gap-2 rounded p-2 ${esAprobado ? 'bg-emerald-50/60' : 'bg-red-50/60'}`}>
+                      <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ${
+                        esAprobado ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {esAprobado ? <Check className="h-3 w-3" aria-hidden="true" /> : <Ban className="h-3 w-3" aria-hidden="true" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-[11px] font-medium ${esAprobado ? 'text-emerald-800' : 'text-red-800'}`}>
+                          {NIVEL_LABELS_APP[h.nivel] || `Nivel ${h.nivel}`} — {h.aprobador_nombre || h.nombre || '-'}
+                        </p>
+                        <p className="text-[10px] text-slate-400">{formatearFecha(h.fecha)}</p>
+                        {(h.observaciones || h.observacion) && (
+                          <p className="mt-0.5 text-[11px] italic text-slate-600">"{h.observaciones || h.observacion}"</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {s.estado === ESTADOS.PENDIENTE && s._puedeActuar && (
+            <>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Observación <span className="font-normal normal-case text-slate-400">(obligatoria al desaprobar)</span>
+                </label>
+                <textarea
+                  value={observacion}
+                  onChange={e => setObservacion(e.target.value)}
+                  rows={2}
+                  placeholder="Detalle de la revisión..."
+                  className="w-full resize-none rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-700 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => onProcesar(s, ESTADOS.DESAPROBADO)}
+                  disabled={procesando}
+                  className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                >
+                  {procesando ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Ban className="h-3.5 w-3.5" aria-hidden="true" />}
+                  Desaprobar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onProcesar(s, ESTADOS.APROBADO)}
+                  disabled={procesando}
+                  className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:brightness-95 disabled:opacity-50"
+                  style={{ backgroundColor: COLOR_PRIMARIO }}
+                >
+                  {procesando ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+                  Aprobar
+                </button>
+              </div>
+            </>
+          )}
+
+          {s.estado === ESTADOS.PENDIENTE && !s._puedeActuar && (
+            <div className="rounded border border-amber-100 bg-amber-50/60 px-3 py-2">
+              <p className="text-[11px] text-amber-800">
+                {s._esMia
+                  ? (s.nivel_actual === 4
+                      ? 'Pendiente de aprobación final por el administrador.'
+                      : `Pendiente con ${NIVEL_LABELS_APP[s.nivel_actual] || 'su jefe'}.`)
+                  : `Pendiente con ${NIVEL_LABELS_APP[s.nivel_actual] || `nivel ${s.nivel_actual}`}.`}
+              </p>
+            </div>
+          )}
+
+          {s.estado === ESTADOS.PENDIENTE && s._esMia && !s._puedeActuar && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => onCancelar(s)}
+                disabled={procesando}
+                className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+              >
+                {procesando ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Ban className="h-3.5 w-3.5" aria-hidden="true" />}
+                Cancelar solicitud
+              </button>
+            </div>
+          )}
+
+          {s.estado !== ESTADOS.PENDIENTE && (
+            <div className={`rounded border px-3 py-2 ${
+              s.estado === ESTADOS.APROBADO
+                ? 'border-emerald-100 bg-emerald-50/60'
+                : s.estado === ESTADOS.CANCELADO
+                  ? 'border-slate-200 bg-slate-50'
+                  : 'border-red-100 bg-red-50/60'
+            }`}>
+              <p className={`mb-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                s.estado === ESTADOS.APROBADO
+                  ? 'text-emerald-700'
+                  : s.estado === ESTADOS.CANCELADO
+                    ? 'text-slate-500'
+                    : 'text-red-700'
+              }`}>
+                {s.estado === ESTADOS.APROBADO ? 'Aprobada' : s.estado === ESTADOS.CANCELADO ? 'Cancelada' : 'Desaprobada'}
+              </p>
+              {s.estado === ESTADOS.DESAPROBADO && motivoFinal && (
+                <p className="text-[12px] font-medium text-red-800">{motivoFinal}</p>
+              )}
+              {s.estado === ESTADOS.APROBADO && (
+                <p className="text-[11px] text-emerald-800">Los cambios fueron aplicados al rol.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ============================================================
+   COMPONENTE PRINCIPAL
+   ============================================================ */
 const ModalSolicitudCambioTurno = ({
   isOpen, onClose,
   config = null,
@@ -35,7 +347,6 @@ const ModalSolicitudCambioTurno = ({
   turnosMap = {},
   onCambioAplicado = null,
 }) => {
-  // Read user from localStorage (stable reference, only changes on explicit setItem)
   const storedUserRef = useRef(null);
   if (isOpen && !storedUserRef.current) {
     try { storedUserRef.current = JSON.parse(localStorage.getItem('ocr_user_data') || '{}'); } catch { storedUserRef.current = {}; }
@@ -44,10 +355,7 @@ const ModalSolicitudCambioTurno = ({
   const storedUser = storedUserRef.current || {};
   const userRol = storedUser?.rol_principal ??
     (storedUser?.roles?.length ? Math.max(...storedUser.roles) : userRolProp);
-  const userAreas = storedUser?.areas?.length > 0 ? storedUser.areas :
-    (storedUser?.area ? [storedUser.area] : userAreasProp);
   const esAdmin = userRol === 4;
-  const userId = storedUser?.id || storedUser?.user_id || 0;
 
   const [vista, setVista] = useState('lista');
   const [lista, setLista] = useState([]);
@@ -59,13 +367,11 @@ const ModalSolicitudCambioTurno = ({
   const [procesando, setProcesando] = useState(false);
   const procesandoRef = useRef(false);
 
-  // ---- Load: Simple async function, no useCallback dependency issues ----
   const cargar = async () => {
     if (!isOpen) return;
     setCargando(true);
     setError('');
     try {
-      // Call apiClient directly (like mesa_de_partes), no service wrapper
       const [resBandeja, resMias] = await Promise.allSettled([
         apiClient.getBandejaSolicitudes(),
         apiClient.getSolicitudes(),
@@ -74,22 +380,17 @@ const ModalSolicitudCambioTurno = ({
       const bandeja = resBandeja.status === 'fulfilled' ? (resBandeja.value.solicitudes || []) : [];
       const mias = resMias.status === 'fulfilled' ? (resMias.value.solicitudes || []) : [];
 
-      // Check if both failed due to auth
       const bandejaErr = resBandeja.status === 'rejected' ? resBandeja.reason?.message : null;
       const miasErr = resMias.status === 'rejected' ? resMias.reason?.message : null;
       if (bandeja.length === 0 && mias.length === 0 && bandejaErr && miasErr) {
         const errMsg = bandejaErr || miasErr;
         if (errMsg.includes('expirada') || errMsg.includes('Sesión')) {
-          setError('Sesion expirada. Refresque la pagina para volver a iniciar sesion.');
+          setError('Sesión expirada. Refresque la página para volver a iniciar sesión.');
           setCargando(false);
           return;
         }
       }
 
-      // Merge: bandeja + mis solicitudes, deduplicate by id
-      // La bandeja del backend ya trae SOLO lo que este usuario debe resolver
-      // en su turno (el jefe actual o el admin en el ultimo escalon). No se
-      // recalcula el permiso en el cliente: si vino de /bandeja, es accionable.
       const idsBandeja = new Set(bandeja.map(s => s.id));
       const idsMias = new Set(mias.map(s => s.id));
 
@@ -113,7 +414,6 @@ const ModalSolicitudCambioTurno = ({
     }
   };
 
-  // ---- Load on open (simple useEffect, no dependency on unstable function) ----
   useEffect(() => {
     if (isOpen) {
       setVista('lista');
@@ -121,12 +421,11 @@ const ModalSolicitudCambioTurno = ({
       setExpandida(null);
       setObservacion('');
       setError('');
-      storedUserRef.current = null; // Force re-read on next open
+      storedUserRef.current = null;
       cargar();
     }
-  }, [isOpen]); // Only re-load when isOpen changes
+  }, [isOpen]);
 
-  // Escape key
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape' && isOpen && vista === 'lista') onClose(); };
     window.addEventListener('keydown', h);
@@ -135,7 +434,6 @@ const ModalSolicitudCambioTurno = ({
 
   if (!isOpen) return null;
 
-  // ---- Registro (wizard) ----
   if (vista === 'registro') {
     return (
       <SolicitudesCambioTurno
@@ -149,11 +447,10 @@ const ModalSolicitudCambioTurno = ({
     );
   }
 
-  // ---- Actions ----
   const procesar = async (sol, nuevoEstado) => {
     if (procesandoRef.current) return;
     if (nuevoEstado === ESTADOS.DESAPROBADO && !observacion.trim()) {
-      setError('Debe escribir la observacion / motivo para desaprobar.');
+      setError('Debe escribir la observación / motivo para desaprobar.');
       setExpandida(sol.id);
       return;
     }
@@ -168,8 +465,6 @@ const ModalSolicitudCambioTurno = ({
           ? 'Solicitud aprobada. Cambios aplicados al rol.'
           : 'Solicitud aprobada. Pasa al siguiente nivel de la cadena.');
         onCambioAplicado?.();
-        // Avisa a los paneles (PanelTrabajo / MobileRolView) para que recarguen
-        // la grilla cuando el cambio llega al final de la cadena.
         window.dispatchEvent(new CustomEvent('solicitud-aprobada'));
       } else {
         await apiClient.rechazarSolicitud(sol.id, { motivo_rechazo: observacion.trim() });
@@ -189,7 +484,7 @@ const ModalSolicitudCambioTurno = ({
 
   const cancelarSolicitud = async (sol) => {
     if (procesandoRef.current) return;
-    if (!confirm('Desea cancelar esta solicitud?')) return;
+    if (!confirm('¿Desea cancelar esta solicitud?')) return;
     procesandoRef.current = true;
     setProcesando(true);
     try {
@@ -205,7 +500,6 @@ const ModalSolicitudCambioTurno = ({
     }
   };
 
-  // ---- Filtered lists ----
   const pendientes = lista.filter(s => s.estado === ESTADOS.PENDIENTE);
   const aprobadas = lista.filter(s => s.estado === ESTADOS.APROBADO);
   const desaprobadas = lista.filter(s => s.estado === ESTADOS.DESAPROBADO);
@@ -215,7 +509,6 @@ const ModalSolicitudCambioTurno = ({
     : tab === ESTADOS.CANCELADO ? canceladas
     : pendientes;
 
-  // ---- Helpers ----
   const formatearFecha = (iso) => {
     if (!iso) return '';
     try {
@@ -224,303 +517,92 @@ const ModalSolicitudCambioTurno = ({
     } catch { return iso; }
   };
 
-  const TabButton = ({ estado, conteo, etiqueta }) => (
-    <button onClick={() => { setTab(estado); setExpandida(null); }}
-      className={`flex-1 h-10 rounded-xl text-xs font-semibold border-2 transition-all flex items-center justify-center gap-1.5 ${
-        tab === estado ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-100 text-gray-400 hover:border-gray-200'
-      }`}>
-      {etiqueta}
-      <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${tab === estado ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-500'}`}>{conteo}</span>
-    </button>
-  );
-
-  const ChipTurno = ({ codigo }) => {
-    const sin = !codigo;
-    const t = TURNO_MAP[codigo];
-    return (
-      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${sin ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-white border-gray-200'}`}
-        style={t ? { backgroundColor: t.color, color: t.texto } : {}}>
-        {sin ? 'S/T' : codigo}
-      </span>
-    );
-  };
-
-  // ============================================
-  // TARJETA DE SOLICITUD
-  // ============================================
-  const Tarjeta = ({ s }) => {
-    const abierta = expandida === s.id;
-    const meta = ESTADOS_META[s.estado] || ESTADOS_META[ESTADOS.PENDIENTE];
-    const participantes = s.participantes || [];
-    const resumen = participantes.map(p => p.nombre || p.trabajador).filter(Boolean).join(' y ') || 'Sin trabajadores';
-    const cadena = s.cadena || [];
-    const historial = s.historial || [];
-    const nivelActual = s.nivel_actual || 4;
-    // La cadena avanza por POSICION (igual que el backend): contar aprobaciones
-    // es lo unico que distingue dos jefes del mismo nivel.
-    const aprobadosCount = historial.filter(
-      h => (h.accion || h.estado) === 'APROBADO'
-    ).length;
-    const ultimoRechazo = [...historial].reverse().find(
-      h => (h.accion || h.estado) === 'DESAPROBADO'
-    );
-    const motivoFinal = ultimoRechazo?.observaciones || ultimoRechazo?.observacion || '';
-
-    return (
-      <div className={`bg-white border rounded-2xl overflow-hidden transition-all ${abierta ? 'border-emerald-300 shadow-md' : 'border-gray-100 hover:border-gray-200'}`}>
-        <button onClick={() => { setExpandida(abierta ? null : s.id); setObservacion(''); setError(''); }}
-          className="w-full text-left px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center flex-shrink-0">
-            <User className="w-4 h-4 text-gray-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-800 truncate">{resumen}</p>
-            <p className="text-[10px] text-gray-400 flex items-center gap-1 truncate">
-              <Calendar className="w-3 h-3 flex-shrink-0" /> {MESES[(s.mes || 1) - 1]} {s.anio} · #{s.id}
-              {s.area_solicitante && <span className="px-1.5 py-px rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 font-semibold flex-shrink-0">{s.area_solicitante}</span>}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {s.estado === ESTADOS.PENDIENTE && s._puedeActuar && (
-              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
-                Nivel {nivelActual}/{cadena.length}
-              </span>
-            )}
-            {s._esMia && <span className="text-[9px] text-gray-400">Mi solicitud</span>}
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${meta.cls}`}>{meta.etiqueta}</span>
-            <ChevronDown className={`w-4 h-4 text-gray-300 transition-transform ${abierta ? 'rotate-180' : ''}`} />
-          </div>
-        </button>
-
-        {abierta && (
-          <div className="px-4 pb-4 space-y-3 border-t border-gray-100">
-            <div className="pt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="bg-gray-50 rounded-xl p-2.5">
-                <p className="text-[9px] text-gray-400 uppercase font-semibold">Solicitante</p>
-                <p className="text-[11px] font-semibold text-gray-700 mt-0.5 truncate">{s.solicitante_nombre || '-'}</p>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-2.5">
-                <p className="text-[9px] text-gray-400 uppercase font-semibold">Tipo</p>
-                <p className="text-[11px] font-semibold text-gray-700 mt-0.5 truncate">{s.tipo_cambio || '-'}</p>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-2.5">
-                <p className="text-[9px] text-gray-400 uppercase font-semibold">Area</p>
-                <p className="text-[11px] font-semibold text-gray-700 mt-0.5 truncate">{s.area_solicitante || '-'}</p>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-2.5">
-                <p className="text-[9px] text-gray-400 uppercase font-semibold">Fecha</p>
-                <p className="text-[11px] font-semibold text-gray-700 mt-0.5">{formatearFecha(s.fecha_solicitud) || '-'}</p>
-              </div>
-            </div>
-
-            {/* Participants */}
-            <div className="space-y-2">
-              {participantes.map((p, i) => (
-                <div key={i} className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3">
-                  <p className="text-xs font-bold text-gray-800 mb-1.5">{i + 1}. {p.nombre || 'Sin nombre'}</p>
-                  {(p.cambios || []).length > 0 ? (
-                    <div className="space-y-1">
-                      {p.cambios.map((c, ci) => (
-                        <div key={ci} className="flex items-center gap-2">
-                          <span className="text-[10px] text-gray-500">Dia {c.dia || c.dia_semana}:</span>
-                          <ChipTurno codigo={c.turno_actual} />
-                          <ArrowRightLeft className="w-3 h-3 text-emerald-500" />
-                          <ChipTurno codigo={c.turno_nuevo} />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <ChipTurno codigo={p.turno_actual} />
-                      <ArrowRightLeft className="w-3 h-3 text-emerald-500" />
-                      <ChipTurno codigo={p.turno_solicitado} />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-[9px] text-gray-400 uppercase font-semibold mb-1">Motivo</p>
-              <p className="text-xs text-gray-700">{s.motivo || '-'}</p>
-            </div>
-
-            {/* Cadena de aprobacion */}
-            {cadena.length > 0 && (
-              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3">
-                <p className="text-[9px] text-blue-500 uppercase font-semibold mb-2 flex items-center gap-1">
-                  <Shield className="w-3 h-3" /> Cadena de aprobacion
-                </p>
-                <div className="flex items-center gap-1 flex-wrap">
-                  {cadena.map((nivel, idx) => {
-                    const fueAprobado = idx < aprobadosCount;
-                    const fueRechazado = !!ultimoRechazo && idx === aprobadosCount;
-                    const esNivelActual = s.estado === ESTADOS.PENDIENTE && idx === aprobadosCount;
-                    return (
-                      <React.Fragment key={idx}>
-                        <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border ${
-                          fueRechazado ? 'bg-red-50 text-red-600 border-red-200' :
-                          fueAprobado ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                          esNivelActual ? 'bg-amber-50 text-amber-600 border-amber-200 ring-1 ring-amber-300' :
-                          'bg-white text-gray-500 border-gray-200'
-                        }`}>
-                          {fueAprobado ? <CheckCircle2 className="w-3 h-3" /> :
-                           fueRechazado ? <XCircle className="w-3 h-3" /> :
-                           esNivelActual ? <Clock className="w-3 h-3" /> : null}
-                          <span>{nivel.nombre}</span>
-                          <span className="text-[8px] opacity-60">({NIVEL_LABELS_APP[nivel.nivel] || `N${nivel.nivel}`})</span>
-                        </div>
-                        {idx < cadena.length - 1 && <ChevronRight className="w-3 h-3 text-gray-300 flex-shrink-0" />}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Historial */}
-            {historial.length > 0 && (
-              <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-                <p className="text-[9px] text-gray-400 uppercase font-semibold mb-2 flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Historial
-                </p>
-                <div className="space-y-2">
-                  {historial.map((h, i) => {
-                    const esAprobado = h.accion === 'APROBADO' || h.estado === 'APROBADO';
-                    return (
-                      <div key={i} className={`flex items-start gap-2 p-2 rounded-lg ${esAprobado ? 'bg-emerald-50' : 'bg-red-50'}`}>
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${esAprobado ? 'bg-emerald-500' : 'bg-red-500'}`}>
-                          {esAprobado ? <Check className="w-3 h-3 text-white" /> : <Ban className="w-3 h-3 text-white" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[10px] font-semibold ${esAprobado ? 'text-emerald-700' : 'text-red-700'}`}>
-                            {NIVEL_LABELS_APP[h.nivel] || `Nivel ${h.nivel}`} — {h.aprobador_nombre || h.nombre || '-'}
-                          </p>
-                          <p className="text-[9px] text-gray-400">{formatearFecha(h.fecha)}</p>
-                          {h.observaciones && (
-                            <p className="text-[10px] text-gray-600 mt-0.5 italic">"{h.observaciones || h.observacion}"</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            {s.estado === ESTADOS.PENDIENTE && s._puedeActuar && (
-              <>
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                    Observacion <span className="text-gray-40">(obligatoria al desaprobar)</span>
-                  </label>
-                  <textarea value={observacion} onChange={e => setObservacion(e.target.value)} rows={2}
-                    placeholder="Detalle de la revision..."
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 bg-white" />
-                </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button onClick={() => procesar(s, ESTADOS.DESAPROBADO)} disabled={procesando}
-                    className="px-4 py-2.5 text-red-600 bg-white border border-red-200 rounded-xl text-xs font-bold hover:bg-red-50 transition-all disabled:opacity-50 flex items-center gap-1.5">
-                    {procesando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />} Desaprobar
-                  </button>
-                  <button onClick={() => procesar(s, ESTADOS.APROBADO)} disabled={procesando}
-                    className="px-4 py-2.5 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-md hover:shadow-lg"
-                    style={{ backgroundColor: COLOR_PRIMARIO }}>
-                    {procesando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Aprobar
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Pendiente pero no puede actuar */}
-            {s.estado === ESTADOS.PENDIENTE && !s._puedeActuar && (
-              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
-                <p className="text-xs text-amber-700">
-                  {s._esMia
-                    ? (s.nivel_actual === 4 ? 'Pendiente de aprobacion final por el administrador.' : `Pendiente con ${NIVEL_LABELS_APP[s.nivel_actual] || 'su jefe'}.`)
-                    : `Pendiente con ${NIVEL_LABELS_APP[s.nivel_actual] || `nivel ${s.nivel_actual}`}.`}
-                </p>
-              </div>
-            )}
-
-            {/* Cancel — solo si es mia y esta pendiente */}
-            {s.estado === ESTADOS.PENDIENTE && s._esMia && !s._puedeActuar && (
-              <div className="flex justify-end">
-                <button onClick={() => cancelarSolicitud(s)} disabled={procesando}
-                  className="px-4 py-2 text-red-600 bg-white border border-red-200 rounded-xl text-xs font-bold hover:bg-red-50 transition-all disabled:opacity-50 flex items-center gap-1.5">
-                  {procesando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />} Cancelar solicitud
-                </button>
-              </div>
-            )}
-
-            {/* Resultado final */}
-            {s.estado !== ESTADOS.PENDIENTE && (
-              <div className={`rounded-xl p-3 ${s.estado === ESTADOS.APROBADO ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
-                <p className={`text-[9px] uppercase font-semibold mb-1 ${s.estado === ESTADOS.APROBADO ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {s.estado === ESTADOS.APROBADO ? 'Aprobada' : s.estado === ESTADOS.CANCELADO ? 'Cancelada' : 'Desaprobada'}
-                </p>
-                {s.estado === ESTADOS.DESAPROBADO && motivoFinal && (
-                  <p className="text-xs text-red-700 font-medium">{motivoFinal}</p>
-                )}
-                {s.estado === ESTADOS.APROBADO && (
-                  <p className="text-[11px] text-emerald-700">Los cambios fueron aplicados al rol.</p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ============================================
-  // RENDER
-  // ============================================
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[300] p-2 sm:p-4" onClick={onClose}>
-      <div className="bg-gray-50 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-xl border border-slate-200 bg-white shadow-md sm:max-h-[90vh] sm:rounded-xl"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="px-4 py-3 sm:px-5 sm:py-4 text-white flex items-center justify-between flex-shrink-0" style={{ backgroundColor: COLOR_PRIMARIO }}>
-          <div className="flex items-center gap-2">
-            <Inbox className="w-5 h-5" />
-            <div>
-              <h3 className="font-bold text-sm sm:text-base">Solicitudes de Cambio</h3>
-              <p className="text-[10px] sm:text-xs text-white/70">
+        <header className="flex flex-shrink-0 items-center justify-between gap-3 px-5 py-3.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Inbox className="h-4 w-4 flex-shrink-0 text-slate-400" aria-hidden="true" />
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-semibold leading-tight text-slate-800">
+                Solicitudes de cambio
+              </h3>
+              <p className="truncate text-[11px] text-slate-400">
                 {MESES[(mes || 1) - 1]} {anio} · {esAdmin ? 'Administrador' : NIVEL_LABELS_APP[userRol] || 'Usuario'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={cargar} disabled={cargando} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors" title="Actualizar">
-              <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
+            <button
+              type="button"
+              onClick={cargar}
+              disabled={cargando}
+              aria-label="Actualizar"
+              className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${cargando ? 'animate-spin' : ''}`} aria-hidden="true" />
             </button>
-            <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors" title="Cerrar">
-              <X className="w-5 h-5" />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Tabs */}
-        <div className="px-4 sm:px-5 py-3 bg-white border-b border-gray-100 flex gap-2 flex-shrink-0">
-          <TabButton estado={ESTADOS.PENDIENTE} conteo={pendientes.length} etiqueta="Pendientes" />
-          <TabButton estado={ESTADOS.APROBADO} conteo={aprobadas.length} etiqueta="Aprobadas" />
-          <TabButton estado={ESTADOS.DESAPROBADO} conteo={desaprobadas.length} etiqueta="Desaprobadas" />
-          <TabButton estado={ESTADOS.CANCELADO} conteo={canceladas.length} etiqueta="Canceladas" />
+        {/* Filtros — pills compactas, sin underline, sin overflow-x */}
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-100 px-4 pb-2.5 pt-0.5 sm:px-5" role="tablist">
+          <FiltroPill
+            conteo={pendientes.length}
+            etiqueta="Pendientes"
+            activo={tab === ESTADOS.PENDIENTE}
+            onClick={() => { setTab(ESTADOS.PENDIENTE); setExpandida(null); }}
+          />
+          <FiltroPill
+            conteo={aprobadas.length}
+            etiqueta="Aprobadas"
+            activo={tab === ESTADOS.APROBADO}
+            onClick={() => { setTab(ESTADOS.APROBADO); setExpandida(null); }}
+          />
+          <FiltroPill
+            conteo={desaprobadas.length}
+            etiqueta="Desaprobadas"
+            activo={tab === ESTADOS.DESAPROBADO}
+            onClick={() => { setTab(ESTADOS.DESAPROBADO); setExpandida(null); }}
+          />
+          <FiltroPill
+            conteo={canceladas.length}
+            etiqueta="Canceladas"
+            activo={tab === ESTADOS.CANCELADO}
+            onClick={() => { setTab(ESTADOS.CANCELADO); setExpandida(null); }}
+          />
         </div>
 
         {error && (
-          <div className="px-4 sm:px-5 pt-3 flex-shrink-0">
-            <div className={`p-3 rounded-xl flex items-center gap-2 text-sm ${
+          <div className="flex-shrink-0 px-5 pt-3">
+            <div className={`flex items-center gap-2 rounded-md border px-3 py-2 text-[12px] ${
               error.includes('expirada')
-                ? 'bg-amber-50 border border-amber-100 text-amber-700'
-                : 'bg-red-50 border border-red-100 text-red-600'
+                ? 'border-amber-100 bg-amber-50/60 text-amber-800'
+                : 'border-red-100 bg-red-50/60 text-red-700'
             }`}>
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span className="font-medium flex-1">{error}</span>
+              <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+              <span className="flex-1 font-medium">{error}</span>
               {error.includes('expirada') && (
-                <button onClick={() => window.location.reload()}
-                  className="px-3 py-1 bg-amber-100 hover:bg-amber-200 rounded-lg text-xs font-bold transition-colors">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-200"
+                >
                   Refrescar
                 </button>
               )}
@@ -529,30 +611,47 @@ const ModalSolicitudCambioTurno = ({
         )}
 
         {/* Lista */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2.5">
+        <div className="flex-1 space-y-2 overflow-y-auto p-4 sm:p-5">
           {cargando && actual.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Loader2 className="w-10 h-10 animate-spin mb-3" style={{ color: COLOR_PRIMARIO }} />
-              <p className="text-sm text-gray-500">Cargando solicitudes...</p>
+              <Loader2 className="mb-3 h-8 w-8 animate-spin text-slate-300" aria-hidden="true" />
+              <p className="text-[12px] text-slate-500">Cargando solicitudes…</p>
             </div>
           ) : actual.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Inbox className="w-14 h-14 text-gray-200 mb-3" />
-              <p className="text-sm font-medium text-gray-400">Sin solicitudes</p>
+              <Inbox className="mb-3 h-10 w-10 text-slate-200" aria-hidden="true" />
+              <p className="text-[12px] font-medium text-slate-400">Sin solicitudes</p>
             </div>
           ) : (
-            actual.map(s => <Tarjeta key={s.id} s={s} />)
+            actual.map(s => (
+              <Tarjeta
+                key={s.id}
+                s={s}
+                abierta={expandida === s.id}
+                observacion={observacion}
+                setObservacion={setObservacion}
+                procesando={procesando}
+                formatearFecha={formatearFecha}
+                onToggle={() => { setExpandida(expandida === s.id ? null : s.id); setObservacion(''); setError(''); }}
+                onProcesar={procesar}
+                onCancelar={cancelarSolicitud}
+              />
+            ))
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-4 sm:px-5 py-3 sm:py-4 border-t border-gray-200 bg-white flex-shrink-0">
-          <button onClick={() => setVista('registro')}
-            className="w-full py-3 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-[0.99]"
-            style={{ backgroundColor: COLOR_PRIMARIO }}>
-            <UserPlus className="w-4 h-4" /> Nuevo cambio de turno
+        <footer className="flex-shrink-0 border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 sm:px-5">
+          <button
+            type="button"
+            onClick={() => setVista('registro')}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-[12px] font-semibold text-white transition-colors hover:brightness-95"
+            style={{ backgroundColor: COLOR_PRIMARIO }}
+          >
+            <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+            Nuevo cambio de turno
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );
