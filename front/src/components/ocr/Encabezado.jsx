@@ -529,6 +529,15 @@ const Encabezado = ({
                   </button>
                 </TooltipPremium>
               )}
+
+              {puedeSolicitarCambio && onAbrirCambiosTurno && (
+                <TooltipPremium text="Solicitar cambio de turno">
+                  <button onClick={() => onAbrirCambiosTurno('registro')}
+                    className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" /> Solicitar Cambio
+                  </button>
+                </TooltipPremium>
+              )}
             </>
           )}
 

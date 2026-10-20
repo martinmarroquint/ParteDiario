@@ -664,17 +664,6 @@ const ModalSolicitudCambioTurno = ({
         </div>
 
         {/* Footer */}
-        <footer className="flex-shrink-0 border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 sm:px-5">
-          <button
-            type="button"
-            onClick={() => setVista('registro')}
-            className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-[12px] font-semibold text-white transition-colors hover:brightness-95"
-            style={{ backgroundColor: COLOR_PRIMARIO }}
-          >
-            <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
-            Nuevo cambio de turno
-          </button>
-        </footer>
       </div>
     </div>
   );
