@@ -193,6 +193,8 @@ const PanelTrabajo = ({
   const [modalDescansoAbierto, setModalDescansoAbierto] = useState(false);
   const [modalVacacionesAbierto, setModalVacacionesAbierto] = useState(false);
   const [modalSolicitudAbierto, setModalSolicitudAbierto] = useState(false);
+  // 'lista' = bandeja/mis solicitudes; 'registro' = formulario de nuevo cambio.
+  const [vistaInicialSolicitud, setVistaInicialSolicitud] = useState('lista');
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [historialCambios, setHistorialCambios] = useState([]);
   const [modalHistorialAbierto, setModalHistorialAbierto] = useState(false);
@@ -340,7 +342,7 @@ const PanelTrabajo = ({
   const puedeImprimir = esJefe || esAdmin || esVisualizador;
   const puedeGuardar = (esAdmin || esJefe) && !esVisualizador;
   const puedeRecargar = esAdmin || esJefe || esVisualizador;
-  const puedeBandeja = esAdmin || esJefe;
+  const puedeBandeja = true;
   // Solicitar un cambio no modifica el rol: lo aprueban los jefes.
   const puedeSolicitarCambio = true;
   const puedeDescansoMedico = true;
@@ -871,7 +873,8 @@ const PanelTrabajo = ({
     };
   }, [recargarDatos]);
 
-  const handleAbrirSolicitudCambio = useCallback(() => {
+  const handleAbrirSolicitudCambio = useCallback((vista = 'lista') => {
+    setVistaInicialSolicitud(vista === 'registro' ? 'registro' : 'lista');
     setModalSolicitudAbierto(true);
   }, []);
 
@@ -1613,6 +1616,7 @@ const PanelTrabajo = ({
       
       <ModalSolicitudCambioTurno
         isOpen={modalSolicitudAbierto}
+        vistaInicial={vistaInicialSolicitud}
         onClose={() => setModalSolicitudAbierto(false)}
         config={config}
         hoja={hojaSeleccionada}

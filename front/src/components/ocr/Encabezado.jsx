@@ -508,7 +508,7 @@ const Encabezado = ({
 
               {puedeBandeja && onAbrirCambiosTurno && (
                 <TooltipPremium text="Bandeja de solicitudes">
-                  <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`} data-tour="tour-bandeja">
+                  <button onClick={() => onAbrirCambiosTurno('lista')} className={`${btnBase} relative flex-shrink-0`} data-tour="tour-bandeja">
                     <Inbox className="w-4 h-4" />
                     {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
                   </button>
@@ -545,7 +545,7 @@ const Encabezado = ({
 
               {puedeBandeja && onAbrirCambiosTurno && (
                 <TooltipPremium text="Bandeja de solicitudes">
-                  <button onClick={onAbrirCambiosTurno} className={`${btnBase} relative flex-shrink-0`}>
+                  <button onClick={() => onAbrirCambiosTurno('lista')} className={`${btnBase} relative flex-shrink-0`}>
                     <Inbox className="w-4 h-4" />
                     {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
                   </button>
@@ -589,7 +589,7 @@ const Encabezado = ({
             <>
               {puedeSolicitarCambio && onAbrirCambiosTurno && (
                 <TooltipPremium text="Solicitar cambio de turno">
-                  <button onClick={onAbrirCambiosTurno} 
+                  <button onClick={() => onAbrirCambiosTurno('registro')} 
                     className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
                     data-tour="tour-solicitar-cambio">
                     <Calendar className="w-3.5 h-3.5 flex-shrink-0" /> Solicitar Cambio
@@ -603,6 +603,16 @@ const Encabezado = ({
                     className="h-8 px-3 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
                     data-tour="tour-descanso-medico">
                     <Clock className="w-3.5 h-3.5 flex-shrink-0" /> Descanso Medico
+                  </button>
+                </TooltipPremium>
+              )}
+
+              {/* Mis solicitudes: el usuario/visor sigue pudiendo ver el estado */}
+              {!esJefe && puedeBandeja && onAbrirCambiosTurno && (
+                <TooltipPremium text="Mis solicitudes">
+                  <button onClick={() => onAbrirCambiosTurno('lista')} className={`${btnBase} relative flex-shrink-0`}>
+                    <Inbox className="w-4 h-4" />
+                    {pendingSolicitudesCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}
                   </button>
                 </TooltipPremium>
               )}

@@ -215,6 +215,8 @@ const MobileRolView = ({
   const [modalCambioAbierto, setModalCambioAbierto] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [modalSolicitudAbierto, setModalSolicitudAbierto] = useState(false);
+  // 'lista' = bandeja/mis solicitudes; 'registro' = formulario de nuevo cambio.
+  const [vistaInicialSolicitud, setVistaInicialSolicitud] = useState('lista');
   const [modalDescansoAbierto, setModalDescansoAbierto] = useState(false);
   const [modalHistorialAbierto, setModalHistorialAbierto] = useState(false);
   const [historialCambios, setHistorialCambios] = useState([]);
@@ -1311,7 +1313,7 @@ const MobileRolView = ({
 
         <div className="sticky bottom-0 bg-white border-t shadow-lg safe-area-bottom">
           <div className="px-4 py-2.5">
-            <button onClick={() => setModalSolicitudAbierto(true)}
+            <button onClick={() => { setVistaInicialSolicitud('registro'); setModalSolicitudAbierto(true); }}
               className="w-full py-3 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
               style={{ backgroundColor: COLOR_PRIMARIO }}>
               <ArrowRightLeft className="w-4 h-4" /> Solicitud de cambio de turno
@@ -1321,6 +1323,7 @@ const MobileRolView = ({
 
         <ModalSolicitudCambioTurno
           isOpen={modalSolicitudAbierto}
+          vistaInicial={vistaInicialSolicitud}
           onClose={() => setModalSolicitudAbierto(false)}
           config={config}
           hoja={hojaSeleccionada}
@@ -1367,7 +1370,7 @@ const MobileRolView = ({
             <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${esVisualizador ? 'bg-sky-400/30 text-white' : rolHabilitado ? 'bg-white/20 text-white' : 'bg-red-400/30 text-white'}`}>{esVisualizador ? 'Solo lectura' : (rolHabilitado ? 'Abierto' : 'Cerrado')}</span>
             {esAdmin && <button onClick={handleAbrirHistorial} className="p-1.5 hover:bg-white/20 rounded-lg"><History className="w-4 h-4" /></button>}
             {esAdmin && <button onClick={() => setMostrarPanelAdmin(true)} className="p-1.5 hover:bg-white/20 rounded-lg"><Shield className="w-4 h-4" /></button>}
-            {(esAdmin || esJefe) && onAbrirCambiosTurno && <button onClick={onAbrirCambiosTurno} className="relative p-1.5 hover:bg-white/20 rounded-lg" title="Bandeja de cambios de turno"><Inbox className="w-4 h-4" />{pendingSolicitudesCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}</button>}
+            <button onClick={() => { setVistaInicialSolicitud('lista'); setModalSolicitudAbierto(true); }} className="relative p-1.5 hover:bg-white/20 rounded-lg" title={esAdmin || esJefe ? 'Bandeja de solicitudes' : 'Mis solicitudes'}><Inbox className="w-4 h-4" />{pendingSolicitudesCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingSolicitudesCount > 99 ? '99+' : pendingSolicitudesCount}</span>}</button>
             {(esAdmin || esTramite) && onAbrirMesaPartes && <button onClick={onAbrirMesaPartes} className="relative p-1.5 hover:bg-white/20 rounded-lg" title="Mesa de Partes"><FileText className="w-4 h-4" />{pendingMesaPartesCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">{pendingMesaPartesCount > 99 ? '99+' : pendingMesaPartesCount}</span>}</button>}
             {esAdmin && <button onClick={() => setMostrarAdminUsuarios(true)} className="p-1.5 hover:bg-white/20 rounded-lg" title="Administrar Usuarios"><UserCog className="w-4 h-4" /></button>}
             <button onClick={() => setMostrarCambiarPassword(true)} className="p-1.5 hover:bg-white/20 rounded-lg" title="Cambiar Contraseña"><Key className="w-4 h-4" /></button>
@@ -1602,7 +1605,7 @@ const MobileRolView = ({
               className="flex-1 py-2.5 text-blue-600 bg-blue-50 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all">
               <FileText className="w-4 h-4" /> Descanso
             </button>
-            <button onClick={() => setModalSolicitudAbierto(true)}
+            <button onClick={() => { setVistaInicialSolicitud('registro'); setModalSolicitudAbierto(true); }}
               className="flex-1 py-2.5 text-gray-600 bg-gray-100 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all">
               <FileText className="w-4 h-4" /> Solicitud
             </button>
@@ -1669,6 +1672,7 @@ const MobileRolView = ({
 
       <ModalSolicitudCambioTurno
         isOpen={modalSolicitudAbierto}
+        vistaInicial={vistaInicialSolicitud}
         onClose={() => setModalSolicitudAbierto(false)}
         config={config}
         hoja={hojaSeleccionada}

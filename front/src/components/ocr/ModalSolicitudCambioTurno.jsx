@@ -346,6 +346,7 @@ const ModalSolicitudCambioTurno = ({
   personal = [],
   turnosMap = {},
   onCambioAplicado = null,
+  vistaInicial = 'lista',
 }) => {
   const storedUserRef = useRef(null);
   if (isOpen && !storedUserRef.current) {
@@ -356,6 +357,7 @@ const ModalSolicitudCambioTurno = ({
   const userRol = storedUser?.rol_principal ??
     (storedUser?.roles?.length ? Math.max(...storedUser.roles) : userRolProp);
   const esAdmin = userRol === 4;
+  const esJefe = [1, 2, 3].includes(userRol);
 
   const [vista, setVista] = useState('lista');
   const [lista, setLista] = useState([]);
@@ -416,7 +418,7 @@ const ModalSolicitudCambioTurno = ({
 
   useEffect(() => {
     if (isOpen) {
-      setVista('lista');
+      setVista(vistaInicial);
       setTab(ESTADOS.PENDIENTE);
       setExpandida(null);
       setObservacion('');
@@ -424,7 +426,7 @@ const ModalSolicitudCambioTurno = ({
       storedUserRef.current = null;
       cargar();
     }
-  }, [isOpen]);
+  }, [isOpen, vistaInicial]);
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape' && isOpen && vista === 'lista') onClose(); };
@@ -438,7 +440,10 @@ const ModalSolicitudCambioTurno = ({
     return (
       <SolicitudesCambioTurno
         isOpen
-        onClose={() => { setVista('lista'); cargar(); }}
+        onClose={() => {
+          if (vistaInicial === 'registro') { onClose(); return; }
+          setVista('lista'); cargar();
+        }}
         onEnviado={() => { setVista('lista'); cargar(); }}
         hoja={hoja || ''}
         mes={mes} anio={anio} area={area}
@@ -532,10 +537,10 @@ const ModalSolicitudCambioTurno = ({
             <Inbox className="h-4 w-4 flex-shrink-0 text-slate-400" aria-hidden="true" />
             <div className="min-w-0">
               <h3 className="truncate text-sm font-semibold leading-tight text-slate-800">
-                Solicitudes de cambio
+                {esAdmin || esJefe ? 'Bandeja de solicitudes' : 'Mis solicitudes'}
               </h3>
               <p className="truncate text-[11px] text-slate-400">
-                {MESES[(mes || 1) - 1]} {anio} · {esAdmin ? 'Administrador' : NIVEL_LABELS_APP[userRol] || 'Usuario'}
+                {esAdmin ? 'Administrador' : NIVEL_LABELS_APP[userRol] || 'Usuario'}
               </p>
             </div>
           </div>
