@@ -236,7 +236,18 @@ const Encabezado = ({
   const handleMesChange = (val) => onMesChange({ target: { value: val } });
   const handleAnioChange = (val) => onAnioChange({ target: { value: val } });
 
-  const opcionesAreaJefe = areasDisponiblesJefe.map(area => ({ value: area, label: area }));
+  // Dedupe defensivo: aunque el dato traiga el area repetida, se muestra una vez.
+  const areasJefeUnicas = [...new Map(
+    areasDisponiblesJefe
+      .map(a => String(a || '').trim().replace(/\s+/g, ' '))
+      .filter(Boolean)
+      .map(a => [a.toUpperCase(), a])
+  ).values()];
+
+  const opcionesAreaJefe = [
+    ...(onVistaChange ? [{ value: '__MI_ROL__', label: 'Mi rol' }] : []),
+    ...areasJefeUnicas.map(area => ({ value: area, label: area })),
+  ];
 
   const [mostrarDias, setMostrarDias] = useState(false);
   const [mostrarRotacion, setMostrarRotacion] = useState(false);
@@ -348,7 +359,7 @@ const Encabezado = ({
   const mostrarAreaLabel = (esAdmin || esVisualizador)
     ? `${esVisualizador ? 'Lectura' : 'Admin'}${areaSeleccionadaAdmin && areaSeleccionadaAdmin !== 'TODAS' ? ` - ${areaSeleccionadaAdmin}` : ''}`
     : (esJefe ? `Jefe de ${areaSeleccionadaJefe || areaAsignada}` : areaAsignada);
-  const mostrarSelectorJefe = esJefe && areasDisponiblesJefe.length > 1;
+  const mostrarSelectorJefe = esJefe && (areasDisponiblesJefe.length > 1 || !!onVistaChange);
 
   return (
     <>
@@ -420,8 +431,12 @@ const Encabezado = ({
           {mostrarSelectorJefe && onAreaChangeJefe && (
             <div className="flex-shrink-0" data-tour="tour-selector-area-jefe">
               <SelectPersonalizado 
-                value={areaSeleccionadaJefe || areaAsignada} 
-                onChange={onAreaChangeJefe} 
+                value={vistaPropia ? '__MI_ROL__' : (areaSeleccionadaJefe || areaAsignada)} 
+                onChange={(v) => {
+                  if (v === '__MI_ROL__') { onVistaChange?.(true); return; }
+                  onVistaChange?.(false);
+                  onAreaChangeJefe?.(v);
+                }} 
                 opciones={opcionesAreaJefe} 
                 placeholder="Cambiar área"
                 disabled={cargando || guardando}

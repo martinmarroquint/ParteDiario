@@ -79,6 +79,21 @@ const esFilaPropia = (persona, usuario) => {
   return !!nombre && String(persona.nombre || '').trim().toLowerCase() === nombre;
 };
 
+/** Deduplica áreas ignorando mayúsculas y espacios repetidos. */
+const areasUnicas = (arr) => {
+  const vistos = new Set();
+  const salida = [];
+  (arr || []).forEach(a => {
+    const limpio = String(a || '').trim().replace(/\s+/g, ' ');
+    if (!limpio) return;
+    const clave = limpio.toUpperCase();
+    if (vistos.has(clave)) return;
+    vistos.add(clave);
+    salida.push(limpio);
+  });
+  return salida;
+};
+
 const PanelTrabajo = ({ 
   areaAsignada, 
   responsable, 
@@ -255,7 +270,7 @@ const PanelTrabajo = ({
       const asignadas = (user?.areas || []).filter(Boolean);
       return asignadas.length ? todasLasAreas.filter(a => asignadas.includes(a)) : todasLasAreas;
     } else if (esJefe && user) {
-      return user.areas || [];
+      return areasUnicas(user.areas || []);
     } else if (esUsuario) {
       return user?.area ? [user.area] : [];
     }
@@ -264,9 +279,9 @@ const PanelTrabajo = ({
 
   // Opciones del selector de area grande (admin / visualizador).
   const areasSelectorAdmin = useMemo(() => {
-    const base = todasLasAreas.filter(a => a !== 'TODAS' && a !== 'SIN_SERVICIO');
+    const base = areasUnicas(todasLasAreas.filter(a => a !== 'TODAS' && a !== 'SIN_SERVICIO'));
     if (esVisualizador) {
-      const asignadas = (user?.areas || []).filter(Boolean);
+      const asignadas = areasUnicas((user?.areas || []).filter(Boolean));
       if (asignadas.length) {
         const filtradas = base.filter(a => asignadas.includes(a));
         return filtradas.length ? filtradas : asignadas;
@@ -1428,7 +1443,7 @@ const PanelTrabajo = ({
         esVisualizador={esVisualizador}
         vistaPropia={vistaPropia}
         onVistaChange={setVistaPropia}
-        mostrarVistaSelector={esVisualizador || esJefe}
+        mostrarVistaSelector={esVisualizador}
         areaAsignada={(esAdmin || esVisualizador) ? areaSeleccionadaAdmin : (esJefe ? areaSeleccionadaJefe : areaAsignada)}
         responsable={responsable} 
         personalLength={personal.length} 
