@@ -1386,6 +1386,17 @@ const MobileRolView = ({
           >
             {ANIOS.map(a => <option key={a} value={a} className="text-gray-800">{a}</option>)}
           </select>
+          {(esVisualizador || esJefe) && (
+            <select
+              value={vistaPropia ? 'propia' : 'area'}
+              onChange={(e) => setVistaPropia(e.target.value === 'propia')}
+              className="bg-white/15 text-white text-xs font-bold px-2 py-1 rounded-lg border border-white/20 focus:outline-none max-w-[130px]"
+              title="Vista"
+            >
+              <option value="area" className="text-gray-800">Area: {areaAsignada && areaAsignada !== 'TODAS' ? areaAsignada : 'Todas'}</option>
+              <option value="propia" className="text-gray-800">Mi rol</option>
+            </select>
+          )}
           <select
             value={mesNavegacion}
             onChange={(e) => handleMesChangeUsuario(parseInt(e.target.value))}
@@ -1393,17 +1404,6 @@ const MobileRolView = ({
           >
             {MESES.map((m, i) => <option key={i} value={i + 1} className="text-gray-800">{m}</option>)}
           </select>
-          {(esVisualizador || esJefe) && (
-            <select
-              value={vistaPropia ? 'propia' : 'area'}
-              onChange={(e) => setVistaPropia(e.target.value === 'propia')}
-              className="bg-white/15 text-white text-xs font-bold px-2 py-1 rounded-lg border border-white/20 focus:outline-none"
-              title="Vista"
-            >
-              <option value="area" className="text-gray-800">Rol del area</option>
-              <option value="propia" className="text-gray-800">Mi rol</option>
-            </select>
-          )}
           <button onClick={() => navigateMonth(1)} className="p-1.5 hover:bg-white/20 rounded-lg active:scale-90 transition-all">
             <ChevronRight className="w-5 h-5" />
           </button>

@@ -430,6 +430,22 @@ const Encabezado = ({
             </div>
           )}
 
+          {/* Selector de Vista - al costado IZQUIERDO del mes */}
+          {mostrarVistaSelector && onVistaChange && (
+            <div className="flex-shrink-0">
+              <SelectPersonalizado
+                value={vistaPropia ? 'propia' : 'area'}
+                onChange={(v) => onVistaChange(v === 'propia')}
+                opciones={[
+                  { value: 'area', label: `Rol del area: ${areaAsignada && areaAsignada !== 'TODAS' ? areaAsignada : 'Todas las areas'}` },
+                  { value: 'propia', label: 'Mi rol' },
+                ]}
+                placeholder="Vista"
+                disabled={cargando || guardando}
+              />
+            </div>
+          )}
+
           {/* Selector de Hoja (Mes) - Admin y Jefes */}
           {(esAdmin || esJefe || esVisualizador) && (
             <div className="flex-shrink-0">
@@ -438,22 +454,6 @@ const Encabezado = ({
                 onChange={handleHojaChange} 
                 opciones={opcionesHojas} 
                 placeholder="Mes"
-                disabled={cargando || guardando}
-              />
-            </div>
-          )}
-
-          {/* Selector de Vista (misma altura que el mes): Area vs Mi rol */}
-          {mostrarVistaSelector && onVistaChange && (
-            <div className="flex-shrink-0">
-              <SelectPersonalizado
-                value={vistaPropia ? 'propia' : 'area'}
-                onChange={(v) => onVistaChange(v === 'propia')}
-                opciones={[
-                  { value: 'area', label: 'Rol del area' },
-                  { value: 'propia', label: 'Mi rol' },
-                ]}
-                placeholder="Vista"
                 disabled={cargando || guardando}
               />
             </div>
