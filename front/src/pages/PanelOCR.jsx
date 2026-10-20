@@ -656,7 +656,11 @@ const PanelOCRContent = () => {
       const result = await solicitudesService.getMisSolicitudes();
       const lista = result?.solicitudes || result?.data || [];
       const key = `ocr_solicitudes_vistas_${user?.id || user?.usuario || 'anon'}`;
-      const vistoMs = localStorage.getItem(key) ? new Date(localStorage.getItem(key)).getTime() : 0;
+      // Primera vez: arrancar desde ahora para no marcar como "nuevas" las
+      // respuestas historicas que el usuario ya conocia.
+      const vistoRaw = localStorage.getItem(key);
+      if (!vistoRaw) localStorage.setItem(key, new Date().toISOString());
+      const vistoMs = vistoRaw ? new Date(vistoRaw).getTime() : Date.now();
       const nuevas = lista.filter(s => {
         if (s.estado === 'PENDIENTE') return false;
         const ultimoHistorial = Array.isArray(s.historial) && s.historial.length
