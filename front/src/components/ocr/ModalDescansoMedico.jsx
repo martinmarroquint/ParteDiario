@@ -1,25 +1,24 @@
 // src/components/ocr/ModalDescansoMedico.jsx
-// REGISTRO DE DESCANSO MÉDICO — v2.0 (Notion contenido)
-// Mismo comportamiento. Solo estilizado para alinear con la bandeja y el wizard:
-//  - Overlay sin backdrop-blur, modal con border-slate-200 + shadow-md
-//  - Header neutro: icono slate-400 inline, título slate-800, subtítulo slate-400
-//  - Inputs h-9 rounded-md, foco slate-400 (sin ring de color)
-//  - Calendario con día seleccionado neutro (slate-200/900) y rango muy suave
-//  - Chip de selección (Personal / Médico) como pill slate, no emerald/blue
-//  - Sin active:scale, sin shadow-md en botón guardar
-//  - Toda la lógica intacta (resetForm, rango de fechas, CIE10, validación, payload)
+// REGISTRO DE DESCANSO MÉDICO — v2.2
+// Notion contenido, con contraste equilibrado. Sin saturar, sin apagar.
+//  - Header con COLOR_PRIMARIO pero contenido (icono sutil, sin cuadrado)
+//  - Inputs con borde slate-200 y foco slate-400 (limpio)
+//  - Chips seleccionados sobrios: dot de color + texto slate, sin fondo de color
+//  - Calendario: extremos con COLOR_PRIMARIO, rango slate-100, hoy ring slate-400
+//  - Leyenda minimalista
+//  - Footer con botón primario sin shadow
+// Toda la lógica intacta.
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   X, User, Stethoscope, Clock,
   FileText, AlertCircle, CheckCircle2, Loader2,
-  ChevronLeft, ChevronRight, RotateCcw,
+  ChevronLeft, ChevronRight, RotateCcw, Search,
 } from 'lucide-react';
 import { COLOR_PRIMARIO, MESES } from './constantes';
 import SelectorCIE10 from '../hojaReferencia/SelectorCIE10';
 
-const crearFechaLocal = (anio, mes, dia) => {
-  return `${anio}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-};
+const crearFechaLocal = (anio, mes, dia) =>
+  `${anio}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 
 const formatearFechaLegible = (fechaStr) => {
   if (!fechaStr) return '';
@@ -31,35 +30,36 @@ const FOCO =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-300';
 
 /* ============================================================
-   CAMPO DE BÚSQUEDA CON DROPDOWN (reutilizable)
+   CAMPO DE BÚSQUEDA CON DROPDOWN
    ============================================================ */
 const BuscadorSeleccion = ({
   label, icon: Icon, placeholder, value, inputValue, onChangeInput, onFocus,
   onClear, abierto, dropdownRef, conteo, resultados, renderItem, itemKey,
-  seleccionado, chipLabel, chipSublabel,
+  seleccionado, chipLabel, chipSublabel, colorDot,
 }) => (
   <div>
-    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-      {label}
-    </label>
+    <label className="mb-1.5 block text-[11px] font-medium text-slate-600">{label}</label>
     <div className="relative" ref={dropdownRef}>
       <div className="relative">
-        <Icon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+        <Icon
+          className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+          aria-hidden="true"
+        />
         <input
           type="text"
           value={value ? chipLabel : inputValue}
-          onChange={(e) => { onChangeInput(e.target.value); }}
+          onChange={(e) => onChangeInput(e.target.value)}
           onFocus={onFocus}
           placeholder={placeholder}
           autoComplete="off"
-          className="h-9 w-full rounded-md border border-slate-200 bg-white pl-8 pr-8 text-[12px] text-slate-700 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+          className="h-9 w-full rounded-md border border-slate-200 bg-white pl-8 pr-8 text-[12px] text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
         />
         {(inputValue || value) && (
           <button
             type="button"
             onClick={onClear}
             aria-label="Limpiar"
-            className={`absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600 ${FOCO}`}
+            className={`absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 ${FOCO}`}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -67,7 +67,7 @@ const BuscadorSeleccion = ({
       </div>
 
       {abierto && !value && (
-        <div className="absolute left-0 right-0 top-full z-40 mt-1 overflow-hidden rounded-md border border-slate-200 bg-white shadow-md">
+        <div className="absolute left-0 right-0 top-full z-40 mt-1 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
           <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-500">
             {conteo} resultado{conteo === 1 ? '' : 's'}
           </div>
@@ -94,17 +94,17 @@ const BuscadorSeleccion = ({
     </div>
 
     {seleccionado && (
-      <div className="mt-1.5 flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
-        <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-emerald-600" aria-hidden="true" />
+      <div className="mt-1.5 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5">
+        <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: colorDot }} aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[12px] font-medium text-slate-700">{chipLabel}</p>
-          {chipSublabel && <p className="truncate text-[10px] text-slate-400">{chipSublabel}</p>}
+          <p className="truncate text-[12px] font-medium text-slate-800">{chipLabel}</p>
+          {chipSublabel && <p className="truncate text-[10px] text-slate-500">{chipSublabel}</p>}
         </div>
         <button
           type="button"
           onClick={onClear}
           aria-label="Cambiar"
-          className={`rounded p-0.5 text-slate-400 transition-colors hover:text-red-600 ${FOCO}`}
+          className={`rounded p-0.5 text-slate-400 transition-colors hover:bg-white hover:text-red-600 ${FOCO}`}
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -207,7 +207,6 @@ const ModalDescansoMedico = ({
   const handleClickDia = (dia) => {
     const fechaDia = crearFechaLocal(anioCalendario, mesCalendario, dia);
     setError('');
-
     if (seleccionando === 'inicio') {
       setFechaInicio(fechaDia);
       setFechaFin(null);
@@ -330,10 +329,7 @@ const ModalDescansoMedico = ({
       registrado_por: 'Sistema PNP',
     };
 
-    if (onGuardarDescanso) {
-      onGuardarDescanso(descanso);
-    }
-
+    if (onGuardarDescanso) onGuardarDescanso(descanso);
     if (onSuccess) {
       onSuccess({
         titulo: 'Descanso Médico Registrado',
@@ -378,14 +374,14 @@ const ModalDescansoMedico = ({
       let estilo = {};
 
       if (esExtremo) {
-        clases += 'text-white';
+        clases += 'text-white shadow-sm';
         estilo = { backgroundColor: COLOR_PRIMARIO };
       } else if (enRango) {
-        clases += 'bg-slate-100 text-slate-700';
+        clases += 'bg-slate-200 text-slate-800';
       } else if (esHoy) {
-        clases += 'bg-white text-slate-800 ring-1 ring-inset ring-slate-300';
+        clases += 'bg-white text-slate-900 ring-1 ring-inset ring-slate-400';
       } else if (esPasado) {
-        clases += 'text-slate-300 hover:bg-slate-50';
+        clases += 'text-slate-300 hover:bg-slate-100';
       } else {
         clases += 'text-slate-700 hover:bg-slate-100';
       }
@@ -415,22 +411,25 @@ const ModalDescansoMedico = ({
         className="flex max-h-[95vh] w-full max-w-lg flex-col overflow-hidden rounded-t-xl border border-slate-200 bg-white shadow-md sm:max-h-[90vh] sm:rounded-xl"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <header className="flex flex-shrink-0 items-center justify-between gap-3 px-5 py-3.5">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <FileText className="h-4 w-4 flex-shrink-0 text-slate-400" aria-hidden="true" />
+        {/* Header con marca pero contenido */}
+        <header
+          className="flex flex-shrink-0 items-center justify-between gap-3 px-5 py-3 text-white"
+          style={{ backgroundColor: COLOR_PRIMARIO }}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <FileText className="h-4 w-4 flex-shrink-0 opacity-90" aria-hidden="true" />
             <div className="min-w-0">
-              <h3 className="truncate text-sm font-semibold leading-tight text-slate-800">
+              <h3 className="truncate text-sm font-semibold leading-tight">
                 Registrar descanso médico
               </h3>
-              <p className="truncate text-[11px] text-slate-400">Sistema de registro PNP</p>
+              <p className="truncate text-[11px] text-white/75">Sistema de registro PNP</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => { resetForm(); onClose(); }}
             aria-label="Cerrar"
-            className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="rounded p-1 text-white/90 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -444,7 +443,7 @@ const ModalDescansoMedico = ({
             <BuscadorSeleccion
               label="Personal PNP"
               icon={User}
-              placeholder="Buscar personal..."
+              placeholder="Buscar personal…"
               value={personalId}
               inputValue={busquedaPersonalInput}
               onChangeInput={(v) => {
@@ -469,8 +468,8 @@ const ModalDescansoMedico = ({
                   <>
                     <User className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
                     <span className="min-w-0">
-                      <span className="block truncate text-[12px] font-medium text-slate-700">{p.grado} {p.nombre}</span>
-                      <span className="block truncate text-[10px] text-slate-400">{p.dni} · {p.area}</span>
+                      <span className="block truncate text-[12px] font-medium text-slate-800">{p.grado} {p.nombre}</span>
+                      <span className="block truncate text-[10px] text-slate-500">{p.dni} · {p.area}</span>
                     </span>
                   </>
                 ),
@@ -478,12 +477,13 @@ const ModalDescansoMedico = ({
               seleccionado={personalSeleccionado}
               chipLabel={personalSeleccionado ? `${personalSeleccionado.grado || ''} ${personalSeleccionado.nombre || ''}` : ''}
               chipSublabel={personalSeleccionado ? [personalSeleccionado.dni, personalSeleccionado.area].filter(Boolean).join(' · ') : ''}
+              colorDot="#10b981"
             />
 
             <BuscadorSeleccion
               label="Médico tratante"
               icon={Stethoscope}
-              placeholder="Buscar médico..."
+              placeholder="Buscar médico…"
               value={medicoId}
               inputValue={busquedaMedicoInput}
               onChangeInput={(v) => {
@@ -508,11 +508,11 @@ const ModalDescansoMedico = ({
                   <>
                     <Stethoscope className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
                     <span className="min-w-0">
-                      <span className="block truncate text-[12px] font-medium text-slate-700">
+                      <span className="block truncate text-[12px] font-medium text-slate-800">
                         Dr(a). {m.medico_nombre || m.nombre}
                       </span>
                       {m.especialidad && (
-                        <span className="block truncate text-[10px] text-slate-400">{m.especialidad}</span>
+                        <span className="block truncate text-[10px] text-slate-500">{m.especialidad}</span>
                       )}
                     </span>
                   </>
@@ -521,13 +521,14 @@ const ModalDescansoMedico = ({
               seleccionado={medicoSeleccionado}
               chipLabel={medicoSeleccionado ? `Dr(a). ${medicoSeleccionado.medico_nombre || medicoSeleccionado.nombre || ''}` : ''}
               chipSublabel={medicoSeleccionado?.especialidad || ''}
+              colorDot="#0ea5e9"
             />
           </div>
 
           {/* Diagnóstico + Observaciones */}
           <div className="space-y-3">
             <div>
-              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <label className="mb-1.5 block text-[11px] font-medium text-slate-600">
                 Diagnóstico (CIE-10)
               </label>
               <SelectorCIE10
@@ -537,7 +538,7 @@ const ModalDescansoMedico = ({
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <label className="mb-1.5 block text-[11px] font-medium text-slate-600">
                 Observaciones
               </label>
               <textarea
@@ -545,21 +546,21 @@ const ModalDescansoMedico = ({
                 onChange={(e) => setObservaciones(e.target.value)}
                 placeholder="Observaciones adicionales, recomendaciones, tratamiento…"
                 rows={2}
-                className="w-full resize-none rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-700 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                className="w-full resize-none rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
               />
             </div>
           </div>
 
           {/* Calendario */}
-          <div>
+          <div className="rounded-md border border-slate-200 bg-white p-3">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                {seleccionando === 'inicio' ? 'Seleccione fecha de inicio' : 'Seleccione fecha de fin'}
+              <span className="text-[11px] font-medium text-slate-600">
+                {seleccionando === 'inicio' ? 'Fecha de inicio' : 'Fecha de fin'}
               </span>
               <button
                 type="button"
                 onClick={limpiarFechas}
-                className={`flex items-center gap-1 text-[10px] font-medium text-slate-400 transition-colors hover:text-red-500 ${FOCO}`}
+                className={`flex items-center gap-1 text-[10px] font-medium text-slate-400 transition-colors hover:text-red-600 ${FOCO}`}
               >
                 <RotateCcw className="h-3 w-3" aria-hidden="true" /> Limpiar
               </button>
@@ -568,38 +569,38 @@ const ModalDescansoMedico = ({
             <div className="mb-3 flex items-center gap-2">
               <div className={`flex-1 rounded-md border px-3 py-2 text-center text-[12px] font-medium transition-colors ${
                 fechaInicio
-                  ? 'border-slate-300 bg-slate-50 text-slate-800'
-                  : 'border-slate-200 bg-white text-slate-400'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-slate-200 bg-slate-50 text-slate-400'
               }`}>
                 {fechaInicio ? formatearFechaLegible(fechaInicio) : 'Inicio'}
               </div>
               <span className="text-slate-300">—</span>
               <div className={`flex-1 rounded-md border px-3 py-2 text-center text-[12px] font-medium transition-colors ${
                 fechaFin
-                  ? 'border-slate-300 bg-slate-50 text-slate-800'
-                  : 'border-slate-200 bg-white text-slate-400'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-slate-200 bg-slate-50 text-slate-400'
               }`}>
                 {fechaFin ? formatearFechaLegible(fechaFin) : 'Fin'}
               </div>
             </div>
 
-            <div className="mb-2 flex items-center justify-between rounded-md bg-slate-50 px-2 py-1.5">
+            <div className="mb-2 flex items-center justify-between">
               <button
                 type="button"
                 onClick={mesAnterior}
                 aria-label="Mes anterior"
-                className={`rounded p-1 text-slate-500 transition-colors hover:bg-white hover:text-slate-700 ${FOCO}`}
+                className={`rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 ${FOCO}`}
               >
                 <ChevronLeft className="h-4 w-4" aria-hidden="true" />
               </button>
-              <span className="select-none text-[12px] font-medium text-slate-700">
+              <span className="select-none text-[12px] font-semibold text-slate-800">
                 {MESES[mesCalendario]} {anioCalendario}
               </span>
               <button
                 type="button"
                 onClick={mesSiguiente}
                 aria-label="Mes siguiente"
-                className={`rounded p-1 text-slate-500 transition-colors hover:bg-white hover:text-slate-700 ${FOCO}`}
+                className={`rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 ${FOCO}`}
               >
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -617,31 +618,18 @@ const ModalDescansoMedico = ({
               {renderCalendario()}
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] text-slate-400">
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COLOR_PRIMARIO }} />
-                Selección
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-slate-200" /> Rango
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-white ring-1 ring-inset ring-slate-300" /> Hoy
-              </span>
-            </div>
-
             {diasDescanso > 0 && (
-              <div className="mt-3 rounded-md border border-amber-100 bg-amber-50/60 px-3 py-2">
+              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                 <div className="flex items-start gap-2">
-                  <Clock className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600" aria-hidden="true" />
+                  <Clock className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-700" aria-hidden="true" />
                   <div className="min-w-0">
-                    <p className="text-[12px] text-amber-900">
-                      <strong className="font-semibold">{diasDescanso} día(s)</strong> de descanso médico
+                    <p className="text-[12px] font-medium text-amber-900">
+                      {diasDescanso} día{diasDescanso === 1 ? '' : 's'} de descanso médico
                     </p>
                     {fechaInicio && fechaFin && (
-                      <p className="mt-0.5 text-[10px] text-amber-700">
-                        Del {formatearFechaLegible(fechaInicio)} al {formatearFechaLegible(fechaFin)} · Retorna el {formatearFechaLegible(fechaFin)}
-                        {fechaInicio < hoyStr ? ' (Registro retroactivo)' : fechaInicio > hoyStr ? ' (Programado)' : ' (Incluye hoy)'}
+                      <p className="mt-0.5 text-[10px] text-amber-800">
+                        Del {formatearFechaLegible(fechaInicio)} al {formatearFechaLegible(fechaFin)}
+                        {fechaInicio < hoyStr ? ' · Registro retroactivo' : fechaInicio > hoyStr ? ' · Programado' : ' · Incluye hoy'}
                       </p>
                     )}
                   </div>
@@ -651,7 +639,7 @@ const ModalDescansoMedico = ({
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 rounded-md border border-red-100 bg-red-50/60 px-3 py-2 text-[12px] text-red-700">
+            <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
               <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
               <span className="font-medium">{error}</span>
             </div>
@@ -659,11 +647,11 @@ const ModalDescansoMedico = ({
         </div>
 
         {/* Footer */}
-        <footer className="flex flex-shrink-0 justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 sm:px-5">
+        <footer className="flex flex-shrink-0 justify-end gap-2 border-t border-slate-100 bg-slate-50 px-4 py-2.5 sm:px-5">
           <button
             type="button"
             onClick={() => { resetForm(); onClose(); }}
-            className={`h-9 rounded-md border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 ${FOCO}`}
+            className={`h-9 rounded-md border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 ${FOCO}`}
           >
             Cancelar
           </button>
@@ -672,7 +660,7 @@ const ModalDescansoMedico = ({
             onClick={handleGuardar}
             disabled={!esValido || guardando}
             className={`flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white transition-colors hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 ${FOCO}`}
-            style={{ backgroundColor: esValido ? COLOR_PRIMARIO : '#9CA3AF' }}
+            style={{ backgroundColor: esValido ? COLOR_PRIMARIO : '#94A3B8' }}
           >
             {guardando ? (
               <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Registrando…</>
