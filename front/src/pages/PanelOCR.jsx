@@ -107,7 +107,7 @@ const PanelOCRContent = () => {
   const [gridRefreshKey, setGridRefreshKey] = useState(0);
   const [solicitudAplicada, setSolicitudAplicada] = useState(false);
   const prevCountRef = useRef(0);
-  
+
   // ============================================================
   // IMPORTANTE: INICIAR EN false - Solo se abre con el botón
   // ============================================================
@@ -172,9 +172,18 @@ const PanelOCRContent = () => {
           initTurnosDinamicos();
         }
       } catch (e) {
+        // Flujo esperado cuando no hay sesión o el token expiró: no es error.
+        if (e?.code === 'NOT_AUTHENTICATED') {
+          // Si el token expiró, limpiar sesión para no quedar con datos viejos.
+          const msg = String(e.message || '').toLowerCase();
+          if (msg.includes('expirada')) {
+            localStorage.removeItem('ocr_auth_token');
+            localStorage.removeItem('ocr_user_data');
+            window.location.href = '/';
+          }
+          return;
+        }
         console.warn('Backend no disponible, usando datos locales:', e.message);
-        // Si el token expiro, no dejar la sesion con datos viejos: un rol
-        // cacheado haria que un visualizador viera/edite con permisos previos.
         if (String(e.message || '').toLowerCase().includes('expirada')) {
           localStorage.removeItem('ocr_auth_token');
           localStorage.removeItem('ocr_user_data');
@@ -299,10 +308,10 @@ const PanelOCRContent = () => {
       // Intentar login con el backend real
       if (BACKEND_DISPONIBLE) {
         const result = await authService.login(usuario, password);
-        
+
         if (result.success) {
           const userData = result.usuario || result.user;
-          
+
           // Mapear rol principal a string para compatibilidad
           const rolMap = {
             0: 'usuario',
@@ -313,9 +322,9 @@ const PanelOCRContent = () => {
             5: 'tramite_documentario',
             6: 'visualizador'
           };
-          
+
           const rolString = rolMap[userData.rol_principal] || 'usuario';
-          
+
           const rolesEfectivos = (userData.roles || []).filter(r => r !== 6);
           const maxRol = userData.rol_principal || (rolesEfectivos.length ? Math.max(...rolesEfectivos) : 6);
           const normalizedUser = {
@@ -326,7 +335,7 @@ const PanelOCRContent = () => {
             areas: userData.areas || (userData.area ? [userData.area] : []),
             requiereCambio: false
           };
-          
+
           setUser(normalizedUser);
           setIsAuthenticated(true);
           setIsAdmin(userData.rol_principal === 4);
@@ -336,18 +345,18 @@ const PanelOCRContent = () => {
           setEsAdmin(userData.rol_principal === 4);
           setEsTramite(userData.rol_principal === 5);
           setEsVisualizador(userData.rol_principal === 6);
-          
+
           if (userData.areas && userData.areas.length > 0) {
             setAreaSeleccionada(userData.areas[0]);
           }
-          
+
           // GUARDAR en localStorage para persistir recarga
           localStorage.setItem('ocr_auth_token', result.token);
           localStorage.setItem('ocr_user_data', JSON.stringify(normalizedUser));
-          
+
           // Cargar turnos dinámicos desde BD sheet (después del login)
           initTurnosDinamicos();
-          
+
           setLoading(false);
           return true;
         } else {
@@ -356,7 +365,7 @@ const PanelOCRContent = () => {
           return result.error || 'Credenciales invalidas';
         }
       }
-      
+
       // Backend no disponible — mostrar error, NO dar acceso admin
       setLoading(false);
       return 'Servidor no disponible. Verifique su conexion e intente nuevamente.';
@@ -377,13 +386,13 @@ const PanelOCRContent = () => {
     } catch {
       // Ignorar errores del backend
     }
-    
+
     // Ahora si limpiar todo
     localStorage.removeItem('ocr_auth_token');
     localStorage.removeItem('ocr_user_data');
     sessionStorage.removeItem(STORAGE_SESION);
     apiClient.removeToken();
-    
+
     // Reiniciar estado
     setUser(null);
     setIsAuthenticated(false);
@@ -429,8 +438,17 @@ const PanelOCRContent = () => {
 
   // ============================================================
   // CARGAR DATOS INICIALES
+  // ------------------------------------------------------------
+  // Guardia: si no hay token, no dispares. Evita 403 "Not authenticated"
+  // cuando el usuario aun no se logueo (consola limpia, sin red).
+  // Se re-dispara al loguearse (dependencia [token]).
   // ============================================================
   useEffect(() => {
+    const token = apiClient.getToken();
+    if (!token) return;
+
+    let cancelled = false;
+
     const cargar = async () => {
       setCargando(true);
       try {
@@ -438,6 +456,8 @@ const PanelOCRContent = () => {
           getSheetMetadata(),
           readSheet(hojaActiva, 'A:E')
         ]);
+
+        if (cancelled) return;
 
         setHojasDisponibles(hojas);
 
@@ -466,13 +486,18 @@ const PanelOCRContent = () => {
           nombre: r[2].trim(), area: r[3]?.trim() || '', grado: r[1]?.trim() || ''
         })));
       } catch (e) {
+        if (cancelled) return;
+        // "No autenticado" es flujo esperado si aún no hay sesión: no es error.
+        if (e?.code === 'NOT_AUTHENTICATED') return;
         console.error('Error cargando datos:', e);
       } finally {
-        setCargando(false);
+        if (!cancelled) setCargando(false);
       }
     };
     cargar();
-  }, []);
+
+    return () => { cancelled = true; };
+  }, [apiClient.getToken()]);
 
   // Un visualizador global no tiene areas asignadas: arrancar en la primera.
   useEffect(() => {
@@ -569,6 +594,9 @@ const PanelOCRContent = () => {
 
       return { success: true, totalDiasMarcados: total, mensaje: `Descanso medico registrado. ${total} dia(s) en ${hojasAfectadas.join(', ')}.` };
     } catch (error) {
+      if (error?.code === 'NOT_AUTHENTICATED') {
+        return { success: false, error: 'No autenticado', code: 'NOT_AUTHENTICATED' };
+      }
       return { success: false, error: error.message };
     } finally {
       setTimeout(() => { guardandoDescanso.current = false; }, 3000);
@@ -632,6 +660,8 @@ const PanelOCRContent = () => {
       });
 
     } catch (error) {
+      // "No autenticado" es flujo esperado si la sesión expiró: no es error.
+      if (error?.code === 'NOT_AUTHENTICATED') return;
       console.error('Error al guardar vacaciones:', error);
     } finally {
       setTimeout(() => { guardandoVacaciones.current = false; }, 3000);
@@ -790,18 +820,18 @@ const PanelOCRContent = () => {
       />
     );
   }, [
-    isMobile, 
-    areaSeleccionada, 
-    responsable, 
-    esAdmin, 
+    isMobile,
+    areaSeleccionada,
+    responsable,
+    esAdmin,
     esVisualizador,
     esTramite,
-    handleSalir, 
-    abrirCambiosTurno, 
-    areas, 
-    isJefe, 
-    isUsuario, 
-    user, 
+    handleSalir,
+    abrirCambiosTurno,
+    areas,
+    isJefe,
+    isUsuario,
+    user,
     medicosSistema,
     pendingSolicitudesCount,
     pendingMesaPartesCount
@@ -810,7 +840,7 @@ const PanelOCRContent = () => {
   // ============================================================
   // RENDER: Login o Panel según estado de autenticación
   // ============================================================
-  
+
   // Si está cargando
   if (loading) {
     return (
@@ -888,8 +918,8 @@ const PanelOCRContent = () => {
         userName={user?.nombre || 'ADMIN'}
         userRol={user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0)}
         userAreas={
-          (user?.areas?.length > 0) ? user.areas : 
-          (user?.area ? [user.area] : 
+          (user?.areas?.length > 0) ? user.areas :
+          (user?.area ? [user.area] :
             (isAdmin ? ['TODAS'] : []))
         }
         personal={todoElPersonal}

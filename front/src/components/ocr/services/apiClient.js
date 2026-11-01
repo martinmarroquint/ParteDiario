@@ -13,7 +13,7 @@ class ApiClient {
   // ============================================
   // TOKEN MANAGEMENT
   // ============================================
-  
+
   getToken() {
     return localStorage.getItem('ocr_auth_token');
   }
@@ -51,7 +51,6 @@ class ApiClient {
       if (refreshIn > 0) {
         this._refreshTimer = setTimeout(() => this._silentRefresh(), refreshIn);
       } else if (refreshIn > -60000) {
-        // Already within 1 min of expiry, refresh now
         this._silentRefresh();
       }
     } catch {
@@ -69,7 +68,6 @@ class ApiClient {
       }
     } catch {
       // Refresh failed, token will expire naturally
-      // Don't force logout here - let the next request handle it
     }
   }
 
@@ -87,12 +85,39 @@ class ApiClient {
   }
 
   // ============================================
+  // HELPERS
+  // ============================================
+
+  _isPublicEndpoint(endpoint) {
+    return (
+      endpoint.includes('/auth/login') ||
+      endpoint.includes('/auth/refresh') ||
+      endpoint.includes('/auth/validate-admin-key') ||
+      endpoint.endsWith('/health')
+    );
+  }
+
+  _authError(msg = 'No autenticado') {
+    const err = new Error(msg);
+    err.code = 'NOT_AUTHENTICATED';
+    err.isAuthError = true;
+    return err;
+  }
+
+  // ============================================
   // HTTP METHODS
   // ============================================
 
   async request(endpoint, options = {}) {
     const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
     const token = this.getToken();
+    const esPublico = this._isPublicEndpoint(endpoint);
+
+    // Guardia: si es protegido y no hay token, no dispares la peticion.
+    // Evita 403 "Not authenticated" cuando el usuario aun no se logueo.
+    if (!esPublico && !token) {
+      throw this._authError();
+    }
 
     const headers = {
       'Content-Type': 'application/json',
@@ -112,8 +137,6 @@ class ApiClient {
     } = options;
 
     for (let intento = 0; intento <= _retries; intento++) {
-      // Timeout por peticion: evita que la UI se quede "colgada" para siempre
-      // (arranque en frio de Render puede tardar ~50s en la primera peticion)
       const controller = !options.signal ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), _timeout) : null;
 
@@ -142,8 +165,6 @@ class ApiClient {
 
       // Handle 401 - Token expired or invalid
       if (response.status === 401) {
-        // _skipAuthRedirect: used for background/polling calls where we don't want to kill the session
-        // _onlyThrow: used when caller wants to handle the 401 themselves
         if (!options._skipAuthRedirect) {
           this.removeToken();
           window.location.href = '/';
@@ -151,9 +172,23 @@ class ApiClient {
         throw new Error('Sesión expirada. Por favor, inicie sesión nuevamente.');
       }
 
-      // Handle 403 - Forbidden
+      // Handle 403 - Forbidden (distingue "no autenticado" de "sin permisos")
       if (response.status === 403) {
-        throw new Error('No tiene permisos para realizar esta acción.');
+        const errorData = await response.json().catch(() => ({}));
+        const detailRaw = errorData.detail || '';
+        const detail = detailRaw.toLowerCase();
+
+        const esNoAutenticado =
+          detail.includes('not authenticated') ||
+          detail.includes('no autenticado') ||
+          detail.includes('not authorized') ||
+          detail.includes('token');
+
+        if (esNoAutenticado) {
+          throw this._authError(detailRaw || 'No autenticado');
+        }
+
+        throw new Error(detailRaw || 'No tiene permisos para realizar esta acción.');
       }
 
       // Handle other errors (con reintento automatico en errores transitorios)
@@ -170,7 +205,6 @@ class ApiClient {
         throw new Error(mensaje);
       }
 
-      // Handle 204 No Content
       if (response.status === 204) {
         return null;
       }
@@ -223,7 +257,6 @@ class ApiClient {
   // ============================================
 
   async login(usuario, password) {
-    // Timeout 90s (arranque en frio puede tardar ~50s) + 2 reintentos con backoff
     const result = await this.post('/auth/login', { usuario, password }, {
       _timeout: 90000,
       _retries: 2,
@@ -351,7 +384,7 @@ class ApiClient {
     return this.put(`/solicitudes/${id}/approve`, data);
   }
 
-  async rechazarSolicitud(id, data) {
+  async rechazarSolicitud(id, data = {}) {
     return this.put(`/solicitudes/${id}/reject`, data);
   }
 
@@ -446,13 +479,10 @@ class ApiClient {
   async readSheet(sheetName, range) {
     const params = {};
     if (range) params.range = range;
-    // 1 reintento a fallos transitorios de Google Sheets (502) — solo lectura
     return this.get(`/sheets/${sheetName}`, params, { _retries: 1, _retryDelays: [1000], _timeout: 30000 });
   }
 
   async getSheetMetadata(sheetName) {
-    // 2 reintentos: las cargas simultaneas de varios dispositivos provocaban
-    // 502 en este endpoint (error "Error al obtener metadata" = no cargaba)
     return this.get(`/sheets/metadata/${sheetName}`, {}, { _retries: 2, _retryDelays: [800, 2000], _timeout: 20000 });
   }
 
@@ -461,7 +491,6 @@ class ApiClient {
   // ============================================
 
   async healthCheck() {
-    // El endpoint /health esta en la RAIZ, no bajo /api/v1
     const rootUrl = this.baseUrl.replace(/\/api\/v1\/?$/, '');
     return this.request(`${rootUrl}/health`, { method: 'GET', _skipAuthRedirect: true, _timeout: 10000 });
   }
@@ -479,6 +508,5 @@ class ApiClient {
   }
 }
 
-// Export singleton instance
 export const apiClient = new ApiClient();
 export default apiClient;

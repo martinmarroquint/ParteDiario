@@ -59,8 +59,12 @@ app = FastAPI(
     openapi_url="/openapi.json" if settings.ENVIRONMENT == "development" else None,
 )
 
-# Setup CORS
-setup_cors(app)
+# ============================================================
+# ORDEN DE MIDDLEWARES — IMPORTANTE
+# En Starlette, el ÚLTIMO middleware agregado se ejecuta PRIMERO.
+# Por eso CORS debe registrarse AL FINAL para ejecutarse antes
+# que el rate limiter y así interceptar los preflight OPTIONS.
+# ============================================================
 
 # Rate limiter — must be wired as middleware + exception handler
 app.state.limiter = limiter
@@ -92,6 +96,10 @@ async def logging_middleware(request: Request, call_next):
     else:
         logger.info(f"Request: {log_data}")
     return response
+
+
+# Setup CORS AL FINAL — se ejecuta PRIMERO en la pila
+setup_cors(app)
 
 
 # Include routers

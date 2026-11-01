@@ -3,6 +3,8 @@
 // ✅ TODAS las variables sensibles se leen del .env
 // ✅ NO hay fallbacks en duro para claves o credenciales
 
+import apiClient from './services/apiClient';
+
 export const COLOR_PRIMARIO = '#188C5D';
 
 // ============================================
@@ -104,19 +106,19 @@ export async function initTurnosDinamicos() {
   try {
     const { loadTurnos } = await import('./services/turnosService.js');
     const turnos = await loadTurnos();
-    
+
     if (turnos && turnos.length > 0) {
       // Clear and repopulate TURNOS array
       TURNOS.length = 0;
       turnos.forEach(t => TURNOS.push(t));
-      
+
       // Clear and repopulate maps (mutate, don't reassign)
       Object.keys(TURNO_MAP).forEach(k => delete TURNO_MAP[k]);
       turnos.forEach(t => { TURNO_MAP[t.codigo] = t; });
-      
+
       Object.keys(NOMBRE_A_CODIGO).forEach(k => delete NOMBRE_A_CODIGO[k]);
       turnos.forEach(t => { NOMBRE_A_CODIGO[t.nombre] = t.codigo; });
-      
+
       console.log(`Turnos cargados desde BD: ${turnos.length} turnos`);
     }
   } catch (e) {
@@ -176,11 +178,11 @@ export const hojaInicialParaArea = (area = '', config = {}, hojasMes = []) => {
 };
 
 export const DIAS_SEMANA = [
-  { id: 1, nombre: 'Lunes', corto: 'Lun', inicial: 'L' }, 
+  { id: 1, nombre: 'Lunes', corto: 'Lun', inicial: 'L' },
   { id: 2, nombre: 'Martes', corto: 'Mar', inicial: 'M' },
-  { id: 3, nombre: 'Miercoles', corto: 'Mie', inicial: 'M' }, 
+  { id: 3, nombre: 'Miercoles', corto: 'Mie', inicial: 'M' },
   { id: 4, nombre: 'Jueves', corto: 'Jue', inicial: 'J' },
-  { id: 5, nombre: 'Viernes', corto: 'Vie', inicial: 'V' }, 
+  { id: 5, nombre: 'Viernes', corto: 'Vie', inicial: 'V' },
   { id: 6, nombre: 'Sabado', corto: 'Sab', inicial: 'S' },
   { id: 0, nombre: 'Domingo', corto: 'Dom', inicial: 'D' },
 ];
@@ -258,84 +260,49 @@ export const DEFAULT_GOOGLE_CONFIG = {
 export const bodyAsciiJson = (obj) => JSON.stringify(obj).replace(/[\u007F-\uFFFF]/g, (ch) => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
 
 // ============================================
-// HMAC SIGNING — Apps Script verification
+// PROXY AL BACKEND — TODAS las llamadas pasan por apiClient
+// apiClient tiene guardia de token y manejo de 403 "Not authenticated".
+// Estas funciones mantienen el CONTRATO de alto nivel que los
+// componentes esperan:
+//   - readSheet()         -> Array<Array<string>>  (filas)
+//   - getSheetMetadata()  -> Array<string>         (nombres de hoja)
+// El apiClient devuelve el JSON crudo del backend ({values: [...]},
+// {sheets: [...]}); aqui se hace el "unwrapping".
 // ============================================
-// REMOVED: HMAC signing is now server-side only.
-// postToAppsScript() calls the backend proxy which adds HMAC before forwarding to Apps Script.
-// The HMAC secret NEVER reaches the browser.
 
 /**
  * POST to backend proxy → Apps Script (with HMAC signing server-side)
- * This replaces ALL direct fetch() calls to Apps Script.
- * The frontend NEVER touches the HMAC secret.
+ * Delega en apiClient: guardia de token + manejo de 403.
+ * Devuelve la respuesta JSON del backend tal cual (no necesita unwrap).
  */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-
 export async function postToAppsScript(_appsScriptUrl, payload) {
-  const token = localStorage.getItem('ocr_auth_token');
-  const response = await fetch(`${API_BASE_URL}/sheets/write`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Error del servidor: ${response.status}`);
-  }
-  return response.json();
+  return apiClient.post('/sheets/write', payload);
 }
 
 /**
- * Read sheet data through backend proxy (keeps API key server-side).
- * Replaces ALL direct fetch() to sheets.googleapis.com.
+ * Read sheet data through backend proxy.
+ * Delega en apiClient y extrae `.values` para mantener el contrato
+ * de alto nivel (array de filas).
  * @param {string} sheetName - Name of the sheet tab
  * @param {string} range - Optional range (e.g. "A1:Z100")
  * @returns {Promise<Array<Array<string>>>} - 2D array of values
  */
 export async function readSheet(sheetName, range) {
-  const token = localStorage.getItem('ocr_auth_token');
-  const params = new URLSearchParams();
-  if (range) params.set('range', range);
-  const qs = params.toString();
-  const url = `${API_BASE_URL}/sheets/${encodeURIComponent(sheetName)}${qs ? '?' + qs : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    }
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Error leyendo hoja: ${response.status}`);
-  }
-  const data = await response.json();
-  return data.values || [];
+  const data = await apiClient.readSheet(sheetName, range);
+  // apiClient devuelve { values: [...] }. Los llamadores esperan el array.
+  return data?.values || [];
 }
 
 /**
  * Get spreadsheet metadata (list of sheet names) through backend proxy.
- * Replaces direct fetch() to sheets.googleapis.com/v4/spreadsheets/{id}.
+ * Delega en apiClient y extrae `.sheets` para mantener el contrato
+ * de alto nivel (array de nombres).
  * @returns {Promise<Array<string>>} - List of sheet names
  */
 export async function getSheetMetadata() {
-  const token = localStorage.getItem('ocr_auth_token');
-  const response = await fetch(`${API_BASE_URL}/sheets/metadata/sheet`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    }
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Error obteniendo metadata: ${response.status}`);
-  }
-  const data = await response.json();
-  return data.sheets || [];
+  const data = await apiClient.getSheetMetadata('sheet');
+  // apiClient devuelve { sheets: [...] }. Los llamadores esperan el array.
+  return data?.sheets || [];
 }
 
 // ============================================
@@ -424,17 +391,17 @@ export const CODIGOS_AREA = {
  */
 export const obtenerCodigoArea = (nombreArea) => {
   if (!nombreArea) return '';
-  
+
   // Búsqueda exacta
   if (CODIGOS_AREA[nombreArea]) return CODIGOS_AREA[nombreArea];
-  
+
   // Búsqueda sin tildes ni diferencias de acentos
   const nombreSinTildes = nombreArea.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-  
+
   for (const [key, value] of Object.entries(CODIGOS_AREA)) {
     const keySinTildes = key.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
     if (keySinTildes === nombreSinTildes) return value;
   }
-  
+
   return '';
 };
