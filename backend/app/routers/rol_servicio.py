@@ -515,9 +515,10 @@ async def rol_servicio(
         titulo = _celda(plant, 3, 1) or "HOSPITAL REGIONAL POLICIAL AREQUIPA"
         # El titulo trae la fecha del dia actual ("... - 18SEP26"); se
         # reemplaza por la del dia pedido.
-        MESES_ABREV = {"JULIO": "JUL", "AGOSTO": "AGO", "SEPTIEMBRE": "SEP", "OCTUBRE": "OCT", "NOVIEMBRE": "NOV", "DICIEMBRE": "DIC"}
-        abrev = MESES_ABREV.get(mes_efectivo, "???")
-        fecha_corta = f"{dia_efectivo:02d}{abrev}26"
+        from app.utils.hojas import parse_hoja, MESES_HOJA
+        mes_anio = parse_hoja(mes_efectivo) or (0, 2026)
+        abrev = MESES_HOJA[mes_anio[0] - 1][:3] if mes_anio[0] else "???"
+        fecha_corta = f"{dia_efectivo:02d}{abrev}{mes_anio[1] % 100:02d}"
         titulo = re.sub(r"-\s*\d{2}[A-Z]{3}\d{2}$", f"- {fecha_corta}", titulo)
 
         contactos = []

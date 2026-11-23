@@ -2,10 +2,31 @@
 // Contenido del ROL DE SERVICIO (cabecera + resumen + vehiculos + tabla).
 // Compartido entre la vista publica (/?documento=rol) y el modal del sistema.
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import apiClient from '../services/apiClient';
 
-// Meses con hoja propia en el libro (backend los valida)
+// Respaldo si el backend no responde. La lista real sale de
+// /rol-servicio/meses (incluye las pestanas nuevas: "ENERO 2027", ...).
 export const MESES_LIBRO = ['JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+
+/** Pestanas de mes que existen en el libro (publico, sin sesion). */
+export function useMesesLibro() {
+  const [meses, setMeses] = useState(MESES_LIBRO);
+  useEffect(() => {
+    let activo = true;
+    apiClient.get('/rol-servicio/meses', {}, { _skipAuthRedirect: true, _timeout: 20000 })
+      .then((r) => { if (activo && Array.isArray(r?.meses) && r.meses.length) setMeses(r.meses); })
+      .catch(() => { /* se queda con el respaldo */ });
+    return () => { activo = false; };
+  }, []);
+  return meses;
+}
+
+/** "NOVIEMBRE" -> "Noviembre 2026"; "ENERO 2027" -> "Enero 2027". */
+export const etiquetaMesLibro = (hoja) => {
+  const [m, a] = String(hoja || '').split(' ');
+  return `${m.charAt(0)}${m.slice(1).toLowerCase()} ${a || '2026'}`;
+};
 
 // Anchos (%) de las 9 columnas de la tabla principal: N° CODIGO GRADO
 // APELLIDOS AREA TURNO ENT SAL CELULAR — suman 100 para no desbordar.

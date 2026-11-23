@@ -16,7 +16,8 @@ import {
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, MESES, ANIOS, COLOR_PRIMARIO, 
   DEFAULT_GOOGLE_CONFIG, postToAppsScript, readSheet, getSheetMetadata,
   ordenarPersonalPorGrado, esPersonalCivil, 
-  soloHojasMes, hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual
+  soloHojasMes, hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual,
+  nombreHoja
 } from './constantes';
 import ModalCambioTurno from './ModalCambioTurno';
 import ModalHistorial from './ModalHistorial';
@@ -241,7 +242,8 @@ const MobileRolView = ({
   // ============================================
   const mesSeleccionado = mesNavegacion;
   const anioSeleccionado = anioNavegacion;
-  const hojaSeleccionada = useMemo(() => MESES[mesSeleccionado - 1]?.toUpperCase() || hojaDelMesActual(), [mesSeleccionado]);
+  // "NOVIEMBRE" (2026) o "ENERO 2027": la pestana depende del mes Y del anio.
+  const hojaSeleccionada = useMemo(() => nombreHoja(mesSeleccionado, anioSeleccionado) || hojaDelMesActual(), [mesSeleccionado, anioSeleccionado]);
   const totalDiasMes = useMemo(() => new Date(anioSeleccionado, mesSeleccionado, 0).getDate(), [mesSeleccionado, anioSeleccionado]);
 
   // ============================================
@@ -1057,21 +1059,25 @@ const MobileRolView = ({
     if (!config.appsScriptUrl) return;
     setGuardando(true);
     try {
-      const filas = personal.map(emp => ({
-        fila: emp.fila,
-        valores: Array.from({ length: totalDiasMes }, (_, i) => {
-          const c = turnos[emp.id]?.[i + 1];
-          return c ? (TURNO_MAP[c]?.nombre || '') : '';
-        })
-      }));
-      await postToAppsScript(config.appsScriptUrl, {
-        accion: 'guardarLote', 
-        hoja: hojaSeleccionada, 
-        colInicio: 'F', 
-        area: areaAsignada, 
-        responsable: responsable || 'ADMIN', 
-        filas 
+      // Solo las celdas que cambiaron (no se pisan cambios de otros usuarios
+      // ni solicitudes aprobadas despues de abrir el rol).
+      const celdas = [];
+      personal.forEach(emp => {
+        for (let d = 1; d <= totalDiasMes; d++) {
+          const actual = turnos[emp.id]?.[d] || '';
+          const original = turnosBackup[emp.id]?.[d] || '';
+          if (actual !== original) {
+            celdas.push({ fila: emp.fila, columna: columnaLetra(4 + d), valor: actual ? (TURNO_MAP[actual]?.nombre || actual) : '' });
+          }
+        }
       });
+      if (celdas.length) {
+        await postToAppsScript(config.appsScriptUrl, {
+          accion: 'guardarLoteCeldas',
+          hoja: hojaSeleccionada,
+          celdas
+        });
+      }
       setTurnosBackup(JSON.parse(JSON.stringify(turnos)));
       guardarRespaldoLocal();
       setCeldasModificadas(new Map());

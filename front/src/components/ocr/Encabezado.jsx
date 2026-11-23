@@ -11,7 +11,7 @@ import {
   UserPlus, X, Users, Building2, GraduationCap, Inbox,
   UserCog, Calendar, Clock, Key, FileText, HelpCircle, CalendarDays
 } from 'lucide-react';
-import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP, colorUsuario, iniciales } from './constantes';
+import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP, colorUsuario, iniciales, etiquetaHoja } from './constantes';
 import { shouldShowTour } from './tour/TourSteps';
 import ModalParteDiario from './roleservicio/ModalParteDiario';
 
@@ -229,7 +229,8 @@ const Encabezado = ({
   rolGuardado = false,
   usuariosActivos = []
 }) => {
-  const opcionesHojas = hojasDisponibles.map(h => ({ value: h, label: h }));
+  // Etiqueta con anio ("NOVIEMBRE 2026", "ENERO 2027") para no confundir meses de anios distintos.
+  const opcionesHojas = hojasDisponibles.map(h => ({ value: h, label: etiquetaHoja(h) }));
   const opcionesMeses = MESES.map((nombre, i) => ({ value: i + 1, label: nombre }));
   const opcionesAnios = ANIOS.map(a => ({ value: a, label: String(a) }));
   const handleHojaChange = (val) => onHojaChange({ target: { value: val } });

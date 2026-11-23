@@ -14,7 +14,8 @@ import {
   TURNO_MAP, NOMBRE_A_CODIGO, HOJA_CAMBIOS, COLOR_PRIMARIO, MESES, 
   DEFAULT_GOOGLE_CONFIG, postToAppsScript, readSheet, getSheetMetadata, 
   ordenarPersonalPorGrado, esPersonalCivil, soloHojasMes,
-  hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual
+  hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual,
+  nombreHoja, mesDeHoja, anioDeHoja
 } from './constantes';
 import Encabezado from './Encabezado';
 import TablaRol from './TablaRol';
@@ -32,7 +33,6 @@ import ModalFrancosInvalidos from './ModalFrancosInvalidos';
 import { useFrancosInvalidos, useFrancosStats } from './hooks/useFrancosInvalidos';
 import apiClient from './services/apiClient';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 const STORAGE_ESTADOS = 'ocr_estados_areas';
 const STORAGE_RESPALDO_LOCAL = 'ocr_respaldo_local';
 const STORAGE_SESION = 'ocr_sesion_activa';
@@ -56,6 +56,18 @@ const formatearFechaHistorial = (valor) => {
     if (!isNaN(f.getTime())) return f.toLocaleDateString('es-PE');
   }
   return s;
+};
+
+// Valor de la celda de la hoja ("MAÑANA", "CUMPLEAÑOS 🥳") -> codigo del panel ("M", "🎂").
+const valorACodigo = (valor) => {
+  const val = String(valor || '').trim();
+  if (!val) return '';
+  let codigo = TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val];
+  if (!codigo) {
+    const sinEmojis = val.replace(/🥳|🎂/g, '').trim().toUpperCase();
+    if (sinEmojis.includes('CUMPLEAÑOS') || sinEmojis.includes('CUMPLEANOS')) codigo = '🎂';
+  }
+  return codigo || '';
 };
 
 const sesionGuardada = (() => {
@@ -125,13 +137,10 @@ const PanelTrabajo = ({
   const [hojasDisponibles, setHojasDisponibles] = useState([]);
   const [hojaSeleccionada, setHojaSeleccionada] = useState(config.sheetName || hojaDelMesActual());
 
-  const [mesSeleccionado, setMesSeleccionado] = useState(() => {
-    const hoja = (config.sheetName || hojaDelMesActual()).toUpperCase();
-    const mapa = { ENERO:1, FEBRERO:2, MARZO:3, ABRIL:4, MAYO:5, JUNIO:6, JULIO:7, AGOSTO:8, SEPTIEMBRE:9, OCTUBRE:10, NOVIEMBRE:11, DICIEMBRE:12 };
-    return mapa[hoja] || new Date().getMonth() + 1;
-  });
+  // Mes y anio salen SIEMPRE de la pestana ("ENERO 2027" -> 1 / 2027).
+  const [mesSeleccionado, setMesSeleccionado] = useState(() => mesDeHoja(config.sheetName || hojaDelMesActual()));
 
-  const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
+  const [anioSeleccionado, setAnioSeleccionado] = useState(() => anioDeHoja(config.sheetName || hojaDelMesActual()));
   const [personal, setPersonal] = useState([]);
   const [todoElPersonal, setTodoElPersonal] = useState([]);
   const [turnos, setTurnos] = useState({});
@@ -444,7 +453,7 @@ const PanelTrabajo = ({
     } catch (e) { console.error('Error al desmarcar area:', e); } 
   }, [config.appsScriptUrl, areaEfectiva, hojaSeleccionada]);
 
-  const hojaAMes = useCallback((hoja) => { const mapa = { ENERO:1, FEBRERO:2, MARZO:3, ABRIL:4, MAYO:5, JUNIO:6, JULIO:7, AGOSTO:8, SEPTIEMBRE:9, OCTUBRE:10, NOVIEMBRE:11, DICIEMBRE:12 }; return mapa[String(hoja).toUpperCase()] || new Date().getMonth() + 1; }, []);
+  const hojaAMes = useCallback((hoja) => mesDeHoja(hoja), []);
 
   const cargarHojas = useCallback(async () => { 
     try { 
@@ -483,18 +492,7 @@ const PanelTrabajo = ({
         todos.push(emp);
         const te = {}; 
         for (let d = 0; d < totalDiasMes; d++) {
-          const val = (cols[5+d]||'').trim();
-          // Si el valor es un código corto que ya existe en TURNO_MAP, usarlo directo
-          // Si es nombre completo, mapear a código
-          let codigo = TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val];
-          // Fallback: buscar por nombre sin emojis para cumpleaños y otros con emojis variables
-          if (!codigo && val) {
-            const valNormalizado = val.replace(/🥳|🎂/g, '').trim().toUpperCase();
-            if (valNormalizado.includes('CUMPLEAÑOS') || valNormalizado.includes('CUMPLEANOS')) {
-              codigo = '🎂';
-            }
-          }
-          te[d+1] = codigo || '';
+          te[d+1] = valorACodigo(cols[5+d]);
         }
         tObj[i] = te; cObj[i] = af;
       }
@@ -574,103 +572,98 @@ const PanelTrabajo = ({
     }
   }, [hojaSeleccionada, config.sheetId, cargarDatosIniciales]);
 
-  // Sincronización delta inteligente: solo actualiza celdas que cambiaron
-  const heartbeatRef = useRef('');
+  // ============================================================
+  // REFRESCO EN TIEMPO REAL
+  // Cada 10 s se consulta un token liviano (/sheets/estado-cambios, sin tocar
+  // Google para la mayoria de usuarios). Si cambio, se relee la hoja del mes
+  // y se aplican las celdas que otros modificaron, SIN pisar lo que este
+  // usuario esta editando. Si cambio la estructura (alta de personal, filas
+  // movidas, traslados) se recarga completo.
+  // ============================================================
+  const tokenCambiosRef = useRef('');
   const turnosRef = useRef(turnos);
-  
-  // Mantener turnosRef sincronizado con turnos
+  const turnosBackupRef = useRef(turnosBackup);
+  const todoElPersonalRef = useRef(todoElPersonal);
   useEffect(() => { turnosRef.current = turnos; }, [turnos]);
-  
-  // Función para aplicar solo los cambios (delta sync)
+  useEffect(() => { turnosBackupRef.current = turnosBackup; }, [turnosBackup]);
+  useEffect(() => { todoElPersonalRef.current = todoElPersonal; }, [todoElPersonal]);
+  // Al cambiar de pestana se reinicia la referencia del token.
+  useEffect(() => { tokenCambiosRef.current = ''; }, [hojaSeleccionada]);
+
   const aplicarDelta = useCallback(async () => {
-    if (!hojaSeleccionada || !cargadoRef.current) return;
-    if (cargandoRef.current) return;
-    
+    if (!hojaSeleccionada || !cargadoRef.current || cargandoRef.current) return;
     try {
-      // 1. Obtener heartbeat actual via backend proxy
-      const token = localStorage.getItem('ocr_auth_token');
-      const hbUrl = `${API_BASE_URL}/sheets/write`;
-      const hbRes = await fetch(hbUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ accion: 'obtenerHeartbeat' })
+      const estado = await apiClient.getEstadoCambios(hojaSeleccionada);
+      const token = estado?.token || '';
+      if (!token) return;
+      if (!tokenCambiosRef.current) { tokenCambiosRef.current = token; return; }
+      if (token === tokenCambiosRef.current) return;
+      tokenCambiosRef.current = token;
+
+      const rows = await readSheet(hojaSeleccionada, 'A:AJ');
+      if (cargandoRef.current || !cargadoRef.current) return;
+      const todos = todoElPersonalRef.current;
+
+      // Cambio de estructura -> recarga completa (las ediciones ya estan guardadas).
+      const filasConNombre = rows.slice(1).filter(c => c && c.length >= 3).length;
+      const estructuraCambio = filasConNombre !== todos.length || todos.some(emp => {
+        const c = rows[emp.id] || [];
+        return (c[0] || '').trim() !== emp.dni || (c[2] || '').trim() !== emp.nombre
+          || (c[3] || '').trim() !== emp.areaOriginal;
       });
-      if (!hbRes.ok) return;
-      const hbData = await hbRes.json();
-      const nuevoHeartbeat = hbData.heartbeat || '';
-      
-      // 2. Si no hay cambio, no hacer nada
-      if (!nuevoHeartbeat || nuevoHeartbeat === heartbeatRef.current) return;
-      heartbeatRef.current = nuevoHeartbeat;
-      
-      // 3. Obtener celdas modificadas via backend proxy
-      const rowsMod = await readSheet('CELDA_MODIFICADA', 'A:H');
-      
-      // 4. Procesar modificaciones de esta hoja
-      const celdasNuevas = new Map();
-      const empIdsAActualizar = new Set();
-      
-      for (let m = 1; m < rowsMod.length; m++) {
-        const row = rowsMod[m];
-        if (String(row[0] || '') !== hojaSeleccionada) continue;
-        
-        const fila = parseInt(row[1]);
-        const dia = parseInt(row[2]);
-        const valorAnterior = String(row[3] || '').trim();
-        const valorNuevo = String(row[4] || '').trim();
-        const responsable = String(row[5] || '');
-        const fecha = row[6] || '';
-        const tipo = String(row[7] || 'directo');
-        
-        if (!fila || !dia) continue;
-        
-        const empId = fila - 1;
-        celdasNuevas.set(`${empId}-${dia}`, {
-          valorAnterior, valorNuevo, responsable, fecha, tipo
-        });
-        empIdsAActualizar.add(empId);
+      if (estructuraCambio) {
+        cargadoRef.current = false;
+        cargarDatosRef.current && cargarDatosRef.current();
+        return;
       }
-      
-      // 5. Aplicar cambios usando functional update (evita race conditions)
-      let hayCambios = false;
-      setTurnos(prev => {
-        const next = { ...prev };
-        for (const empId of empIdsAActualizar) {
-          if (!next[empId]) continue;
-          for (const [key, mod] of celdasNuevas) {
-            const [idStr, diaStr] = key.split('-');
-            if (parseInt(idStr) !== empId) continue;
-            const dia = parseInt(diaStr);
-            const valorActual = next[empId][dia] || '';
-            if (valorActual !== mod.valorNuevo) {
-              next[empId] = { ...next[empId], [dia]: mod.valorNuevo };
-              hayCambios = true;
-            }
+
+      const actual = turnosRef.current;
+      const backup = turnosBackupRef.current;
+      const nuevosTurnos = { ...actual };
+      const nuevoBackup = { ...backup };
+      let cambiosRemotos = 0, backupCambio = false;
+      for (const emp of todos) {
+        const c = rows[emp.id] || [];
+        for (let d = 1; d <= totalDiasMes; d++) {
+          const remoto = valorACodigo(c[4 + d]);
+          const base = backup[emp.id]?.[d] || '';
+          if (remoto === base) continue;
+          nuevoBackup[emp.id] = { ...nuevoBackup[emp.id], [d]: remoto };
+          backupCambio = true;
+          // Solo se aplica si este usuario no tiene una edicion propia en esa celda.
+          if ((actual[emp.id]?.[d] || '') === base) {
+            nuevosTurnos[emp.id] = { ...nuevosTurnos[emp.id], [d]: remoto };
+            cambiosRemotos++;
           }
         }
-        return next;
-      });
-      
-      // 6. Actualizar indicadores visuales (celdasModificadas)
-      if (hayCambios) {
-        setCeldasModificadas(prev => {
-          const next = new Map(prev);
-          for (const [key, mod] of celdasNuevas) {
-            next.set(key, mod);
-          }
-          return next;
-        });
-        // NO actualizar turnosBackup aquí - solo se actualiza en guardado explícito
       }
-      
-    } catch (e) {
-      // Silencioso - no molestar al usuario
-    }
-  }, [config.sheetId, config.apiKey, config.appsScriptUrl, hojaSeleccionada]);
+      if (backupCambio) setTurnosBackup(nuevoBackup);
+      if (cambiosRemotos) setTurnos(nuevosTurnos);
 
-  // Effect: heartbeat delta sync cada 10 segundos (casi tiempo real)
+      // Marcas de celdas modificadas (punto verde) de esta pestana.
+      try {
+        const rowsMod = await readSheet('CELDA_MODIFICADA', 'A:H');
+        const mapa = new Map();
+        for (let m = 1; m < rowsMod.length; m++) {
+          const row = rowsMod[m];
+          if (String(row[0] || '') !== hojaSeleccionada) continue;
+          const fila = parseInt(row[1]), dia = parseInt(row[2]);
+          if (!fila || !dia) continue;
+          mapa.set(`${fila - 1}-${dia}`, {
+            valorAnterior: String(row[3] || '').trim(), valorNuevo: String(row[4] || '').trim(),
+            responsable: String(row[5] || ''), fecha: row[6] || '', tipo: String(row[7] || 'directo')
+          });
+        }
+        setCeldasModificadas(mapa);
+      } catch { /* marcas opcionales */ }
+    } catch {
+      // Silencioso: el siguiente ciclo reintenta.
+    }
+  }, [hojaSeleccionada, totalDiasMes]);
+
+  // Effect: refresco cada 10 segundos (solo con la pestana visible)
   useEffect(() => {
-    if (!cargadoRef.current || !config.appsScriptUrl) return;
+    if (!hojaSeleccionada) return;
 
     // Verificar cambios cada 10 segundos (solo si pestaña visible)
     const interval = setInterval(() => {
@@ -687,17 +680,19 @@ const PanelTrabajo = ({
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [aplicarDelta, config.appsScriptUrl]);
+  }, [aplicarDelta, hojaSeleccionada]);
 
-  // Sync mesSeleccionado with hojaSeleccionada
+  // Sync mes/anio con la pestana seleccionada ("ENERO 2027" -> 1 / 2027)
   useEffect(() => {
     if (!hojaSeleccionada) return;
-    const mesDeLaHoja = hojaAMes(hojaSeleccionada);
-    if (mesSeleccionado !== mesDeLaHoja) {
+    const mesDeLaHoja = mesDeHoja(hojaSeleccionada);
+    const anioDeLaHoja = anioDeHoja(hojaSeleccionada);
+    if (mesSeleccionado !== mesDeLaHoja || anioSeleccionado !== anioDeLaHoja) {
       setMesSeleccionado(mesDeLaHoja);
-      guardarSesion(mesDeLaHoja, anioSeleccionado);
+      setAnioSeleccionado(anioDeLaHoja);
+      guardarSesion(mesDeLaHoja, anioDeLaHoja);
     }
-  }, [hojaSeleccionada, hojaAMes, anioSeleccionado]);
+  }, [hojaSeleccionada]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload when jefe changes area
   useEffect(() => {
@@ -718,10 +713,11 @@ const PanelTrabajo = ({
     if (cargandoRef.current) return;
     const nh = e.target.value; 
     guardarHojaPreferida(areaEfectiva, nh); 
-    setHojaSeleccionada(nh); 
-    setConfig(prev => (prev.sheetName === nh ? prev : { ...prev, sheetName: nh })); 
-    setMesSeleccionado(hojaAMes(nh)); 
-    guardarSesion(hojaAMes(nh), anioSeleccionado); 
+    setHojaSeleccionada(nh);
+    setConfig(prev => (prev.sheetName === nh ? prev : { ...prev, sheetName: nh }));
+    setMesSeleccionado(mesDeHoja(nh));
+    setAnioSeleccionado(anioDeHoja(nh));
+    guardarSesion(mesDeHoja(nh), anioDeHoja(nh));  
     setPersonal([]); 
     setTodoElPersonal([]);
     setTurnos({}); 
@@ -840,13 +836,15 @@ const PanelTrabajo = ({
       if (!participantes || participantes.length === 0) return;
       
       // Persistir cambios aprobados en CELDA_MODIFICADA (para el indicador verde)
-      if (config.appsScriptUrl && hojaSeleccionada) {
+      // en la pestana de la solicitud (puede no ser la que esta abierta).
+      const hojaMarca = solicitud?.hoja || hojaSeleccionada;
+      if (config.appsScriptUrl && hojaMarca) {
         for (const p of participantes) {
           for (const c of (p.cambios || [])) {
             try {
               await postToAppsScript(config.appsScriptUrl, {
                 accion: 'registrarCeldaModificada',
-                hoja: hojaSeleccionada,
+                hoja: hojaMarca,
                 fila: p.fila || 0,
                 dia: c.dia || c.numero_dia || 0,
                 valorAnterior: c.actual || '',
@@ -1288,7 +1286,7 @@ const PanelTrabajo = ({
   const handleMesChangeUsuario = useCallback((e) => {
     if (cargandoRef.current) return;
     const nm = parseInt(e.target.value);
-    const nuevaHoja = MESES[nm - 1].toUpperCase();
+    const nuevaHoja = nombreHoja(nm, anioSeleccionado);
     guardarHojaPreferida(areaEfectiva, nuevaHoja);
     setHojaSeleccionada(nuevaHoja);
     setConfig(prev => (prev.sheetName === nuevaHoja ? prev : { ...prev, sheetName: nuevaHoja }));
@@ -1308,11 +1306,16 @@ const PanelTrabajo = ({
     setErrorCarga(null);
     cargadoRef.current = false;
     cargandoRef.current = false;
-  }, [anioSeleccionado, areaAsignada]);
-  
+  }, [anioSeleccionado, areaAsignada, areaEfectiva]);
+
   const handleAnioChangeUsuario = useCallback((e) => {
     if (cargandoRef.current) return;
     const na = parseInt(e.target.value);
+    // Cambiar de anio = cambiar de pestana ("DICIEMBRE" 2026 <-> "DICIEMBRE 2027").
+    const nuevaHoja = nombreHoja(mesSeleccionado, na);
+    guardarHojaPreferida(areaEfectiva, nuevaHoja);
+    setHojaSeleccionada(nuevaHoja);
+    setConfig(prev => (prev.sheetName === nuevaHoja ? prev : { ...prev, sheetName: nuevaHoja }));
     setAnioSeleccionado(na);
     guardarSesion(mesSeleccionado, na);
     // Limpiar todo para evitar datos stale durante la recarga (igual que handleMesChangeUsuario)
@@ -1329,7 +1332,7 @@ const PanelTrabajo = ({
     setErrorCarga(null);
     cargadoRef.current = false;
     cargandoRef.current = false;
-  }, [mesSeleccionado]);
+  }, [mesSeleccionado, areaEfectiva]);
   
   const registrarCambioTurno = useCallback(async (empId, cambios) => { 
     setTurnos(prev => { 
@@ -1376,13 +1379,26 @@ const PanelTrabajo = ({
     if (!config.appsScriptUrl) { mostrarMensajeTemporal('error', 'Configure Apps Script primero'); return; } 
     setGuardando(true); 
     try { 
-      // Guardar lote como seguridad — guarda TODO el rol de una vez
-      const filas = personal.map(emp => ({ 
-        fila: emp.fila, 
-        valores: DIAS.map(d => { const c = turnos[emp.id]?.[d]; return c ? (TURNO_MAP[c]?.nombre || '') : ''; }), 
-        area: cambiosArea[emp.id] && cambiosArea[emp.id] !== emp.areaOriginal ? cambiosArea[emp.id] : null 
-      })); 
-      await postToAppsScript(config.appsScriptUrl, { accion: 'guardarLote', hoja: hojaSeleccionada, colInicio: 'F', area: areaEfectiva, responsable: responsable || 'ADMIN', filas });
+      // Guardar SOLO las celdas que difieren de lo cargado/sincronizado.
+      // Antes se reescribia la fila completa de todo el personal del area con
+      // lo que el panel tenia en memoria: un cambio aprobado o hecho por otro
+      // usuario despues de abrir el panel se perdia al guardar.
+      const celdas = [];
+      personal.forEach(emp => {
+        DIAS.forEach(d => {
+          const actual = turnos[emp.id]?.[d] || '';
+          const original = turnosBackup[emp.id]?.[d] || '';
+          if (actual !== original) {
+            celdas.push({ fila: emp.fila, columna: columnaLetra(4 + d), valor: actual ? (TURNO_MAP[actual]?.nombre || actual) : '' });
+          }
+        });
+        if (cambiosArea[emp.id] && cambiosArea[emp.id] !== emp.areaOriginal) {
+          celdas.push({ fila: emp.fila, columna: 'D', valor: cambiosArea[emp.id] });
+        }
+      });
+      if (celdas.length) {
+        await postToAppsScript(config.appsScriptUrl, { accion: 'guardarLoteCeldas', hoja: hojaSeleccionada, celdas });
+      }
       setTurnosBackup(JSON.parse(JSON.stringify(turnos))); guardarRespaldoLocal(); await marcarAreaComoFinalizada(); 
       setCeldasModificadas(new Map());
       limpiarCeldasModificadasPersistidas();

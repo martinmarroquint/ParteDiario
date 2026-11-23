@@ -479,8 +479,27 @@ class ApiClient {
   async readSheet(sheetName, range) {
     const params = {};
     if (range) params.range = range;
-    return this.get(`/sheets/${sheetName}`, params, { _retries: 1, _retryDelays: [1000], _timeout: 30000 });
+    // encodeURIComponent: las pestanas desde 2027 llevan espacio ("ENERO 2027").
+    return this.get(`/sheets/${encodeURIComponent(sheetName)}`, params, { _retries: 1, _retryDelays: [1000], _timeout: 30000 });
   }
+
+  /** Token liviano: cambia cuando alguien escribe en el rol (refresco en tiempo real). */
+  async getEstadoCambios(hoja = '') {
+    return this.get('/sheets/estado-cambios', hoja ? { hoja } : {}, { _skipAuthRedirect: true, _timeout: 10000 });
+  }
+
+  // ============================================
+  // PADRON DE PERSONAL (solo admin)
+  // ============================================
+
+  async getPadron() { return this.get('/personal', {}, { _timeout: 30000 }); }
+  async inicializarPadron(hoja_origen) { return this.post('/personal/inicializar', { hoja_origen }, { _timeout: 60000 }); }
+  async altaPersonal(persona, desde = '') { return this.post('/personal', { persona, desde }, { _timeout: 60000 }); }
+  async editarPersonal(clave, persona, desde = '') { return this.put('/personal', { clave, persona, desde }, { _timeout: 60000 }); }
+  async bajaPersonal(clave, desde = '') { return this.post('/personal/baja', { clave, desde }, { _timeout: 60000 }); }
+  async reactivarPersonal(clave, area, desde = '') { return this.post('/personal/reactivar', { clave, area, desde }, { _timeout: 60000 }); }
+  async estadoAnio(anio) { return this.get(`/personal/anio/${anio}`, {}, { _timeout: 30000 }); }
+  async generarMes(mes, anio, plantilla = '') { return this.post('/personal/generar-mes', { mes, anio, plantilla }, { _timeout: 90000 }); }
 
   async getSheetMetadata(sheetName) {
     return this.get(`/sheets/metadata/${sheetName}`, {}, { _retries: 2, _retryDelays: [800, 2000], _timeout: 20000 });

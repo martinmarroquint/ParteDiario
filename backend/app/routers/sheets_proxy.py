@@ -189,7 +189,7 @@ async def get_sheet_metadata(
                     await asyncio.sleep(1.0)
         raise last_err
     except Exception as e:
-        logger.error(f"Sheets metadata error: {e}")
+        logger.error(f"Sheets metadata error: {type(e).__name__}")
         raise HTTPException(status_code=502, detail="Error al obtener metadata")
 
 

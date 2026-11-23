@@ -11,7 +11,7 @@ import { X, Loader2, FileDown, AlertTriangle, FileWarning } from 'lucide-react';
 import { usePDF } from '@react-pdf/renderer';
 import apiClient from '../services/apiClient';
 import RolServicioPDF from '@/pages/RolServicioPDF';
-import DocumentoRol, { MESES_LIBRO, formatearDia } from './DocumentoRol';
+import DocumentoRol, { useMesesLibro, etiquetaMesLibro, formatearDia } from './DocumentoRol';
 
 // Descarga un blob URL creando un <a> temporal
 function descargarUrl(url, filename) {
@@ -25,6 +25,7 @@ function descargarUrl(url, filename) {
 
 const ModalParteDiario = ({ isOpen, onClose }) => {
   const [mes, setMes] = useState('');
+  const mesesLibro = useMesesLibro();
   const [dia, setDia] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -160,8 +161,8 @@ const ModalParteDiario = ({ isOpen, onClose }) => {
               onChange={(e) => cambiarMes(e.target.value)}
               className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none"
             >
-              {MESES_LIBRO.map((m) => (
-                <option key={m} value={m}>{m.charAt(0) + m.slice(1).toLowerCase()}</option>
+              {mesesLibro.map((m) => (
+                <option key={m} value={m}>{etiquetaMesLibro(m)}</option>
               ))}
             </select>
           </label>

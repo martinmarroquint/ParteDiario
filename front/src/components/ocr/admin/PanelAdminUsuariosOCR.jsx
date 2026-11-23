@@ -9,11 +9,14 @@ import {
   Shield, User, CheckCircle2, XCircle, Edit, 
   Key, ChevronLeft, ChevronRight,
   AlertTriangle, Users, Building2, PlusCircle,
-  Save, UserCog, Eye, EyeOff, GraduationCap, MapPin
+  Save, UserCog, Eye, EyeOff, GraduationCap, MapPin,
+  Pencil, UserMinus, RotateCcw, CalendarPlus
 } from 'lucide-react';
 import apiClient from '../services/apiClient';
 import { adminUsuariosService } from './adminUsuariosService';
 import ModalResetPasswordOCR from './ModalResetPasswordOCR';
+import { BannerPadron, ModalPersona, ModalPrepararAnio } from './GestionPersonal';
+import { etiquetaHoja } from '../constantes';
 
 // ============================================================
 // CONFIGURACION
@@ -79,6 +82,13 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   const [erroresForm, setErroresForm] = useState({});
   const [busquedaArea, setBusquedaArea] = useState('');
 
+  // Padron de personal (hoja PERSONAL)
+  const [padronInfo, setPadronInfo] = useState({ inicializado: true, origen: '', hojas: [], hoja_actual: '' });
+  const [modalPersona, setModalPersona] = useState(null); // { modo, persona }
+  const [mostrarPrepararAnio, setMostrarPrepararAnio] = useState(false);
+  const [mostrarBajas, setMostrarBajas] = useState(false);
+  const [procesandoPersona, setProcesandoPersona] = useState(false);
+
   // Modal de reset password
   const [modalResetOpen, setModalResetOpen] = useState(false);
   const [usuarioResetSeleccionado, setUsuarioResetSeleccionado] = useState(null);
@@ -93,11 +103,19 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
     setMensaje(null);
 
     try {
-      // Cargar personal (directorio de empleados) y usuarios desde el backend
-      const [personalList, usuariosListRaw] = await Promise.all([
-        adminUsuariosService.obtenerPersonal(),
+      // Personal desde el padron PERSONAL (o del mes actual si aun no existe)
+      // y usuarios desde el backend.
+      const [padron, usuariosListRaw] = await Promise.all([
+        apiClient.getPadron(),
         adminUsuariosService.obtenerUsuarios(),
       ]);
+      const personalList = padron.personal || [];
+      setPadronInfo({
+        inicializado: !!padron.inicializado,
+        origen: padron.origen || '',
+        hojas: padron.hojas || [],
+        hoja_actual: padron.hoja_actual || '',
+      });
 
       // Mapear usuarios al formato esperado por el panel
       const usuariosList = usuariosListRaw.map((u) => {
@@ -162,7 +180,9 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   }, [personal, usuarios]);
 
   const itemsFiltrados = useMemo(() => {
-    let resultado = personalConUsuario;
+    let resultado = mostrarBajas
+      ? personalConUsuario
+      : personalConUsuario.filter(item => item.estado !== 'BAJA');
 
     if (busqueda.trim()) {
       const term = busqueda.toLowerCase().trim();
@@ -188,7 +208,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
     }
 
     return resultado;
-  }, [personalConUsuario, busqueda, filtroRol, filtroArea]);
+  }, [personalConUsuario, busqueda, filtroRol, filtroArea, mostrarBajas]);
 
   const itemsPaginados = useMemo(() => {
     const inicio = (pagina - 1) * itemsPorPagina;
@@ -196,8 +216,9 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   }, [itemsFiltrados, pagina, itemsPorPagina]);
 
   const estadisticas = useMemo(() => {
-    const total = personal.length;
-    const conUsuario = personal.filter(p => {
+    const activosPadron = personal.filter(p => p.estado !== 'BAJA');
+    const total = activosPadron.length;
+    const conUsuario = activosPadron.filter(p => {
       if (p.dni && usuarios.some(u => u.usuario === p.dni)) return true;
       return usuarios.some(u => u.nombre === p.nombre);
     }).length;
@@ -217,6 +238,46 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
   const areasDisponibles = useMemo(() => {
     return [...new Set(personal.map(p => p.area).filter(Boolean))].sort();
   }, [personal]);
+
+  const gradosDisponibles = useMemo(() => {
+    return [...new Set(personal.map(p => p.grado).filter(Boolean))].sort();
+  }, [personal]);
+
+  // ============================================================
+  // PADRON: alta / edicion / baja / reactivacion
+  // ============================================================
+  const alGuardarPersona = (persona, { crearUsuario } = {}) => {
+    const modo = modalPersona?.modo;
+    setModalPersona(null);
+    setMensaje({
+      tipo: 'success',
+      texto: modo === 'alta' ? `${persona.nombre} agregado al padrón y al rol`
+        : modo === 'reactivar' ? `${persona.nombre} reactivado` : `Datos de ${persona.nombre} actualizados`,
+    });
+    setTimeout(() => setMensaje(null), 5000);
+    cargarDatos();
+    if (crearUsuario && !usuarios.some(u => u.usuario === persona.dni)) abrirCrearUsuario(persona);
+  };
+
+  const darDeBaja = async (item) => {
+    const desde = padronInfo.hoja_actual;
+    if (!window.confirm(`¿Dar de baja a ${item.nombre}?\n\nDesde ${etiquetaHoja(desde)} pasará a SIN_SERVICIO en el rol. Su historial no se borra.`)) return;
+    setProcesandoPersona(true);
+    setMensajeError(null);
+    try {
+      await apiClient.bajaPersonal({ dni: item.dni || '', nombre: item.nombre }, desde);
+      if (item.usuario?.activo && window.confirm(`¿Desactivar también su usuario de acceso (${item.usuario.usuario})?`)) {
+        await apiClient.toggleUser(parseInt(item.usuario.id));
+      }
+      setMensaje({ tipo: 'success', texto: `${item.nombre} dado de baja` });
+      setTimeout(() => setMensaje(null), 5000);
+      cargarDatos();
+    } catch (err) {
+      setMensajeError(err.message || 'No se pudo dar de baja');
+    } finally {
+      setProcesandoPersona(false);
+    }
+  };
 
   // ============================================================
   // FUNCIONES DE GESTIÓN DE USUARIOS
@@ -325,7 +386,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
           usuario: formData.usuario,
           password: formData.password,
           correo: '',
-          grado: '',
+          grado: modalUsuario.empleado?.grado || '',
           dni: formData.usuario,
           roles: [rolNumerico],
           areas: formData.areas || [],
@@ -538,6 +599,30 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
                 </select>
               </div>
 
+              <label className="flex items-center gap-1.5 text-xs text-gray-500 select-none">
+                <input type="checkbox" checked={mostrarBajas} onChange={e => setMostrarBajas(e.target.checked)} className="w-3.5 h-3.5 rounded" />
+                Ver bajas
+              </label>
+
+              <button
+                onClick={() => setModalPersona({ modo: 'alta', persona: null })}
+                disabled={!padronInfo.inicializado || cargando}
+                title={padronInfo.inicializado ? 'Registrar personal nuevo' : 'Primero cree el padrón'}
+                className="px-3 py-2 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5 disabled:opacity-40"
+                style={{ backgroundColor: '#188C5D' }}
+              >
+                <UserPlus className="w-4 h-4" /> Nuevo personal
+              </button>
+
+              <button
+                onClick={() => setMostrarPrepararAnio(true)}
+                disabled={!padronInfo.inicializado || cargando}
+                title={padronInfo.inicializado ? 'Crear las pestañas del año siguiente' : 'Primero cree el padrón'}
+                className="px-3 py-2 border border-emerald-200 text-emerald-700 bg-emerald-50 rounded-xl text-sm font-semibold flex items-center gap-1.5 hover:bg-emerald-100 disabled:opacity-40"
+              >
+                <CalendarPlus className="w-4 h-4" /> Preparar año
+              </button>
+
               <button
                 onClick={cargarDatos}
                 disabled={cargando}
@@ -547,6 +632,10 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
               </button>
             </div>
           </div>
+
+          {!cargando && !padronInfo.inicializado && (
+            <BannerPadron origen={padronInfo.origen} hojas={padronInfo.hojas} onCreado={cargarDatos} />
+          )}
 
           {/* MENSAJES */}
           {mensaje && (
@@ -613,7 +702,7 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
                         const tieneUsuario = item.tieneUsuario;
                         
                         return (
-                          <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                          <tr key={item.id} className={`hover:bg-gray-50 transition-colors ${item.estado === 'BAJA' ? 'opacity-60' : ''}`}>
                             <td className="px-4 py-3 text-sm text-gray-400">{numero}</td>
                             <td className="px-4 py-3 text-sm font-mono text-gray-600">{item.dni || '-'}</td>
                             <td className="px-4 py-3">
@@ -622,6 +711,9 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
                                   <User className="w-4 h-4 text-gray-500" />
                                 </div>
                                 <span className="text-sm font-medium text-gray-800">{item.nombre}</span>
+                                {item.estado === 'BAJA' && (
+                                  <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold">BAJA</span>
+                                )}
                               </div>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-500">{item.grado || '-'}</td>
@@ -670,6 +762,36 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center justify-end gap-1">
+                                {padronInfo.inicializado && (item.estado === 'BAJA' ? (
+                                  <button
+                                    onClick={() => setModalPersona({ modo: 'reactivar', persona: item })}
+                                    disabled={procesandoPersona}
+                                    className="p-1.5 text-emerald-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors"
+                                    title="Reactivar personal"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => setModalPersona({ modo: 'editar', persona: item })}
+                                      disabled={procesandoPersona}
+                                      className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                                      title="Editar datos del personal (grado, nombre, área, DNI)"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => darDeBaja(item)}
+                                      disabled={procesandoPersona}
+                                      className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                                      title="Dar de baja"
+                                    >
+                                      <UserMinus className="w-3.5 h-3.5" />
+                                    </button>
+                                    <span className="w-px h-4 bg-gray-200 mx-0.5" />
+                                  </>
+                                ))}
                                 {tieneUsuario ? (
                                   <>
                                     <button
@@ -1068,6 +1190,27 @@ const PanelAdminUsuariosOCR = ({ isOpen, onClose }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {modalPersona && (
+        <ModalPersona
+          modo={modalPersona.modo}
+          persona={modalPersona.persona}
+          areas={areasDisponibles}
+          grados={gradosDisponibles}
+          hojas={padronInfo.hojas}
+          hojaActual={padronInfo.hoja_actual}
+          onClose={() => setModalPersona(null)}
+          onGuardado={alGuardarPersona}
+        />
+      )}
+
+      {mostrarPrepararAnio && (
+        <ModalPrepararAnio
+          hojas={padronInfo.hojas}
+          onClose={() => setMostrarPrepararAnio(false)}
+          onGenerado={cargarDatos}
+        />
       )}
 
       {/* ============================================================

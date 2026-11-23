@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { 
   COLOR_PRIMARIO, TURNO_MAP, MESES, 
-  NOMBRE_A_CODIGO, DEFAULT_GOOGLE_CONFIG, mesDeHoja, resolverHojaActiva, soloHojasMes,
+  NOMBRE_A_CODIGO, DEFAULT_GOOGLE_CONFIG, mesDeHoja, anioDeHoja, etiquetaHoja, resolverHojaActiva, soloHojasMes,
   readSheet, getSheetMetadata
 } from './constantes';
 import apiClient from './services/apiClient';
@@ -43,7 +43,7 @@ const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegist
   const [mesConsulta, setMesConsulta] = useState(() => new Date().getMonth() + 1);
   const [hojasConsulta, setHojasConsulta] = useState([]);
   const [hojaConsultaSeleccionada, setHojaConsultaSeleccionada] = useState('');
-  const anioConsulta = new Date().getFullYear();
+  const [anioConsulta, setAnioConsulta] = useState(new Date().getFullYear());
   const totalDiasMesConsulta = useMemo(() => new Date(anioConsulta, mesConsulta, 0).getDate(), [mesConsulta, anioConsulta]);
   const DIAS_CONSULTA = useMemo(() => Array.from({ length: totalDiasMesConsulta }, (_, i) => i + 1), [totalDiasMesConsulta]);
 
@@ -93,9 +93,11 @@ const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegist
     setPersonaConsulta(null);
     setBusquedaConsulta('');
     const mesR = mesDeHoja(hoja);
+    const anioR = anioDeHoja(hoja);
     setMesConsulta(mesR);
+    setAnioConsulta(anioR);
     setHojaConsultaSeleccionada(hoja);
-    const totalDias = new Date(anioConsulta, mesR, 0).getDate();
+    const totalDias = new Date(anioR, mesR, 0).getDate();
     readSheet(hoja, 'A:AJ')
       .then(rows => {
         if (rows.length < 2) { setPersonalConsulta([]); setTurnosConsulta({}); setErrorConsulta(`Sin datos en la hoja ${hoja}`); return; }
@@ -495,7 +497,7 @@ const PantallaSeleccion = ({ onIngresar, areas, responsables, cargando, onRegist
                       className="px-2 py-1 rounded-lg bg-white/15 text-white text-xs font-medium border border-white/25 focus:outline-none focus:bg-white/25 disabled:opacity-60 max-w-[170px]"
                     >
                       {hojasConsulta.length === 0 && <option value="">Mes</option>}
-                      {hojasConsulta.map(h => <option key={h} value={h} className="text-gray-800">{h}</option>)}
+                      {hojasConsulta.map(h => <option key={h} value={h} className="text-gray-800">{etiquetaHoja(h)}</option>)}
                     </select>
                     <span className="text-xs text-white/60 whitespace-nowrap">{MESES[mesConsulta-1]} {anioConsulta}</span>
                   </div>

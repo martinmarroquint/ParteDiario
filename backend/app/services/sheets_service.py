@@ -193,7 +193,9 @@ class GoogleSheetsService:
                     self._cache_set(cache_key, rows)
                 return rows
         except httpx.HTTPError as e:
-            logger.error(f"Error reading sheet {sheet_name}: {e}")
+            # No registrar la URL: lleva la API key como parametro.
+            estado = getattr(getattr(e, "response", None), "status_code", None)
+            logger.error(f"Error reading sheet {sheet_name}: {type(e).__name__} {estado or ''}".rstrip())
             return []
     
     async def update_range(self, sheet_name: str, cell_range: str, values: list[list]) -> dict:
@@ -329,7 +331,7 @@ class GoogleSheetsService:
                 sheets = response.json().get("sheets", [])
                 return {s["properties"]["title"]: s["properties"]["sheetId"] for s in sheets}
         except Exception as e:
-            logger.error(f"Error getting sheet metadata: {e}")
+            logger.error(f"Error getting sheet metadata: {type(e).__name__}")
             return {}
     
     async def find_row(self, sheet_name: str, column: int, value: str) -> Optional[list]:

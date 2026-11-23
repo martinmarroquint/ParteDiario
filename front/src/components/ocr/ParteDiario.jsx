@@ -9,7 +9,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { X, Calendar, ChevronLeft, ChevronRight, Loader2, AlertTriangle, FileDown } from 'lucide-react';
 import { PDFDownloadLink, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { COLOR_PRIMARIO, TURNO_MAP, MESES, DEFAULT_GOOGLE_CONFIG, obtenerCodigoArea, ANIOS, readSheet } from './constantes';
+import { COLOR_PRIMARIO, TURNO_MAP, MESES, DEFAULT_GOOGLE_CONFIG, obtenerCodigoArea, ANIOS, readSheet, nombreHoja } from './constantes';
 
 // ============================================
 // TIPOS DE GRADO PARA RESUMEN
@@ -287,7 +287,7 @@ const ParteDiario = ({ isOpen, onClose, todasLasAreas }) => {
   const cargarDatos = useCallback(async () => {
     setCargando(true); setError(null);
     try {
-      const hoja = MESES[mesSeleccionado - 1].toUpperCase();
+      const hoja = nombreHoja(mesSeleccionado, anioSeleccionado);
       const rows = await readSheet(hoja, 'A:AJ');
       if (rows.length < 2) { setPersonal([]); setTurnos({}); setCargando(false); return; }
       const todos = []; const tObj = {};

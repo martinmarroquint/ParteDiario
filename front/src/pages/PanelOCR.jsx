@@ -14,7 +14,7 @@ import ParteDiario from '../components/ocr/ParteDiario';
 import ModalSolicitudCambioTurno from '../components/ocr/ModalSolicitudCambioTurno';
 import PanelAdminUsuariosOCR from '../components/ocr/admin/PanelAdminUsuariosOCR';
 import MesaDePartes from '../components/mesapartes/MesaDePartes';
-import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, mesActual as mesActualFn, anioActual as anioActualFn, initTurnosDinamicos, postToAppsScript, readSheet, getSheetMetadata } from '../components/ocr/constantes';
+import { DEFAULT_GOOGLE_CONFIG, MESES, hojaDelMesActual, nombreHoja, mesActual as mesActualFn, anioActual as anioActualFn, initTurnosDinamicos, postToAppsScript, readSheet, getSheetMetadata } from '../components/ocr/constantes';
 import { apiClient } from '../components/ocr/services/apiClient';
 import { authService } from '../components/ocr/services/authService';
 import GuidedTour from '../components/ocr/tour/GuidedTour';
@@ -564,8 +564,8 @@ const PanelOCRContent = () => {
       const hojasAfectadas = [];
 
       for (const grupo of Object.values(diasPorMes)) {
-        const hoja = hojasDisponibles.find(h => h.toUpperCase().includes(MESES[grupo.mes - 1].toUpperCase()));
-        if (!hoja) continue;
+        const hoja = nombreHoja(grupo.mes, grupo.anio);
+        if (!hojasDisponibles.includes(hoja)) continue;
 
         const rows = await readSheet(hoja, 'A:A');
 
@@ -636,8 +636,8 @@ const PanelOCRContent = () => {
       }
 
       for (const grupo of Object.values(diasPorMes)) {
-        const hoja = hojasDisponibles.find(h => h.toUpperCase().includes(MESES[grupo.mes - 1].toUpperCase()));
-        if (!hoja) continue;
+        const hoja = nombreHoja(grupo.mes, grupo.anio);
+        if (!hojasDisponibles.includes(hoja)) continue;
 
         const rows = await readSheet(hoja, 'A:A');
 

@@ -3,7 +3,7 @@
 // El admin elige el mes de trabajo del panel (no impone el mes a los demas usuarios).
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Shield, Lock, Unlock, RefreshCw, Loader2, X, Search, CheckCircle2, CalendarDays } from 'lucide-react';
-import { hojaDelMesActual, postToAppsScript, readSheet, colorUsuario } from './constantes';
+import { hojaDelMesActual, postToAppsScript, readSheet, colorUsuario, etiquetaHoja } from './constantes';
 import apiClient from './services/apiClient';
 
 const COLOR_PRIMARIO = '#188C5D';
@@ -227,7 +227,7 @@ const PanelControlAdmin = ({ isOpen, onClose, areas = [], config, onActualizar, 
                     onChange={(e) => setMesTrabajoTmp(e.target.value)}
                     className="w-full h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
                   >
-                    {opcionesMes.map(h => <option key={h} value={h} className="text-gray-800">{h}</option>)}
+                    {opcionesMes.map(h => <option key={h} value={h} className="text-gray-800">{etiquetaHoja(h)}</option>)}
                   </select>
                   <p className="text-[11px] text-gray-400 mt-1.5">Administra este mes de forma independiente. No cambia el mes del panel de trabajo ni el de los demas usuarios.</p>
                 </div>

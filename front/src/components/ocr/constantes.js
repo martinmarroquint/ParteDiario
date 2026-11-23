@@ -134,19 +134,51 @@ export const ANIOS = (() => {
   return [actual - 1, actual, actual + 1, actual + 2];
 })();
 
-// Hoja-mes correspondiente a la fecha actual (todo automatico, sin valores fijos).
-export const hojaDelMesActual = () => MESES[new Date().getMonth()].toUpperCase();
+// ============================================================
+// PESTANAS DE MES POR ANIO (misma regla en backend y Apps Script)
+//   anio <= 2026 -> "NOVIEMBRE"   (pestanas existentes, no se renombran)
+//   anio >= 2027 -> "ENERO 2027"
+// ============================================================
+export const ANIO_LEGADO = 2026;
+const MESES_UPPER = MESES.map(m => m.toUpperCase());
+export const MES_DE_HOJA = { ENERO:1, FEBRERO:2, MARZO:3, ABRIL:4, MAYO:5, JUNIO:6, JULIO:7, AGOSTO:8, SEPTIEMBRE:9, OCTUBRE:10, NOVIEMBRE:11, DICIEMBRE:12 };
+
+/** (11, 2026) -> "NOVIEMBRE"; (1, 2027) -> "ENERO 2027". */
+export const nombreHoja = (mes, anio) => {
+  const base = MESES_UPPER[Number(mes) - 1];
+  if (!base) return '';
+  return Number(anio) <= ANIO_LEGADO ? base : `${base} ${Number(anio)}`;
+};
+
+/** "ENERO 2027" -> { mes: 1, anio: 2027 }; "NOVIEMBRE" -> { mes: 11, anio: 2026 }; otra -> null. */
+export const parseHoja = (nombre) => {
+  const m = String(nombre || '').trim().toUpperCase().match(/^([A-ZÁÉÍÓÚÑ]+)(?:\s+(\d{4}))?$/);
+  if (!m || !MES_DE_HOJA[m[1]]) return null;
+  const anio = m[2] ? Number(m[2]) : ANIO_LEGADO;
+  if (m[2] && anio <= ANIO_LEGADO) return null;
+  return { mes: MES_DE_HOJA[m[1]], anio };
+};
+
+export const esHojaMes = (nombre) => parseHoja(nombre) !== null;
+
+/** Solo pestanas de mes, en orden cronologico (2026 antes que 2027). */
+export const soloHojasMes = (hojas) => (hojas || [])
+  .filter(esHojaMes)
+  .sort((a, b) => { const x = parseHoja(a), y = parseHoja(b); return (x.anio - y.anio) || (x.mes - y.mes); });
+
+export const mesDeHoja = (hoja) => parseHoja(hoja)?.mes || new Date().getMonth() + 1;
+export const anioDeHoja = (hoja) => parseHoja(hoja)?.anio || new Date().getFullYear();
+
+/** Texto para mostrar: "NOVIEMBRE" -> "NOVIEMBRE 2026" (sin ambiguedad entre anios). */
+export const etiquetaHoja = (hoja) => {
+  const p = parseHoja(hoja);
+  return p ? `${MESES_UPPER[p.mes - 1]} ${p.anio}` : String(hoja || '');
+};
+
+// Hoja-mes de la fecha actual (el 1 de enero de 2027 ya es "ENERO 2027").
+export const hojaDelMesActual = () => nombreHoja(new Date().getMonth() + 1, new Date().getFullYear());
 export const mesActual = () => new Date().getMonth() + 1;
 export const anioActual = () => new Date().getFullYear();
-
-// Nombres de las hojas-mes (en mayusculas) para filtrar los desplegables de meses.
-const MESES_UPPER = MESES.map(m => m.toUpperCase());
-export const esHojaMes = (nombre) => MESES_UPPER.includes(String(nombre || '').trim().toUpperCase());
-export const soloHojasMes = (hojas) => (hojas || []).filter(esHojaMes);
-
-// Numero de mes (1-12) que corresponde a una hoja-mes (p. ej. "SEPTIEMBRE" -> 9).
-export const MES_DE_HOJA = { ENERO:1, FEBRERO:2, MARZO:3, ABRIL:4, MAYO:5, JUNIO:6, JULIO:7, AGOSTO:8, SEPTIEMBRE:9, OCTUBRE:10, NOVIEMBRE:11, DICIEMBRE:12 };
-export const mesDeHoja = (hoja) => MES_DE_HOJA[String(hoja || '').trim().toUpperCase()] || new Date().getMonth() + 1;
 
 // El mes NO es global: cada usuario conserva la hoja-mes que eligio.
 // Preferencia persistida por area en localStorage.
@@ -248,10 +280,14 @@ export const API_CONFIG = {
 // CONFIGURACIÓN DE GOOGLE SHEETS (Legacy - usar API_CONFIG)
 // ============================================
 export const DEFAULT_GOOGLE_CONFIG = {
-  sheetId: import.meta.env.VITE_GOOGLE_SHEETS_ID || '',
-  sheetName: import.meta.env.VITE_GOOGLE_SHEETS_SHEET_NAME || hojaDelMesActual(),
-  apiKey: import.meta.env.VITE_GOOGLE_SHEETS_API_KEY || '',
-  appsScriptUrl: import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL || ''
+  // SEGURIDAD: el ID del libro, la API key y la URL del Apps Script ya NO van
+  // en el JavaScript publico. Todo pasa por el backend (/sheets/*), que tiene
+  // las credenciales. Estos valores son solo marcadores "configurado" que el
+  // codigo existente usa como condicion (if (!config.apiKey) return ...).
+  sheetId: 'via-backend',
+  sheetName: hojaDelMesActual(),
+  apiKey: 'via-backend',
+  appsScriptUrl: 'via-backend'
 };
 
 // ============================================
