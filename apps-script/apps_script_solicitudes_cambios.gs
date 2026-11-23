@@ -1,5 +1,5 @@
 // Google Apps Script - Sistema de Roles PNP
-// VERSION 14.0 - PADRON DE PERSONAL + HOJAS POR ANIO
+// VERSION 14.1 - PADRON DE PERSONAL + HOJAS POR ANIO + FIRMA UTF-8
 //
 // NOVEDADES 14.0:
 // - Hoja PERSONAL (padron unico): altas, bajas y traslados se hacen UNA vez y
@@ -62,11 +62,17 @@ function verifyHMAC(data) {
   delete payload._signature;
   
   // Compute HMAC of the payload (must match backend: sorted keys, no spaces)
+  // UTF-8 EXPLICITO: el backend firma los bytes UTF-8. Sin este parametro la
+  // firma podia fallar solo cuando el texto tenia tildes o Ñ ("MAÑANA").
   const bodyStr = sortedStringify(payload);
-  const expected = Utilities.computeHmacSha256Signature(bodyStr, CONFIG.HMAC_SECRET)
+  const expected = Utilities.computeHmacSha256Signature(bodyStr, CONFIG.HMAC_SECRET, Utilities.Charset.UTF_8)
     .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-  
-  return signature === expected;
+
+  if (signature !== expected) {
+    console.warn('Firma invalida para accion=' + payload.accion);
+    return false;
+  }
+  return true;
 }
 
 // JSON.stringify with sorted keys (matches Python json.dumps(sort_keys=True))
@@ -277,7 +283,7 @@ function doPost(e) {
 
       // ========== PING / HEALTH CHECK ==========
       case 'ping':
-        resultado = { success: true, status: 'ok', timestamp: new Date().toISOString(), version: '14.0' };
+        resultado = { success: true, status: 'ok', timestamp: new Date().toISOString(), version: '14.1', firma: CONFIG.HMAC_SECRET ? 'activa' : 'inactiva' };
         break;
 
       default:
@@ -336,13 +342,13 @@ function doGet(e) {
       case 'obtenerHeartbeat':
         return crearRespuesta(obtenerHeartbeat(data));
       case 'ping':
-        return crearRespuesta({ success: true, status: 'ok', timestamp: new Date().toISOString(), version: '14.0' });
+        return crearRespuesta({ success: true, status: 'ok', timestamp: new Date().toISOString(), version: '14.1' });
       default:
         return crearRespuesta({
           success: true,
           status: 'activo',
           timestamp: new Date().toISOString(),
-          version: '14.0'
+          version: '14.1'
         });
     }
   } catch (error) {
