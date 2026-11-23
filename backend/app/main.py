@@ -26,6 +26,7 @@ from app.routers import (
     sheets_proxy,
     migration,
     rol_servicio,
+    personal,
 )
 
 # Configure logging
@@ -115,6 +116,7 @@ app.include_router(mesa_partes.router, prefix="/api/v1")
 app.include_router(sheets_proxy.router, prefix="/api/v1")
 app.include_router(migration.router, prefix="/api/v1")
 app.include_router(rol_servicio.router, prefix="/api/v1")
+app.include_router(personal.router, prefix="/api/v1")
 
 
 @app.api_route("/", methods=["GET", "HEAD"], tags=["Root"])

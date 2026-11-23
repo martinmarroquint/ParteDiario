@@ -1,5 +1,14 @@
 // Google Apps Script - Sistema de Roles PNP
-// VERSION 13.0 - CORREGIDO (SIN REDIRECCIONES 302)
+// VERSION 14.0 - PADRON DE PERSONAL + HOJAS POR ANIO
+//
+// NOVEDADES 14.0:
+// - Hoja PERSONAL (padron unico): altas, bajas y traslados se hacen UNA vez y
+//   se aplican a la hoja del mes actual y a las siguientes.
+// - generarMes: crea "ENERO 2027"... copiando una pestana modelo (colores,
+//   formulas, validaciones) y cargando el personal activo del padron.
+// - Pestanas por anio: hasta 2026 "NOVIEMBRE"; desde 2027 "ENERO 2027".
+// - obtenerHeartbeat tambien por POST; CAMBIOS registra la pestana (col J).
+// - doGet ya no expone la lista de usuarios ni las pestanas.
 // 
 // CORRECCIONES APLICADAS:
 // 1. Todos los doPost retornan directamente la respuesta sin redirección
@@ -153,6 +162,26 @@ function doPost(e) {
         resultado = guardarLoteCeldas(data, nombreHoja);
         break;
 
+      // ========== PADRON DE PERSONAL / MESES ==========
+      case 'padronInicializar':
+        resultado = padronInicializar(data);
+        break;
+      case 'padronGuardar':
+        resultado = padronGuardar(data);
+        break;
+      case 'padronBaja':
+        resultado = padronBaja(data);
+        break;
+      case 'padronReactivar':
+        resultado = padronReactivar(data);
+        break;
+      case 'generarMes':
+        resultado = generarMes(data);
+        break;
+      case 'obtenerHeartbeat':
+        resultado = obtenerHeartbeat(data);
+        break;
+
       // ========== ACCIONES GENERICAS (para FastAPI) ==========
       case 'appendRow':
         resultado = appendRowAction(data);
@@ -248,7 +277,7 @@ function doPost(e) {
 
       // ========== PING / HEALTH CHECK ==========
       case 'ping':
-        resultado = { success: true, status: 'ok', timestamp: new Date().toISOString(), version: '13.0' };
+        resultado = { success: true, status: 'ok', timestamp: new Date().toISOString(), version: '14.0' };
         break;
 
       default:
@@ -265,7 +294,8 @@ function doPost(e) {
       'marcarFinalizado', 'desmarcarFinalizado', 'marcarLoteFinalizado', 'desmarcarLoteFinalizado',
       'guardarConfigGlobal', 'inicializarEstructura',
       'registrarSolicitudCambio', 'actualizarSolicitudCambio',
-      'registrarCeldaModificada', 'limpiarCeldasModificadas'
+      'registrarCeldaModificada', 'limpiarCeldasModificadas',
+      'padronInicializar', 'padronGuardar', 'padronBaja', 'padronReactivar', 'generarMes'
     ];
     if (writeActions.includes(data.accion)) {
       actualizarHeartbeat();
@@ -303,19 +333,16 @@ function doGet(e) {
         return crearRespuesta(cargarCeldasModificadas(data));
       case 'obtenerEstado':
         return crearRespuesta(obtenerEstado(data));
-      case 'obtenerUsuarios':
-        return crearRespuesta(adminObtenerUsuarios(data));
       case 'obtenerHeartbeat':
         return crearRespuesta(obtenerHeartbeat(data));
       case 'ping':
-        return crearRespuesta({ success: true, status: 'ok', timestamp: new Date().toISOString(), version: '13.0' });
+        return crearRespuesta({ success: true, status: 'ok', timestamp: new Date().toISOString(), version: '14.0' });
       default:
         return crearRespuesta({
           success: true,
           status: 'activo',
           timestamp: new Date().toISOString(),
-          version: '13.0-CORREGIDO',
-          hojasDisponibles: SpreadsheetApp.getActiveSpreadsheet().getSheets().map(s => s.getName())
+          version: '14.0'
         });
     }
   } catch (error) {
@@ -764,6 +791,10 @@ function registrarEnCambios(datos) {
       logSheet.setFrozenRows(1);
     }
 
+    if (String(logSheet.getRange('J1').getValue() || '') !== 'HOJA') {
+      logSheet.getRange('J1').setValue('HOJA').setFontWeight('bold').setBackground('#1E3A5F').setFontColor('#FFFFFF');
+    }
+
     logSheet.appendRow([
       datos.fecha || new Date(),
       datos.hora || new Date().toTimeString().split(' ')[0],
@@ -773,7 +804,8 @@ function registrarEnCambios(datos) {
       datos.turnoAnterior || '',
       datos.turnoNuevo || '',
       datos.tipo || 'CAMBIO_OFICIAL',
-      datos.area || ''
+      datos.area || '',
+      datos.hoja || ''
     ]);
   } catch (error) {
     console.error('Error al registrar en CAMBIOS:', error.toString());
@@ -800,7 +832,7 @@ function guardarCelda(data, nombreHoja) {
     if (valorActual !== valorNuevo) {
       sheet.getRange(celda).setValue(valorNuevo);
 
-      if (data.origen === 'modalCambioTurno') {
+      if (data.origen === 'modalCambioTurno' || data.origen === 'solicitudAprobada') {
         var ahora = new Date();
         var numDia = columnaAIndice(columna) - 4;
         registrarEnCambios({
@@ -811,8 +843,9 @@ function guardarCelda(data, nombreHoja) {
           dia: numDia,
           turnoAnterior: valorActual || 'SIN ASIGNAR',
           turnoNuevo: valorNuevo || 'SIN ASIGNAR',
-          tipo: 'CAMBIO_MANUAL_MODAL',
-          area: area
+          tipo: data.origen === 'solicitudAprobada' ? 'SOLICITUD_APROBADA' : 'CAMBIO_MANUAL_MODAL',
+          area: area,
+          hoja: nombreHoja
         });
       }
     }
@@ -1429,6 +1462,340 @@ function actualizarSolicitudCambio(params) {
   } catch (e) {
     return { ok: false, error: String(e) };
   }
+}
+
+// ============================================
+// PADRON DE PERSONAL (hoja PERSONAL) Y GENERACION DE MESES
+// ============================================
+// La hoja PERSONAL es la UNICA fuente de quien trabaja y en que area.
+// Las pestanas de mes guardan una copia (A:E) para que el rol del mes quede
+// como historico: los cambios del padron se aplican a la hoja del mes actual
+// y a las siguientes, nunca a meses pasados.
+//
+// Nombre de las pestanas de mes (misma regla que backend y frontend):
+//   anio <= 2026 -> "NOVIEMBRE"      anio >= 2027 -> "ENERO 2027"
+
+var ANIO_LEGADO = 2026;
+var PADRON_HOJA = 'PERSONAL';
+var PADRON_HEADER = ['DNI', 'GRADO', 'APELLIDOS Y NOMBRES', 'AREA', 'MEDICOS',
+  'ESTADO', 'FECHA_ALTA', 'FECHA_BAJA', 'ACTUALIZADO_POR', 'ACTUALIZADO_EN'];
+var PADRON_COLS = PADRON_HEADER.length;
+var COL_DIA_1 = 6;      // F
+var DIAS_COLUMNAS = 31; // F..AJ
+var RE_HOJA_MES = /^(ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)( \d{4})?$/;
+
+function __nombreHojaMes_(mes, anio) {
+  var base = CONFIG.MESES[Number(mes) - 1];
+  if (!base) return '';
+  return Number(anio) <= ANIO_LEGADO ? base : base + ' ' + Number(anio);
+}
+
+function __normTxt_(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+function __ahoraIso_() { return new Date().toISOString(); }
+
+function __hojaPadron_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(PADRON_HOJA);
+  if (!sh) {
+    sh = ss.insertSheet(PADRON_HOJA);
+    sh.getRange(1, 1, 1, PADRON_COLS).setValues([PADRON_HEADER])
+      .setFontWeight('bold').setBackground('#188C5D').setFontColor('#FFFFFF');
+    sh.setFrozenRows(1);
+    // DNI como TEXTO: evita que se convierta en fecha o pierda ceros.
+    sh.getRange('A:A').setNumberFormat('@');
+  }
+  return sh;
+}
+
+function __leerPadron_(sh) {
+  var n = sh.getLastRow();
+  if (n < 2) return [];
+  return sh.getRange(2, 1, n - 1, PADRON_COLS).getDisplayValues();
+}
+
+// Busca la fila de una persona por DNI o, si no tiene DNI, por nombre.
+// `valores` empieza en la fila `desde` de la hoja. -1 si no esta o es ambigua.
+function __buscarPersona_(valores, clave, desde) {
+  var dni = String((clave && clave.dni) || '').trim();
+  var nombre = __normTxt_(clave && clave.nombre);
+  var porDni = [], porNombre = [];
+  for (var i = 0; i < valores.length; i++) {
+    var rDni = String(valores[i][0] || '').trim();
+    var rNom = __normTxt_(valores[i][2]);
+    if (dni && rDni === dni) porDni.push(i);
+    if (nombre && rNom === nombre) porNombre.push(i);
+  }
+  if (porDni.length === 1) return porDni[0] + desde;
+  if (porDni.length > 1) {
+    var ambos = porDni.filter(function (i) { return __normTxt_(valores[i][2]) === nombre; });
+    return ambos.length === 1 ? ambos[0] + desde : -1;
+  }
+  return porNombre.length === 1 ? porNombre[0] + desde : -1;
+}
+
+// Escribe A:E de una persona en una pestana de mes. Si no esta, agrega una
+// fila AL FINAL copiando formato y formulas de la ultima fila: los numeros de
+// fila existentes NO cambian (solicitudes y marcas siguen apuntando bien).
+// modo: 'completo' | 'soloArea' | 'soloAreaSinInsertar'
+function __aplicarPersonaEnHoja_(ss, nombreHoja, clave, persona, modo) {
+  var sh = ss.getSheetByName(nombreHoja);
+  if (!sh) return { hoja: nombreHoja, accion: 'sin_hoja' };
+  var ultima = sh.getLastRow();
+  var valores = ultima >= 2 ? sh.getRange(2, 1, ultima - 1, 5).getDisplayValues() : [];
+  var fila = __buscarPersona_(valores, clave, 2);
+  if (fila === -1 && persona.dni && clave.dni !== persona.dni) {
+    fila = __buscarPersona_(valores, { dni: persona.dni, nombre: persona.nombre }, 2);
+  }
+
+  if (fila !== -1) {
+    if (modo === 'completo') {
+      sh.getRange(fila, 1).setNumberFormat('@');
+      sh.getRange(fila, 1, 1, 5).setValues([[persona.dni, persona.grado, persona.nombre,
+        persona.area, persona.medico]]);
+    } else {
+      sh.getRange(fila, 4).setValue(persona.area);
+    }
+    return { hoja: nombreHoja, fila: fila, accion: 'actualizada' };
+  }
+  if (modo !== 'completo') return { hoja: nombreHoja, accion: 'no_encontrada' };
+
+  var cols = sh.getMaxColumns();
+  sh.insertRowAfter(Math.max(ultima, 1));
+  var nueva = Math.max(ultima, 1) + 1;
+  if (ultima >= 2) {
+    sh.getRange(ultima, 1, 1, cols).copyTo(sh.getRange(nueva, 1, 1, cols));
+  }
+  sh.getRange(nueva, COL_DIA_1, 1, DIAS_COLUMNAS).clearContent();
+  sh.getRange(nueva, 1).setNumberFormat('@');
+  sh.getRange(nueva, 1, 1, 5).setValues([[persona.dni, persona.grado, persona.nombre,
+    persona.area, persona.medico]]);
+  return { hoja: nombreHoja, fila: nueva, accion: 'agregada' };
+}
+
+function __personaDesde_(d) {
+  return {
+    dni: String(d.dni || '').trim(),
+    grado: String(d.grado || '').trim().toUpperCase(),
+    nombre: String(d.nombre || '').trim().toUpperCase().replace(/\s+/g, ' '),
+    area: String(d.area || '').trim().toUpperCase().replace(/\s+/g, ' '),
+    medico: (d.medico === true || String(d.medico).toUpperCase() === 'TRUE') ? 'TRUE' : 'FALSE'
+  };
+}
+
+function __conLock_(fn) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return { success: false, error: 'El sistema esta ocupado, intente en unos segundos' };
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+
+// Crea el padron a partir de una pestana de mes (solo si esta vacio).
+// data = { hojaOrigen: 'DICIEMBRE', responsable, forzar? }
+function padronInicializar(data) {
+  return __conLock_(function () {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var padron = __hojaPadron_();
+      if (padron.getLastRow() > 1 && !data.forzar) {
+        return { success: false, error: 'El padron PERSONAL ya tiene datos' };
+      }
+      var origen = ss.getSheetByName(String(data.hojaOrigen || ''));
+      if (!origen) return { success: false, error: 'No existe la hoja ' + data.hojaOrigen };
+      var n = origen.getLastRow();
+      if (n < 2) return { success: false, error: 'La hoja ' + data.hojaOrigen + ' no tiene personal' };
+
+      var datos = origen.getRange(2, 1, n - 1, 5).getDisplayValues();
+      var ahora = __ahoraIso_();
+      var resp = String(data.responsable || 'ADMIN');
+      var filas = [], sinDni = [], vistos = {}, duplicados = {};
+      datos.forEach(function (r) {
+        var p = __personaDesde_({ dni: r[0], grado: r[1], nombre: r[2], area: r[3], medico: r[4] });
+        if (!p.nombre) return;
+        if (!p.dni) {
+          sinDni.push(p.nombre);
+        } else if (vistos[p.dni]) {
+          duplicados[p.dni] = (duplicados[p.dni] || [vistos[p.dni]]).concat([p.nombre]);
+        } else {
+          vistos[p.dni] = p.nombre;
+        }
+        filas.push([p.dni, p.grado, p.nombre, p.area, p.medico, 'ACTIVO', ahora, '', resp, ahora]);
+      });
+      if (padron.getLastRow() > 1) padron.getRange(2, 1, padron.getLastRow() - 1, PADRON_COLS).clearContent();
+      if (filas.length) {
+        padron.getRange(2, 1, filas.length, 1).setNumberFormat('@');
+        padron.getRange(2, 1, filas.length, PADRON_COLS).setValues(filas);
+      }
+      var dups = Object.keys(duplicados).map(function (k) { return { dni: k, nombres: duplicados[k] }; });
+      return { success: true, total: filas.length, sinDni: sinDni, dniDuplicados: dups };
+    } catch (e) { return { success: false, error: e.toString() }; }
+  });
+}
+
+// Alta o edicion de una persona. Se aplica al padron y a las pestanas `hojas`.
+// data = { modo: 'alta'|'editar', persona: {dni,grado,nombre,area,medico},
+//          clave: {dni,nombre} (registro a editar), hojas: [...], responsable }
+function padronGuardar(data) {
+  return __conLock_(function () {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var padron = __hojaPadron_();
+      var p = __personaDesde_(data.persona || {});
+      var modo = data.modo === 'editar' ? 'editar' : 'alta';
+      if (!p.nombre || !p.grado || !p.area) return { success: false, error: 'Grado, nombre y area son obligatorios' };
+      if (modo === 'alta' && !p.dni) return { success: false, error: 'El DNI es obligatorio' };
+
+      var valores = __leerPadron_(padron);
+      var clave = modo === 'editar' ? (data.clave || {}) : { dni: p.dni, nombre: p.nombre };
+      var filaPadron = modo === 'editar' ? __buscarPersona_(valores, clave, 2) : -1;
+      if (modo === 'editar' && filaPadron === -1) return { success: false, error: 'No se encontro a la persona en el padron' };
+
+      if (p.dni) {
+        for (var i = 0; i < valores.length; i++) {
+          if (String(valores[i][0]).trim() === p.dni && (i + 2) !== filaPadron) {
+            return { success: false, error: 'Ya existe una persona con DNI ' + p.dni + ': ' + valores[i][2] };
+          }
+        }
+      }
+
+      var ahora = __ahoraIso_();
+      var resp = String(data.responsable || 'ADMIN');
+      if (modo === 'alta') {
+        filaPadron = padron.getLastRow() + 1;
+        padron.getRange(filaPadron, 1).setNumberFormat('@');
+        padron.getRange(filaPadron, 1, 1, PADRON_COLS).setValues([[p.dni, p.grado, p.nombre, p.area,
+          p.medico, 'ACTIVO', ahora, '', resp, ahora]]);
+      } else {
+        var actual = valores[filaPadron - 2];
+        padron.getRange(filaPadron, 1).setNumberFormat('@');
+        padron.getRange(filaPadron, 1, 1, PADRON_COLS).setValues([[p.dni, p.grado, p.nombre, p.area,
+          p.medico, actual[5] || 'ACTIVO', actual[6] || '', actual[7] || '', resp, ahora]]);
+      }
+
+      // Una persona dada de baja no se agrega a los meses al editarla.
+      var estado = modo === 'alta' ? 'ACTIVO' : String(valores[filaPadron - 2][5] || 'ACTIVO').toUpperCase();
+      var modoHoja = estado === 'BAJA' ? 'soloAreaSinInsertar' : 'completo';
+      var pHoja = estado === 'BAJA' ? { area: 'SIN_SERVICIO' } : p;
+      var resultados = (data.hojas || []).map(function (h) {
+        return __aplicarPersonaEnHoja_(ss, String(h), clave, pHoja, modoHoja);
+      });
+      return { success: true, persona: p, hojas: resultados };
+    } catch (e) { return { success: false, error: e.toString() }; }
+  });
+}
+
+// Baja: ESTADO=BAJA en el padron y area SIN_SERVICIO en las pestanas `hojas`.
+// La fila NO se borra (el historico del mes queda intacto).
+function padronBaja(data) {
+  return __conLock_(function () {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var padron = __hojaPadron_();
+      var valores = __leerPadron_(padron);
+      var clave = data.clave || {};
+      var fila = __buscarPersona_(valores, clave, 2);
+      if (fila === -1) return { success: false, error: 'No se encontro a la persona en el padron' };
+      var ahora = __ahoraIso_();
+      padron.getRange(fila, 6, 1, 5).setValues([['BAJA', valores[fila - 2][6] || '', ahora,
+        String(data.responsable || 'ADMIN'), ahora]]);
+      var resultados = (data.hojas || []).map(function (h) {
+        return __aplicarPersonaEnHoja_(ss, String(h), clave, { area: 'SIN_SERVICIO' }, 'soloAreaSinInsertar');
+      });
+      return { success: true, hojas: resultados };
+    } catch (e) { return { success: false, error: e.toString() }; }
+  });
+}
+
+// Reactivar: ESTADO=ACTIVO con el area indicada; se aplica a `hojas`.
+function padronReactivar(data) {
+  return __conLock_(function () {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var padron = __hojaPadron_();
+      var valores = __leerPadron_(padron);
+      var clave = data.clave || {};
+      var fila = __buscarPersona_(valores, clave, 2);
+      if (fila === -1) return { success: false, error: 'No se encontro a la persona en el padron' };
+      var r = valores[fila - 2];
+      var area = String(data.area || '').trim().toUpperCase();
+      if (!area || area === 'SIN_SERVICIO') return { success: false, error: 'Indique el area de destino' };
+      var ahora = __ahoraIso_();
+      padron.getRange(fila, 4).setValue(area);
+      padron.getRange(fila, 6, 1, 5).setValues([['ACTIVO', r[6] || ahora, '',
+        String(data.responsable || 'ADMIN'), ahora]]);
+      var p = __personaDesde_({ dni: r[0], grado: r[1], nombre: r[2], area: area, medico: r[4] });
+      var resultados = (data.hojas || []).map(function (h) {
+        return __aplicarPersonaEnHoja_(ss, String(h), clave, p, 'completo');
+      });
+      return { success: true, hojas: resultados };
+    } catch (e) { return { success: false, error: e.toString() }; }
+  });
+}
+
+// Crea la pestana de un mes copiando una pestana modelo y cargando el padron.
+// data = { mes: 1..12, anio: 2027, plantilla: 'DICIEMBRE', responsable }
+// Idempotente: si la pestana ya existe NO la toca.
+function generarMes(data) {
+  return __conLock_(function () {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var mes = Number(data.mes), anio = Number(data.anio);
+      var nombre = __nombreHojaMes_(mes, anio);
+      if (!nombre) return { success: false, error: 'Mes o anio invalido' };
+      if (ss.getSheetByName(nombre)) return { success: true, creada: false, hoja: nombre };
+
+      var plantilla = ss.getSheetByName(String(data.plantilla || ''));
+      if (!plantilla) return { success: false, error: 'No existe la pestana modelo ' + data.plantilla };
+
+      var padron = ss.getSheetByName(PADRON_HOJA);
+      var activos = padron ? __leerPadron_(padron).filter(function (r) {
+        return String(r[2] || '').trim() && String(r[5] || '').trim().toUpperCase() !== 'BAJA';
+      }) : [];
+      if (!activos.length) return { success: false, error: 'El padron PERSONAL esta vacio: inicialicelo primero' };
+
+      var copia = plantilla.copyTo(ss);
+      copia.setName(nombre);
+
+      // Ubicarla despues de la ultima pestana de mes existente.
+      var hojas = ss.getSheets(), pos = hojas.length;
+      for (var i = 0; i < hojas.length; i++) {
+        var t = hojas[i].getName();
+        if (t !== nombre && RE_HOJA_MES.test(t)) pos = i + 2;
+      }
+      ss.setActiveSheet(copia);
+      ss.moveActiveSheet(Math.min(pos, ss.getSheets().length));
+
+      var n = activos.length;
+      var cols = copia.getMaxColumns();
+      var existentes = Math.max(copia.getLastRow() - 1, 0);
+      if (existentes < n) {
+        copia.insertRowsAfter(Math.max(copia.getLastRow(), 1), n - existentes);
+        if (existentes >= 1) {
+          copia.getRange(2, 1, 1, cols).copyTo(copia.getRange(existentes + 2, 1, n - existentes, cols));
+        }
+      } else if (existentes > n) {
+        copia.deleteRows(n + 2, existentes - n);
+      }
+
+      copia.getRange(2, 1, n, 1).setNumberFormat('@');
+      copia.getRange(2, 1, n, 5).setValues(activos.map(function (r) { return [r[0], r[1], r[2], r[3], r[4]]; }));
+      copia.getRange(2, COL_DIA_1, n, DIAS_COLUMNAS).clearContent();
+
+      // Encabezado de dias como numero de serie de fecha (no depende de la
+      // zona horaria del script). El formato "ddd-dmmm" viene de la plantilla.
+      var diasMes = new Date(anio, mes, 0).getDate();
+      var base = Date.UTC(1899, 11, 30);
+      var encabezado = [];
+      for (var d = 1; d <= DIAS_COLUMNAS; d++) {
+        encabezado.push(d <= diasMes ? Math.round((Date.UTC(anio, mes - 1, d) - base) / 86400000) : '');
+      }
+      copia.getRange(1, COL_DIA_1, 1, DIAS_COLUMNAS).setValues([encabezado]);
+
+      return { success: true, creada: true, hoja: nombre, personal: n, dias: diasMes };
+    } catch (e) { return { success: false, error: e.toString() }; }
+  });
 }
 
 // ============================================

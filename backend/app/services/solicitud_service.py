@@ -2,7 +2,7 @@ import json
 import logging
 import unicodedata
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from typing import Optional
 
 from app.models.solicitud import (
@@ -15,8 +15,8 @@ from app.services.user_service import UserService, HOJA_USUARIOS
 from app.services.role_service import RoleService
 from app.utils.constants import (
     ESTADO_PENDIENTE, ESTADO_APROBADO, ESTADO_DESAPROBADO, ESTADO_CANCELADO,
-    TRANSICIONES_VALIDAS, SHEETS_TABS, MESES,
 )
+from app.utils.hojas import ANIO_LEGADO, nombre_hoja, hoy_lima, ahora_lima_iso
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +99,6 @@ def _parse_roles(raw) -> list[int]:
     return out
 
 
-_LIMA_TZ = timezone(timedelta(hours=-5))
-
-
 def _norm(texto) -> str:
     """Normaliza un nombre de area: mayusculas, sin tildes, espacios simples.
 
@@ -116,15 +113,24 @@ def _norm(texto) -> str:
 
 def _lima_hoy() -> date:
     """Fecha de hoy en hora de Peru (UTC-5, sin horario de verano)."""
-    return datetime.now(_LIMA_TZ).date()
+    return hoy_lima()
 
 
-def _hoja_mes(mes: int) -> str:
-    """1 -> 'ENERO'. El nombre de la pestana del rol mensual."""
-    try:
-        return (MESES.get(int(mes), "") or "").upper()
-    except (TypeError, ValueError):
+def _hoja_mes(mes: int, anio: int = ANIO_LEGADO) -> str:
+    """(1, 2026) -> 'ENERO'; (1, 2027) -> 'ENERO 2027'. Pestana del rol mensual."""
+    return nombre_hoja(mes, anio)
+
+
+# Valor de "sin turno" que manda el formulario de solicitud.
+_SIN_TURNO = {"", "S/T", "SIN TURNO", "SIN ASIGNAR"}
+
+
+def _nombre_turno(codigo: str) -> str:
+    """Codigo ('M') -> nombre tal como lo guarda la hoja ('MAÑANA')."""
+    c = (codigo or "").strip()
+    if c.upper() in _SIN_TURNO:
         return ""
+    return _TURNO_NOMBRE.get(c.upper(), c)
 
 
 def _col_letter(col_num: int) -> str:
@@ -223,6 +229,11 @@ class SolicitudService:
 
         return cadena
 
+    @staticmethod
+    def _orden(sol: Solicitud) -> str:
+        """Mas recientes primero. El id es aleatorio: se ordena por fecha."""
+        return sol.creado_en or sol.fecha_solicitud or ""
+
     def _current_step_index(self, solicitud: Solicitud) -> int:
         """Posicion en la cadena = numero de aprobaciones ya registradas.
 
@@ -299,7 +310,7 @@ class SolicitudService:
         if solicitud.estado != ESTADO_PENDIENTE or not self._fuera_de_plazo(solicitud):
             return False
 
-        now = datetime.now().isoformat()
+        now = ahora_lima_iso()
         solicitud.estado = ESTADO_DESAPROBADO
         solicitud.historial.append({
             "accion": "DESAPROBADO",
@@ -316,15 +327,18 @@ class SolicitudService:
         logger.info(f"Solicitud {solicitud.id} cerrada por plazo")
         return True
 
-    async def _mes_finalizado(self, area: str, mes: int) -> bool:
-        """True si el rol de esa area/mes ya esta FINALIZADO en ESTADOS."""
+    async def _mes_finalizado(self, area: str, mes: int, anio: int = ANIO_LEGADO) -> bool:
+        """True si el rol de esa area/mes ya esta FINALIZADO en ESTADOS.
+
+        ESTADOS usa el nombre de la pestana como clave ('NOVIEMBRE',
+        'ENERO 2027'), asi que cada anio queda separado."""
         try:
             rows = await self.sheets.get_range("ESTADOS")
         except Exception as e:
             logger.warning(f"No se pudo leer ESTADOS: {e}")
             return False
 
-        hoja = _hoja_mes(mes)
+        hoja = _norm(_hoja_mes(mes, anio))
         objetivo = _norm(area)
         for row in rows[1:] if rows else []:
             if len(row) < 3:
@@ -365,10 +379,11 @@ class SolicitudService:
                         f"el dia {cambio.dia}/{data.mes}/{data.anio} ya no es valido"
                     )
 
-        if await self._mes_finalizado(area, data.mes):
-            raise ValueError(
-                f"El rol de {_hoja_mes(data.mes)} para {area} esta FINALIZADO"
-            )
+        hoja_real = _hoja_mes(data.mes, data.anio)
+        areas_involucradas = {area} | {p.area for p in data.participantes if p.area}
+        for a in areas_involucradas:
+            if await self._mes_finalizado(a, data.mes, data.anio):
+                raise ValueError(f"El rol de {hoja_real} para {a} esta FINALIZADO")
 
         es_admin_solicitante = 4 in (user.roles or [])
         cadena = await self._build_cadena_aprobacion(
@@ -384,7 +399,7 @@ class SolicitudService:
             )
         primer_nivel = cadena[0]["nivel"] if cadena else 4
 
-        now = datetime.now().isoformat()
+        now = ahora_lima_iso()
         solicitud_id = str(uuid.uuid4())[:8]
 
         solicitud = Solicitud(
@@ -400,7 +415,8 @@ class SolicitudService:
             participantes=data.participantes,
             motivo=data.motivo,
             pormenores=data.pormenores,
-            hoja=data.hoja,
+            # La pestana se deriva de mes/anio (no se confia en la del navegador).
+            hoja=hoja_real or data.hoja,
             mes=data.mes,
             anio=data.anio,
             cadena=cadena,
@@ -437,7 +453,7 @@ class SolicitudService:
                 continue
             await self._expirar_si_corresponde(sol)
             result.append(sol)
-        result.sort(key=lambda s: s.id, reverse=True)
+        result.sort(key=self._orden, reverse=True)
         return result
 
     async def get_bandeja(self, user_id: int) -> list[Solicitud]:
@@ -471,7 +487,7 @@ class SolicitudService:
             if self._puede_actuar(sol, user):
                 result.append(sol)
 
-        result.sort(key=lambda s: s.id, reverse=True)
+        result.sort(key=self._orden, reverse=True)
         return result
 
     async def get_estadisticas(self, user_id: int) -> SolicitudStats:
@@ -531,7 +547,7 @@ class SolicitudService:
         if not self._puede_actuar(solicitud, aprobador):
             raise PermissionError("No es tu turno para aprobar esta solicitud")
 
-        now = datetime.now().isoformat()
+        now = ahora_lima_iso()
 
         # Record in historial
         historial_entry = {
@@ -591,7 +607,7 @@ class SolicitudService:
         if not self._puede_actuar(solicitud, aprobador):
             raise PermissionError("No es tu turno para rechazar esta solicitud")
 
-        now = datetime.now().isoformat()
+        now = ahora_lima_iso()
 
         historial_entry = {
             "accion": "DESAPROBADO",
@@ -624,7 +640,7 @@ class SolicitudService:
         if solicitud.estado != ESTADO_PENDIENTE:
             raise ValueError(f"La solicitud no se puede cancelar (estado: {solicitud.estado})")
 
-        now = datetime.now().isoformat()
+        now = ahora_lima_iso()
 
         historial_entry = {
             "accion": "CANCELADO",
@@ -646,52 +662,116 @@ class SolicitudService:
     # Apply changes to role sheet
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _ubicar_fila(filas: list[list], participante: Participante) -> Optional[int]:
+        """Fila (1-based) del participante en la hoja del mes.
+
+        Se identifica por DNI (o por nombre si no hay DNI). La `fila` guardada
+        en la solicitud solo se usa si TODAVIA corresponde a esa persona: si
+        alguien inserto, borro u ordeno filas, se busca de nuevo en vez de
+        escribir el turno en otra persona.
+        """
+        dni = (participante.dni or "").strip()
+        nombre = _norm(participante.nombre)
+
+        def coincide(row: list) -> bool:
+            row_dni = (row[0] if len(row) > 0 else "").strip()
+            row_nombre = _norm(row[2] if len(row) > 2 else "")
+            if dni and row_dni:
+                return row_dni == dni and (not nombre or not row_nombre or row_nombre == nombre)
+            return bool(nombre) and row_nombre == nombre
+
+        f = participante.fila or 0
+        if 2 <= f <= len(filas) and coincide(filas[f - 1]):
+            return f
+
+        candidatos = [i + 1 for i, row in enumerate(filas) if i > 0 and coincide(row)]
+        if len(candidatos) == 1:
+            return candidatos[0]
+        if not candidatos and dni:
+            # DNI distinto o vacio en la hoja: ultimo intento solo por nombre.
+            por_nombre = [i + 1 for i, row in enumerate(filas)
+                          if i > 0 and nombre and _norm(row[2] if len(row) > 2 else "") == nombre]
+            if len(por_nombre) == 1:
+                return por_nombre[0]
+        return None
+
     async def _aplicar_cambios(self, solicitud: Solicitud) -> list[str]:
         """Escribe los cambios aprobados en la HOJA DEL MES real (la misma que
         usa el panel) via Apps Script `guardarCelda`, con el NOMBRE del turno.
 
+        1. Ubica a cada participante por DNI/nombre (no confia en la fila).
+        2. Verifica que el turno actual de la hoja siga siendo el que se pidio
+           cambiar (si alguien lo modifico despues, NO se pisa).
+        3. Solo si TODO cuadra, escribe. Si ya estaba aplicado (reintento),
+           no vuelve a escribir esa celda.
+
         Devuelve la lista de errores (vacia si todo se aplico). El llamador
         NO debe marcar la solicitud como APROBADA si hay errores."""
-        errores: list[str] = []
-        # La pestana se deriva de mes/anio: `hoja` puede venir del mes que el
-        # panel tenia abierto y escribir en el rol equivocado.
-        hoja = _hoja_mes(solicitud.mes) or solicitud.hoja
+        hoja = _hoja_mes(solicitud.mes, solicitud.anio) or solicitud.hoja
         if not hoja:
             return ["La solicitud no tiene mes/anio para ubicar la hoja del rol"]
 
-        if await self._mes_finalizado(solicitud.area_solicitante, solicitud.mes):
-            return [
-                f"El rol de {hoja} para {solicitud.area_solicitante} esta FINALIZADO"
-            ]
+        areas = {solicitud.area_solicitante} | {p.area for p in solicitud.participantes if p.area}
+        for area in areas:
+            if await self._mes_finalizado(area, solicitud.mes, solicitud.anio):
+                return [f"El rol de {hoja} para {area} esta FINALIZADO"]
 
+        # Lectura fresca (sin cache): vamos a escribir sobre esta hoja.
+        invalidar = getattr(self.sheets, "invalidate_sheet", None)
+        if invalidar:
+            invalidar(hoja)
+        filas = await self.sheets.get_range(hoja, "A:AJ")
+        if not filas:
+            return [f"No se encontro la hoja {hoja}"]
+
+        errores: list[str] = []
+        escrituras: list[tuple] = []
         for participante in solicitud.participantes:
-            fila = participante.fila
-            if not fila or fila < 2:
-                errores.append(f"{participante.nombre}: fila no disponible")
+            fila = self._ubicar_fila(filas, participante)
+            if not fila:
+                errores.append(f"{participante.nombre}: no se encontro en la hoja {hoja}")
                 continue
+            row = filas[fila - 1]
             for cambio in participante.cambios:
-                # La hoja guarda el NOMBRE del turno (no el codigo).
-                turno = cambio.turno_nuevo_nombre or _TURNO_NOMBRE.get(
-                    (cambio.turno_nuevo or "").strip().upper(), cambio.turno_nuevo
-                )
-                columna = _col_letter(5 + cambio.dia)  # dia 1 -> columna F
-                try:
-                    result = await self.sheets.guardar_celda(
-                        hoja, fila, columna, turno,
-                        responsable=solicitud.solicitante_nombre,
-                        area=participante.area,
+                idx = 4 + cambio.dia  # dia 1 -> columna F (indice 5)
+                en_hoja = (row[idx] if len(row) > idx else "").strip()
+                nuevo = cambio.turno_nuevo_nombre or _nombre_turno(cambio.turno_nuevo)
+                if _norm(en_hoja) == _norm(nuevo):
+                    continue  # ya aplicado (p. ej. reintento tras un fallo)
+                codigo_actual = (cambio.turno_actual or "").strip().upper()
+                verificable = codigo_actual in _TURNO_NOMBRE or codigo_actual in _SIN_TURNO
+                esperado = _nombre_turno(cambio.turno_actual)
+                if verificable and _norm(en_hoja) != _norm(esperado):
+                    errores.append(
+                        f"{participante.nombre} dia {cambio.dia}: el turno cambio desde que se "
+                        f"pidio (ahora '{en_hoja or 'SIN TURNO'}', se esperaba "
+                        f"'{esperado or 'SIN TURNO'}'). Rechace y pida una nueva solicitud."
                     )
-                    if isinstance(result, dict) and result.get("error"):
-                        errores.append(
-                            f"{participante.nombre} dia {cambio.dia}: {result['error']}"
-                        )
-                    else:
-                        logger.info(
-                            f"Cambio aplicado: {participante.nombre} dia {cambio.dia} "
-                            f"({columna}{fila}) -> {turno}"
-                        )
-                except Exception as e:
-                    errores.append(f"{participante.nombre} dia {cambio.dia}: {e}")
+                    continue
+                escrituras.append((participante, cambio.dia, fila, nuevo))
+
+        if errores:
+            return errores
+
+        for participante, dia, fila, turno in escrituras:
+            columna = _col_letter(5 + dia)  # dia 1 -> columna F
+            try:
+                result = await self.sheets.guardar_celda(
+                    hoja, fila, columna, turno,
+                    responsable=solicitud.solicitante_nombre,
+                    area=participante.area,
+                    origen="solicitudAprobada",
+                )
+                if isinstance(result, dict) and result.get("error"):
+                    errores.append(f"{participante.nombre} dia {dia}: {result['error']}")
+                else:
+                    logger.info(
+                        f"Cambio aplicado: {participante.nombre} dia {dia} "
+                        f"({hoja}!{columna}{fila}) -> {turno}"
+                    )
+            except Exception as e:
+                errores.append(f"{participante.nombre} dia {dia}: {e}")
         return errores
 
     # ------------------------------------------------------------------
@@ -699,17 +779,16 @@ class SolicitudService:
     # ------------------------------------------------------------------
 
     async def _update_solicitud(self, solicitud: Solicitud) -> None:
-        """Update mutable fields of an existing solicitud row."""
+        """Actualiza la fila de la solicitud en UNA sola escritura (G:S).
+
+        Antes eran 5 llamadas separadas al Apps Script: lento y, si fallaba a
+        la mitad, quedaba el estado nuevo con el historial viejo."""
         row_index = await self.sheets.find_row_index(HOJA_SOLICITUDES, COL_ID, solicitud.id)
         if not row_index:
             logger.error(f"No se encontró solicitud {solicitud.id} para actualizar")
             return
-
-        await self.sheets.update_cell(HOJA_SOLICITUDES, f"G{row_index}", solicitud.estado)
-        await self.sheets.update_cell(HOJA_SOLICITUDES, f"H{row_index}", str(solicitud.nivel_actual))
-        await self.sheets.update_cell(HOJA_SOLICITUDES, f"P{row_index}", json.dumps(solicitud.cadena, ensure_ascii=False))
-        await self.sheets.update_cell(HOJA_SOLICITUDES, f"Q{row_index}", json.dumps(solicitud.historial, ensure_ascii=False))
-        await self.sheets.update_cell(HOJA_SOLICITUDES, f"S{row_index}", solicitud.actualizado_en)
+        valores = self._solicitud_to_row(solicitud)[COL_ESTADO:COL_ACTUALIZADO_EN + 1]
+        await self.sheets.update_range(HOJA_SOLICITUDES, f"G{row_index}:S{row_index}", [valores])
 
     def _solicitud_to_row(self, s: Solicitud) -> list:
         """Convert a Solicitud to a flat list for the sheet row."""

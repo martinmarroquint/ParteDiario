@@ -28,6 +28,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from app.services.sheets_service import GoogleSheetsService
+from app.utils.hojas import es_hoja_mes, hoja_actual
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ PLANTILLA = "ROL DE SERVICIO INSP"
 BD_SHEET = "BD"
 
 # Hojas de mes del libro (columnas = dias, cabecera en fila 1)
-MESES_HOJAS = ["JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+# Pestanas de mes validas: "NOVIEMBRE" (2026) o "ENERO 2027" (ver app/utils/hojas.py).
 
 # ============================================================
 # SWITCH de la plantilla (dump de formulas, celda D22 + filas)
@@ -265,9 +266,9 @@ async def prewarm() -> None:
     Nunca lanza: si falla, la siguiente peticion real lo reintenta."""
     try:
         plant = await sheets_service.get_range(PLANTILLA, "A1:J20", ttl=900)
-        mes_pre = _celda(plant, 0, 0) or "SEPTIEMBRE"
-        if mes_pre not in MESES_HOJAS:
-            mes_pre = "SEPTIEMBRE"
+        mes_pre = (_celda(plant, 0, 0) or "").strip().upper()
+        if not es_hoja_mes(mes_pre):
+            mes_pre = hoja_actual()
         # El gather tambien cachea la BD (compartida por todos los meses)
         await asyncio.gather(
             sheets_service.get_range(mes_pre, "A1:AJ300", ttl=120),
@@ -276,6 +277,29 @@ async def prewarm() -> None:
         logger.info(f"[prewarm] Rol de servicio precargado (mes={mes_pre})")
     except Exception as e:
         logger.warning(f"[prewarm] No se pudo precargar el rol de servicio: {e}")
+
+
+_MESES_CACHE: dict = {"t": 0.0, "v": -1, "meses": []}
+
+
+@router.get("/meses")
+async def meses_disponibles():
+    """Pestanas de mes que existen en el libro, en orden cronologico.
+
+    Publico (como el resto de /rol-servicio). Cache de 5 minutos que se
+    descarta si se genera un mes nuevo."""
+    import time
+    from app.utils.hojas import parse_hoja
+    ahora = time.time()
+    version = GoogleSheetsService._estructura_version
+    if _MESES_CACHE["meses"] and ahora - _MESES_CACHE["t"] < 300 and _MESES_CACHE["v"] == version:
+        return {"meses": _MESES_CACHE["meses"], "actual": hoja_actual()}
+    titulos = await sheets_service._get_sheet_ids()
+    meses = sorted((t for t in titulos if es_hoja_mes(t)),
+                   key=lambda t: (parse_hoja(t)[1], parse_hoja(t)[0]))
+    if meses:
+        _MESES_CACHE.update(t=ahora, v=version, meses=meses)
+    return {"meses": meses, "actual": hoja_actual()}
 
 
 @router.get("")
@@ -301,10 +325,12 @@ async def rol_servicio(
 
         if mes:
             mes_efectivo = mes.strip().upper()
-            if mes_efectivo not in MESES_HOJAS:
-                raise HTTPException(status_code=400, detail=f"Mes invalido. Use uno de: {', '.join(MESES_HOJAS)}")
+            if not es_hoja_mes(mes_efectivo):
+                raise HTTPException(status_code=400, detail="Mes invalido. Use el nombre de la pestana (ej. NOVIEMBRE o ENERO 2027)")
         else:
-            mes_efectivo = mes_plantilla or "SEPTIEMBRE"
+            mes_efectivo = (mes_plantilla or "").strip().upper()
+            if not es_hoja_mes(mes_efectivo):
+                mes_efectivo = hoja_actual()
 
         # ------------------------------------------------------------
         # 2) MES (A1:AJ300) y BD (X1:AC500) en PARALELO.

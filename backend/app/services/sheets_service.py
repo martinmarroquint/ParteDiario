@@ -47,6 +47,36 @@ class GoogleSheetsService:
     # Acciones de alta frecuencia que NO invalidan el cache (tracking interno
     # tipo heartbeat: no alteran datos que el panel muestre).
     _NO_INVALIDAN = {"actualizarHeartbeat"}
+
+    # Contador de escrituras de ESTE proceso (por hoja y global). El panel lo
+    # consulta cada pocos segundos para saber si debe refrescar la hoja del
+    # mes: es gratis (no toca Google) y detecta al instante cualquier cambio
+    # hecho a traves del sistema.
+    _version_global: int = 0
+    _version_hoja: dict[str, int] = {}
+
+    # Acciones que escriben en CELDA_MODIFICADA aunque `hoja` sea la del mes.
+    _TOCAN_CELDA_MODIFICADA = {"registrarCeldaModificada", "limpiarCeldasModificadas"}
+
+    # Acciones que crean o modifican pestanas completas / el padron.
+    _CAMBIAN_ESTRUCTURA = {"generarMes", "padronInicializar", "padronGuardar",
+                           "padronBaja", "padronReactivar"}
+
+    @classmethod
+    def marcar_cambio(cls, hoja: str = "") -> None:
+        cls._version_global += 1
+        if hoja:
+            cls._version_hoja[hoja] = cls._version_hoja.get(hoja, 0) + 1
+
+    @classmethod
+    def version(cls, hoja: str = "") -> int:
+        return cls._version_hoja.get(hoja, 0) if hoja else cls._version_global
+
+    @staticmethod
+    def rango_a1(sheet_name: str, cell_range: str = "") -> str:
+        """Nombre de pestana entre comillas (obligatorio con espacios: 'ENERO 2027')."""
+        hoja = "'" + str(sheet_name).replace("'", "''") + "'"
+        return f"{hoja}!{cell_range}" if cell_range else hoja
     
     @classmethod
     def _cache_get(cls, key: tuple) -> Optional[Any]:
@@ -74,9 +104,14 @@ class GoogleSheetsService:
         # no re-cachearan datos previos a esta escritura.
         cls._cache_generation += 1
     
+    # Sube cuando cambia la LISTA de pestanas (generar mes, padron): el proxy
+    # de metadata la usa para no servir una lista vieja durante 5 minutos.
+    _estructura_version: int = 0
+
     @classmethod
     def invalidate_all(cls) -> None:
         """Descarta todo el cache (inicializarEstructura cambia el layout)."""
+        cls._estructura_version += 1
         cls._read_cache.clear()
         cls._READ_CACHE_TTL_BY_RANGE.clear()
         cls._cache_generation += 1
@@ -135,7 +170,7 @@ class GoogleSheetsService:
         ttl: Optional[float], generation: int,
     ) -> list[list]:
         """Lectura real a Google Sheets (para _inflight, cache incluida)."""
-        range_str = f"{sheet_name}!{cell_range}" if cell_range else sheet_name
+        range_str = self.rango_a1(sheet_name, cell_range)
         url = f"{self.base_url}/{self.sheet_id}/values/{range_str}"
         params = {"key": self.api_key, "majorDimension": "ROWS"}
         
@@ -224,6 +259,9 @@ class GoogleSheetsService:
         es_escritura = action in ('appendRow', 'updateRange', 'updateCell', 'deleteRow', 
                                    'crearHojaSiNoExiste',
                                    'guardarCelda', 'guardarLote', 'guardarIndividual',
+                                   'guardarLoteCeldas',
+                                   'generarMes', 'padronInicializar', 'padronGuardar',
+                                   'padronBaja', 'padronReactivar',
                                    'registrarCeldaModificada', 'limpiarCeldasModificadas',
                                    'actualizarHeartbeat', 'marcarFinalizado', 'desmarcarFinalizado',
                                    'marcarLoteFinalizado', 'desmarcarLoteFinalizado',
@@ -237,10 +275,16 @@ class GoogleSheetsService:
         # falle el dato pudo cambiar — nunca servir lecturas viejas tras eso.
         if es_escritura and action not in self._NO_INVALIDAN:
             hoja = data.get("hoja")
-            if hoja:
-                self.invalidate_sheet(hoja)
-            elif action == "inicializarEstructura":
+            if action in self._CAMBIAN_ESTRUCTURA or action == "inicializarEstructura":
                 self.invalidate_all()
+            elif hoja:
+                self.invalidate_sheet(hoja)
+            if action in self._TOCAN_CELDA_MODIFICADA:
+                self.invalidate_sheet("CELDA_MODIFICADA")
+            if action in ("marcarFinalizado", "desmarcarFinalizado",
+                          "marcarLoteFinalizado", "desmarcarLoteFinalizado"):
+                self.invalidate_sheet("ESTADOS")
+            self.marcar_cambio(hoja or "")
         
         try:
             async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
@@ -319,7 +363,7 @@ class GoogleSheetsService:
 
     async def guardar_celda(self, sheet_name: str, fila: int, columna: str,
                             valor: str, responsable: str = "ADMIN",
-                            area: str = "") -> dict:
+                            area: str = "", origen: str = "") -> dict:
         """Write one turn cell in a month sheet via Apps Script `guardarCelda`.
 
         Es el MISMO camino que usa el panel (PanelTrabajo): la hoja del mes
@@ -332,7 +376,8 @@ class GoogleSheetsService:
             "valor": valor,
             "responsable": responsable,
             "area": area,
-            "registrarHistorial": False,
+            "origen": origen,
+            "registrarHistorial": bool(origen),
         })
 
     async def asegurar_hoja(self, sheet_name: str, header: list) -> bool:

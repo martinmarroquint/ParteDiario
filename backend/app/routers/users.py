@@ -9,6 +9,7 @@ from app.services.user_service import UserService
 from app.services.auth_service import AuthService
 from app.services.sheets_service import GoogleSheetsService
 from app.middleware.auth import get_current_user, require_admin
+from app.services.personal_service import PersonalService
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/users", tags=["Usuarios"])
 sheets_service = GoogleSheetsService()
 user_service = UserService(sheets_service)
 auth_service = AuthService(sheets_service)
+personal_service = PersonalService(sheets_service)
 
 
 # ============================================
@@ -31,11 +33,14 @@ class PersonalItem(BaseModel):
     nombre: str
     area: str
     es_medico: bool
+    estado: str = "ACTIVO"
 
 
 class PersonalListResponse(BaseModel):
     personal: List[PersonalItem]
     total: int
+    inicializado: bool = False
+    origen: str = ""
 
 
 class PasswordResetIn(BaseModel):
@@ -43,32 +48,22 @@ class PasswordResetIn(BaseModel):
 
 
 # ============================================
-# PERSONAL ENDPOINT (employee directory from OCR sheet)
+# PERSONAL ENDPOINT (padron PERSONAL; si aun no existe, el mes actual)
 # ============================================
 
 @router.get("/personal", response_model=PersonalListResponse)
 async def get_personal(
     current_user: User = Depends(require_admin)
 ):
-    """Get employee directory from OCR sheet (admin only).
-    
-    This replaces direct Google Sheets API calls from the frontend,
-    keeping the API key server-side only.
+    """Directorio de personal para el panel de usuarios (admin only).
+
+    Antes leia la hoja OCR (una copia vieja de JULIO): el personal nuevo no
+    aparecia y no se le podia crear usuario. Ahora sale del padron PERSONAL.
     """
-    rows = await sheets_service.get_range("OCR")
-    personal = []
-    for idx, row in enumerate(rows[1:] if len(rows) > 0 else []):  # Skip header
-        if len(row) >= 4:
-            personal.append(PersonalItem(
-                id=f"p-{idx + 1}",
-                fila=idx + 2,
-                dni=(row[0] if len(row) > 0 else '').strip(),
-                grado=(row[1] if len(row) > 1 else '').strip(),
-                nombre=(row[2] if len(row) > 2 else '').strip(),
-                area=(row[3] if len(row) > 3 else '').strip(),
-                es_medico=(row[4] if len(row) > 4 else '').strip().upper() == 'TRUE'
-            ))
-    return PersonalListResponse(personal=personal, total=len(personal))
+    data = await personal_service.listar()
+    personal = [PersonalItem(**{k: p[k] for k in PersonalItem.model_fields}) for p in data["personal"]]
+    return PersonalListResponse(personal=personal, total=len(personal),
+                                inicializado=data["inicializado"], origen=data["origen"])
 
 
 @router.get("", response_model=UserListResponse)
