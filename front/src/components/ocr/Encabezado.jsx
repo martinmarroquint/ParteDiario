@@ -11,7 +11,7 @@ import {
   UserPlus, X, Users, Building2, GraduationCap, Inbox,
   UserCog, Calendar, Clock, Key, FileText, HelpCircle, CalendarDays
 } from 'lucide-react';
-import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP, colorUsuario, iniciales, etiquetaHoja } from './constantes';
+import { COLOR_PRIMARIO, MESES, ANIOS, DIAS_SEMANA, GRUPOS_DIAS_SEMANA, TURNO_MAP, colorUsuario, iniciales, parseHoja, aniosDeHojas, mesesDeAnio, hojaParaAnio, nombreHoja } from './constantes';
 import { shouldShowTour } from './tour/TourSteps';
 import ModalParteDiario from './roleservicio/ModalParteDiario';
 
@@ -229,8 +229,19 @@ const Encabezado = ({
   rolGuardado = false,
   usuariosActivos = []
 }) => {
-  // Etiqueta con anio ("NOVIEMBRE 2026", "ENERO 2027") para no confundir meses de anios distintos.
-  const opcionesHojas = hojasDisponibles.map(h => ({ value: h, label: etiquetaHoja(h) }));
+  // Navegacion por ANIO + MES, solo con las pestanas que existen en el libro.
+  const hojaActualInfo = parseHoja(hojaSeleccionada);
+  const anioHoja = hojaActualInfo?.anio || new Date().getFullYear();
+  const opcionesAniosHoja = aniosDeHojas(hojasDisponibles).map(a => ({ value: a, label: String(a) }));
+  const opcionesMesesHoja = mesesDeAnio(hojasDisponibles, anioHoja).map(m => ({ value: m, label: MESES[m - 1] }));
+  const cambiarAnioHoja = (a) => {
+    const h = hojaParaAnio(hojasDisponibles, a, hojaActualInfo?.mes);
+    if (h && h !== hojaSeleccionada) onHojaChange({ target: { value: h } });
+  };
+  const cambiarMesHoja = (m) => {
+    const h = nombreHoja(m, anioHoja);
+    if (h && h !== hojaSeleccionada) onHojaChange({ target: { value: h } });
+  };
   const opcionesMeses = MESES.map((nombre, i) => ({ value: i + 1, label: nombre }));
   const opcionesAnios = ANIOS.map(a => ({ value: a, label: String(a) }));
   const handleHojaChange = (val) => onHojaChange({ target: { value: val } });
@@ -462,15 +473,22 @@ const Encabezado = ({
             </div>
           )}
 
-          {/* Selector de Hoja (Mes) - Admin y Jefes */}
+          {/* Selector de Anio + Mes - Admin, Jefes y Visualizador */}
           {(esAdmin || esJefe || esVisualizador) && (
-            <div className="flex-shrink-0">
-              <SelectPersonalizado 
-                value={hojaSeleccionada} 
-                onChange={handleHojaChange} 
-                opciones={opcionesHojas} 
+            <div className="flex-shrink-0 flex items-center gap-1">
+              <SelectPersonalizado
+                value={hojaActualInfo?.mes}
+                onChange={cambiarMesHoja}
+                opciones={opcionesMesesHoja}
                 placeholder="Mes"
                 disabled={cargando || guardando}
+              />
+              <SelectPersonalizado
+                value={anioHoja}
+                onChange={cambiarAnioHoja}
+                opciones={opcionesAniosHoja}
+                placeholder="Año"
+                disabled={cargando || guardando || opcionesAniosHoja.length < 2}
               />
             </div>
           )}

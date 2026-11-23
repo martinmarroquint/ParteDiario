@@ -3,7 +3,10 @@
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { User, ChevronLeft, ChevronRight, ChevronDown, Calendar, Clock } from 'lucide-react';
-import { TURNO_MAP, MESES, ANIOS, DIAS_SEMANA } from './constantes';
+import {
+  TURNO_MAP, MESES, ANIOS, DIAS_SEMANA,
+  nombreHoja, aniosDeHojas, mesesDeAnio, hojaVecina, hojaParaAnio, hojaDelMesActual,
+} from './constantes';
 
 // Helper: hex a rgba con opacidad ajustable
 const hexToRgba = (hex, alpha) => {
@@ -34,6 +37,10 @@ const VistaUsuario = ({
   rolHabilitado,
   onMesChange,
   onAnioChange,
+  // Navegacion por pestanas existentes: cambia mes y anio en UN solo paso
+  // (evita el error de cruzar diciembre -> enero en dos pasos).
+  hojasDisponibles = [],
+  onCambiarHoja,
   cargando,
   celdasModificadas = new Map(),
 }) => {
@@ -74,6 +81,40 @@ const VistaUsuario = ({
   const mesActual = today.getMonth() + 1;
   const anioActual = today.getFullYear();
   const esMesActual = mesSeleccionado === mesActual && anioSeleccionado === anioActual;
+
+  const porPestanas = !!onCambiarHoja && hojasDisponibles.length > 0;
+  const hojaVista = nombreHoja(mesSeleccionado, anioSeleccionado);
+  const mesesNav = porPestanas ? mesesDeAnio(hojasDisponibles, anioSeleccionado) : MESES.map((_, i) => i + 1);
+  const aniosNav = porPestanas ? aniosDeHojas(hojasDisponibles) : ANIOS;
+  const hojaAnterior = porPestanas ? hojaVecina(hojasDisponibles, hojaVista, -1) : null;
+  const hojaSiguiente = porPestanas ? hojaVecina(hojasDisponibles, hojaVista, 1) : null;
+  const hojaHoy = hojaDelMesActual();
+  const irAMes = (m) => porPestanas
+    ? onCambiarHoja(nombreHoja(m, anioSeleccionado))
+    : onMesChange && onMesChange({ target: { value: m } });
+  const irAAnio = (a) => {
+    if (!porPestanas) { onAnioChange && onAnioChange({ target: { value: a } }); return; }
+    const h = hojaParaAnio(hojasDisponibles, a, mesSeleccionado);
+    if (h) onCambiarHoja(h);
+  };
+  const mover = (dir) => {
+    if (porPestanas) {
+      const h = dir > 0 ? hojaSiguiente : hojaAnterior;
+      if (h) onCambiarHoja(h);
+      return;
+    }
+    let newMes = mesSeleccionado + dir;
+    let newAnio = anioSeleccionado;
+    if (newMes > 12) { newMes = 1; newAnio++; }
+    if (newMes < 1) { newMes = 12; newAnio--; }
+    onMesChange && onMesChange({ target: { value: newMes } });
+    if (newAnio !== anioSeleccionado) onAnioChange && onAnioChange({ target: { value: newAnio } });
+  };
+  const irAHoy = () => {
+    if (porPestanas) { if (hojasDisponibles.includes(hojaHoy)) onCambiarHoja(hojaHoy); return; }
+    if (onMesChange) onMesChange({ target: { value: mesActual } });
+    if (onAnioChange) onAnioChange({ target: { value: anioActual } });
+  };
 
   const turnosEmpleado = turnos[emp.id] || {};
 
@@ -231,66 +272,55 @@ const VistaUsuario = ({
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
-                {/* Dropdown de Mes */}
+                {/* Dropdown de Mes (solo meses con pestana) */}
                 <div className="relative">
                   <select
                     value={mesSeleccionado}
-                    onChange={(e) => onMesChange && onMesChange({ target: { value: Number(e.target.value) } })}
+                    onChange={(e) => irAMes(Number(e.target.value))}
                     className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 cursor-pointer hover:border-emerald-300 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 outline-none transition-colors pr-7"
                   >
-                    {MESES.map((nombre, i) => (
-                      <option key={i + 1} value={i + 1}>{nombre}</option>
+                    {mesesNav.map((m) => (
+                      <option key={m} value={m}>{MESES[m - 1]}</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                 </div>
 
-                {/* Dropdown de Anio */}
+                {/* Dropdown de Anio (solo anios con pestanas) */}
                 <div className="relative">
                   <select
                     value={anioSeleccionado}
-                    onChange={(e) => onAnioChange && onAnioChange({ target: { value: Number(e.target.value) } })}
+                    onChange={(e) => irAAnio(Number(e.target.value))}
                     className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 cursor-pointer hover:border-emerald-300 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 outline-none transition-colors pr-7"
                   >
-                    {ANIOS.map((a) => (
+                    {aniosNav.map((a) => (
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                 </div>
 
-                {/* Botones de navegacion rapida */}
+                {/* Mes anterior / siguiente (salta a la pestana que exista) */}
                 <button
-                  onClick={() => {
-                    let newMes = mesSeleccionado - 1;
-                    let newAnio = anioSeleccionado;
-                    if (newMes < 1) { newMes = 12; newAnio--; }
-                    onMesChange && onMesChange({ target: { value: newMes } });
-                    if (newAnio !== anioSeleccionado) onAnioChange && onAnioChange({ target: { value: newAnio } });
-                  }}
-                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                  onClick={() => mover(-1)}
+                  disabled={porPestanas && !hojaAnterior}
+                  title={porPestanas && !hojaAnterior ? 'No hay meses anteriores' : 'Mes anterior'}
+                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => {
-                    let newMes = mesSeleccionado + 1;
-                    let newAnio = anioSeleccionado;
-                    if (newMes > 12) { newMes = 1; newAnio++; }
-                    onMesChange && onMesChange({ target: { value: newMes } });
-                    if (newAnio !== anioSeleccionado) onAnioChange && onAnioChange({ target: { value: newAnio } });
-                  }}
-                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                  onClick={() => mover(1)}
+                  disabled={porPestanas && !hojaSiguiente}
+                  title={porPestanas && !hojaSiguiente ? 'El mes siguiente aun no esta preparado' : 'Mes siguiente'}
+                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
               {!esMesActual && (
                 <button
-                  onClick={() => {
-                    if (onMesChange) onMesChange({ target: { value: mesActual } });
-                    if (onAnioChange) onAnioChange({ target: { value: anioActual } });
-                  }}
+                  onClick={irAHoy}
                   className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   Hoy

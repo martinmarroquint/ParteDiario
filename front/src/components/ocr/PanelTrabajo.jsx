@@ -1597,6 +1597,8 @@ const PanelTrabajo = ({
               // USAR HANDLERS DE USUARIO (cambian hoja + recargan)
               onMesChange={handleMesChangeUsuario}
               onAnioChange={handleAnioChangeUsuario}
+              hojasDisponibles={hojasDisponibles}
+              onCambiarHoja={(nh) => handleHojaChange({ target: { value: nh } })}
               cargando={cargando}
               rolHabilitado={rolHabilitadoVista}
               celdasModificadas={celdasModificadas}

@@ -17,7 +17,7 @@ import {
   DEFAULT_GOOGLE_CONFIG, postToAppsScript, readSheet, getSheetMetadata,
   ordenarPersonalPorGrado, esPersonalCivil, 
   soloHojasMes, hojaInicialParaArea, guardarHojaPreferida, hojaDelMesActual,
-  nombreHoja
+  nombreHoja, parseHoja, aniosDeHojas, mesesDeAnio, hojaVecina, hojaParaAnio
 } from './constantes';
 import ModalCambioTurno from './ModalCambioTurno';
 import ModalHistorial from './ModalHistorial';
@@ -245,6 +245,9 @@ const MobileRolView = ({
   // "NOVIEMBRE" (2026) o "ENERO 2027": la pestana depende del mes Y del anio.
   const hojaSeleccionada = useMemo(() => nombreHoja(mesSeleccionado, anioSeleccionado) || hojaDelMesActual(), [mesSeleccionado, anioSeleccionado]);
   const totalDiasMes = useMemo(() => new Date(anioSeleccionado, mesSeleccionado, 0).getDate(), [mesSeleccionado, anioSeleccionado]);
+  // Navegacion: solo anios y meses que tienen pestana en el libro.
+  const aniosNavMovil = hojasDisponibles.length ? aniosDeHojas(hojasDisponibles) : ANIOS;
+  const mesesNavMovil = hojasDisponibles.length ? mesesDeAnio(hojasDisponibles, anioSeleccionado) : MESES.map((_, i) => i + 1);
 
   // ============================================
   // REFERENCIAS ACTUALIZADAS
@@ -310,17 +313,28 @@ const MobileRolView = ({
 
   const handleAnioChangeUsuario = useCallback((nuevoAnio) => {
     if (nuevoAnio === anioNavegacion) return;
-    resetNavegacion(mesActualNum, nuevoAnio);
-  }, [anioNavegacion, mesActualNum, resetNavegacion]);
+    // Mismo mes en el otro anio si existe; si no, el primer mes disponible.
+    const h = hojasDisponibles.length ? hojaParaAnio(hojasDisponibles, nuevoAnio, mesNavegacion) : null;
+    const p = h ? parseHoja(h) : { mes: mesActualNum, anio: nuevoAnio };
+    resetNavegacion(p.mes, p.anio);
+  }, [anioNavegacion, mesNavegacion, mesActualNum, resetNavegacion, hojasDisponibles]);
 
   const navigateMonth = useCallback((direction) => {
+    // Salta a la pestana anterior/siguiente que exista (dic 2026 -> ene 2027).
+    if (hojasDisponibles.length) {
+      const h = hojaVecina(hojasDisponibles, nombreHoja(mesNavegacion, anioNavegacion), direction);
+      if (!h) return;
+      const p = parseHoja(h);
+      resetNavegacion(p.mes, p.anio);
+      return;
+    }
     let nuevoMes = mesNavegacion + direction;
     let nuevoAnio = anioNavegacion;
     if (nuevoMes < 1) { nuevoMes = 12; nuevoAnio--; }
     if (nuevoMes > 12) { nuevoMes = 1; nuevoAnio++; }
     if (nuevoMes === mesNavegacion && nuevoAnio === anioNavegacion) return;
     resetNavegacion(nuevoMes, nuevoAnio);
-  }, [mesNavegacion, anioNavegacion, resetNavegacion]);
+  }, [mesNavegacion, anioNavegacion, resetNavegacion, hojasDisponibles]);
 
   // ============================================
   // CARGA DE HOJAS
@@ -1295,14 +1309,14 @@ const MobileRolView = ({
               onChange={(e) => handleAnioChangeUsuario(parseInt(e.target.value))}
               className="bg-white/15 text-white text-xs font-bold px-2 py-1 rounded-lg border border-white/20 focus:outline-none"
             >
-              {ANIOS.map(a => <option key={a} value={a} className="text-gray-800">{a}</option>)}
+              {aniosNavMovil.map(a => <option key={a} value={a} className="text-gray-800">{a}</option>)}
             </select>
             <select
               value={mesNavegacion}
               onChange={(e) => handleMesChangeUsuario(parseInt(e.target.value))}
               className="bg-white/15 text-white text-xs font-bold px-3 py-1 rounded-lg border border-white/20 focus:outline-none"
             >
-              {MESES.map((m, i) => <option key={i} value={i + 1} className="text-gray-800">{m}</option>)}
+              {mesesNavMovil.map(m => <option key={m} value={m} className="text-gray-800">{MESES[m - 1]}</option>)}
             </select>
             <button onClick={() => navigateMonth(1)} className="p-1.5 hover:bg-white/20 rounded-lg active:scale-90 transition-all">
               <ChevronRight className="w-5 h-5" />
@@ -1393,7 +1407,7 @@ const MobileRolView = ({
             onChange={(e) => handleAnioChangeUsuario(parseInt(e.target.value))}
             className="bg-white/15 text-white text-xs font-bold px-2 py-1 rounded-lg border border-white/20 focus:outline-none"
           >
-            {ANIOS.map(a => <option key={a} value={a} className="text-gray-800">{a}</option>)}
+            {aniosNavMovil.map(a => <option key={a} value={a} className="text-gray-800">{a}</option>)}
           </select>
           {(esVisualizador || esJefe) && (
             <select
@@ -1411,14 +1425,14 @@ const MobileRolView = ({
             onChange={(e) => handleMesChangeUsuario(parseInt(e.target.value))}
             className="bg-white/15 text-white text-xs font-bold px-3 py-1 rounded-lg border border-white/20 focus:outline-none"
           >
-            {MESES.map((m, i) => <option key={i} value={i + 1} className="text-gray-800">{m}</option>)}
+            {mesesNavMovil.map(m => <option key={m} value={m} className="text-gray-800">{MESES[m - 1]}</option>)}
           </select>
           <button onClick={() => navigateMonth(1)} className="p-1.5 hover:bg-white/20 rounded-lg active:scale-90 transition-all">
             <ChevronRight className="w-5 h-5" />
           </button>
           {(mesNavegacion !== mesActualNum || anioNavegacion !== anioActualNum) && (
             <button 
-              onClick={() => { handleMesChangeUsuario(mesActualNum); setAnioNavegacion(anioActualNum); }} 
+              onClick={() => resetNavegacion(mesActualNum, anioActualNum)} 
               className="text-[10px] text-white/60 hover:text-white underline ml-1 whitespace-nowrap"
             >
               Hoy

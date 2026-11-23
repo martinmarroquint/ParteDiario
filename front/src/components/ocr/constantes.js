@@ -175,6 +175,35 @@ export const etiquetaHoja = (hoja) => {
   return p ? `${MESES_UPPER[p.mes - 1]} ${p.anio}` : String(hoja || '');
 };
 
+// ------------------------------------------------------------
+// NAVEGACION ENTRE MESES (solo por pestanas que EXISTEN en el libro)
+// ------------------------------------------------------------
+/** Anios con al menos una pestana: [2026, 2027]. */
+export const aniosDeHojas = (hojas) => [...new Set(soloHojasMes(hojas).map(h => parseHoja(h).anio))];
+
+/** Meses (1-12) que tienen pestana en ese anio. */
+export const mesesDeAnio = (hojas, anio) => soloHojasMes(hojas)
+  .map(parseHoja).filter(p => p.anio === Number(anio)).map(p => p.mes);
+
+/** Pestana anterior (-1) o siguiente (+1) que exista; null si no hay. */
+export const hojaVecina = (hojas, hoja, direccion) => {
+  const lista = soloHojasMes(hojas);
+  const actual = parseHoja(hoja);
+  if (!actual) return null;
+  const clave = (p) => p.anio * 100 + p.mes;
+  const ref = clave(actual);
+  const candidatas = lista.filter(h => direccion > 0 ? clave(parseHoja(h)) > ref : clave(parseHoja(h)) < ref);
+  if (!candidatas.length) return null;
+  return direccion > 0 ? candidatas[0] : candidatas[candidatas.length - 1];
+};
+
+/** Al cambiar de anio: el mismo mes si existe; si no, el primero disponible. */
+export const hojaParaAnio = (hojas, anio, mesPreferido) => {
+  const meses = mesesDeAnio(hojas, anio);
+  if (!meses.length) return null;
+  return nombreHoja(meses.includes(Number(mesPreferido)) ? mesPreferido : meses[0], anio);
+};
+
 // Hoja-mes de la fecha actual (el 1 de enero de 2027 ya es "ENERO 2027").
 export const hojaDelMesActual = () => nombreHoja(new Date().getMonth() + 1, new Date().getFullYear());
 export const mesActual = () => new Date().getMonth() + 1;

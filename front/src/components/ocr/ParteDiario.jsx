@@ -9,7 +9,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { X, Calendar, ChevronLeft, ChevronRight, Loader2, AlertTriangle, FileDown } from 'lucide-react';
 import { PDFDownloadLink, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { COLOR_PRIMARIO, TURNO_MAP, MESES, DEFAULT_GOOGLE_CONFIG, obtenerCodigoArea, ANIOS, readSheet, nombreHoja } from './constantes';
+import { COLOR_PRIMARIO, TURNO_MAP, MESES, DEFAULT_GOOGLE_CONFIG, obtenerCodigoArea, ANIOS, readSheet, nombreHoja, getSheetMetadata, soloHojasMes, aniosDeHojas, mesesDeAnio } from './constantes';
 
 // ============================================
 // TIPOS DE GRADO PARA RESUMEN
@@ -280,6 +280,16 @@ const ParteDiario = ({ isOpen, onClose, todasLasAreas }) => {
   const [diaSeleccionado, setDiaSeleccionado] = useState(new Date().getDate());
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
+  // Solo anios/meses con pestana en el libro (2026, 2027...).
+  const [hojasLibro, setHojasLibro] = useState([]);
+  useEffect(() => { getSheetMetadata().then(h => setHojasLibro(soloHojasMes(h))).catch(() => {}); }, []);
+  const aniosParte = hojasLibro.length ? aniosDeHojas(hojasLibro) : ANIOS;
+  const mesesParte = hojasLibro.length ? mesesDeAnio(hojasLibro, anioSeleccionado) : MESES.map((_, i) => i + 1);
+  const cambiarAnioParte = (a) => {
+    setAnioSeleccionado(a);
+    const meses = hojasLibro.length ? mesesDeAnio(hojasLibro, a) : [];
+    if (meses.length && !meses.includes(mesSeleccionado)) setMesSeleccionado(meses[0]);
+  };
   const [areaFiltro, setAreaFiltro] = useState('TODAS');
   const [error, setError] = useState(null);
   const totalDiasMes = new Date(anioSeleccionado, mesSeleccionado, 0).getDate();
@@ -372,8 +382,8 @@ const ParteDiario = ({ isOpen, onClose, todasLasAreas }) => {
             <select value={diaSeleccionado} onChange={e=>setDiaSeleccionado(parseInt(e.target.value))} className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium">{Array.from({length:totalDiasMes},(_,i)=>i+1).map(d=><option key={d} value={d}>Día {d}</option>)}</select>
             <button onClick={()=>setDiaSeleccionado(p=>Math.min(totalDiasMes,p+1))} disabled={diaSeleccionado>=totalDiasMes} className="p-1 hover:bg-gray-200 rounded disabled:opacity-30"><ChevronRight className="w-4 h-4"/></button>
           </div>
-          <select value={mesSeleccionado} onChange={e=>setMesSeleccionado(parseInt(e.target.value))} className="px-3 py-2 border border-gray-200 rounded-lg text-sm">{MESES.map((n,i)=><option key={i} value={i+1}>{n}</option>)}</select>
-          <select value={anioSeleccionado} onChange={e=>setAnioSeleccionado(parseInt(e.target.value))} className="px-3 py-2 border border-gray-200 rounded-lg text-sm">{ANIOS.map(a=><option key={a} value={a}>{a}</option>)}</select>
+          <select value={mesSeleccionado} onChange={e=>setMesSeleccionado(parseInt(e.target.value))} className="px-3 py-2 border border-gray-200 rounded-lg text-sm">{mesesParte.map(m=><option key={m} value={m}>{MESES[m-1]}</option>)}</select>
+          <select value={anioSeleccionado} onChange={e=>cambiarAnioParte(parseInt(e.target.value))} className="px-3 py-2 border border-gray-200 rounded-lg text-sm">{aniosParte.map(a=><option key={a} value={a}>{a}</option>)}</select>
           <select value={areaFiltro} onChange={e=>setAreaFiltro(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm flex-1 max-w-xs"><option value="TODAS">Todas las áreas</option>{todasLasAreas?.map(a=><option key={a} value={a}>{a}</option>)}</select>
           <span className="text-sm text-gray-500 ml-auto">{personalOrdenado.length} registros</span>
         </div>
