@@ -162,6 +162,7 @@ const MobileRolView = ({
   const [config, setConfig] = useState(DEFAULT_GOOGLE_CONFIG);
   const [hojasDisponibles, setHojasDisponibles] = useState([]);
   const [personal, setPersonal] = useState([]);
+  const [todoElPersonal, setTodoElPersonal] = useState([]);
   const [turnos, setTurnos] = useState({});
   const [turnosBackup, setTurnosBackup] = useState({});
   const [turnoActivo, setTurnoActivo] = useState('M');
@@ -294,6 +295,7 @@ const MobileRolView = ({
     setAnioNavegacion(nuevoAnio);
     setSemanaActual(0);
     setPersonal([]);
+    setTodoElPersonal([]);
     setTurnos({});
     setTurnosBackup({});
     setCeldasModificadas(new Map());
@@ -410,6 +412,7 @@ const MobileRolView = ({
       
       if (rows.length < 2) { 
         setPersonal([]); 
+        setTodoElPersonal([]);
         setTurnos({}); 
         setTurnosBackup({}); 
         cargadoRef.current = true;
@@ -474,7 +477,8 @@ const MobileRolView = ({
       else if (esVisualizador) { setRolHabilitado(false); }
       else { setRolHabilitado(!bloqueadoPorBoton); actualizarEstadoArea(areaAsignada, bloqueadoPorBoton); }
       
-      setPersonal(ordenarPersonalPorGrado(filtrados)); 
+      setPersonal(ordenarPersonalPorGrado(filtrados));
+      setTodoElPersonal(todos);
       setTurnos(tObj); 
       setTurnosBackup(JSON.parse(JSON.stringify(tObj))); 
       
@@ -1354,6 +1358,7 @@ const MobileRolView = ({
           userRol={user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0)}
           userAreas={user?.areas || []}
           personal={personal}
+          companeros={todoElPersonal}
           turnosMap={turnos}
         />
       </div>
@@ -1703,6 +1708,7 @@ const MobileRolView = ({
         userRol={user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0)}
         userAreas={user?.areas || []}
         personal={personal}
+        companeros={todoElPersonal}
         turnosMap={turnos}
       />
 

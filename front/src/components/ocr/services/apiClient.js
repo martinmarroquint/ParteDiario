@@ -108,6 +108,26 @@ class ApiClient {
   // HTTP METHODS
   // ============================================
 
+  /**
+   * FastAPI devuelve `detail` como texto o, en errores de validacion (422),
+   * como lista de objetos. Sin esto el usuario veia "[object Object]".
+   */
+  _mensajeDetalle(detail) {
+    if (!detail) return '';
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map((d) => {
+          const campo = Array.isArray(d?.loc) ? d.loc.filter((x) => x !== 'body').join('.') : '';
+          const msg = d?.msg || '';
+          return campo ? `${campo}: ${msg}` : msg;
+        })
+        .filter(Boolean)
+        .join(' | ') || 'Datos invalidos';
+    }
+    try { return JSON.stringify(detail); } catch { return 'Datos invalidos'; }
+  }
+
   async request(endpoint, options = {}) {
     const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
     const token = this.getToken();
@@ -194,7 +214,7 @@ class ApiClient {
       // Handle other errors (con reintento automatico en errores transitorios)
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const mensaje = errorData.detail || `Error HTTP: ${response.status}`;
+        const mensaje = this._mensajeDetalle(errorData.detail) || `Error HTTP: ${response.status}`;
         if ([429, 502, 503, 504].includes(response.status) && intento < _retries) {
           await this._esperar(_retryDelays[intento] ?? 5000);
           continue;

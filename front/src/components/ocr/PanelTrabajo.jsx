@@ -1660,6 +1660,7 @@ const PanelTrabajo = ({
         userRol={user?.rol_principal ?? (user?.roles?.length ? Math.max(...user.roles) : 0)}
         userAreas={user?.areas || []}
         personal={personal}
+        companeros={todoElPersonal}
         turnosMap={turnos}
       />
       

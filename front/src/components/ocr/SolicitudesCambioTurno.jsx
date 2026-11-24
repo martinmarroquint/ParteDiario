@@ -29,6 +29,7 @@ const SIN_TURNO_VAL = 'S/T';
 const FRANCO = 'F';
 const TURNOS_RAPIDOS = Object.keys(TURNO_MAP);
 const MAX_MOTIVO = 300;
+const MIN_MOTIVO = 10; // el backend exige al menos 10 caracteres
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 const getDiaSemana = (anio, mes, dia) => {
@@ -626,6 +627,9 @@ const SolicitudesCambioTurno = ({
   hoja = '',
   area = '',
   personal = [],
+  // Lista amplia para buscar compañero: el usuario comun solo recibe su
+  // propia fila en `personal` y por eso no encontraba a nadie.
+  companeros = null,
   turnosMap = {},
   userName = '',
   // eslint-disable-next-line no-unused-vars
@@ -635,6 +639,11 @@ const SolicitudesCambioTurno = ({
     if (!personal || !personal.length) return [];
     return personal.map((p) => ({ ...p, turnos: turnosMap[p.id] || {} }));
   }, [personal, turnosMap]);
+
+  const candidatosComp = useMemo(() => {
+    const base = companeros && companeros.length ? companeros : personal;
+    return (base || []).map((p) => ({ ...p, turnos: turnosMap[p.id] || {} }));
+  }, [companeros, personal, turnosMap]);
 
   const [modo, setModo] = useState(null);
   const [paso, setPaso] = useState(0);
@@ -722,8 +731,12 @@ const SolicitudesCambioTurno = ({
   const resultadosComp = (() => {
     const q = busquedaComp;
     if (!q || q.length < 2) return [];
-    return turnos
-      .filter((t) => (normalizar(t.nombre).includes(normalizar(q)) || t.dni?.includes(q)) && t.id !== miPersonal?.id)
+    // Solo compañeros de la misma area (la cadena de aprobacion es del area).
+    const miArea = normalizar(miPersonal?.area);
+    return candidatosComp
+      .filter((t) => (normalizar(t.nombre).includes(normalizar(q)) || t.dni?.includes(q))
+        && t.id !== miPersonal?.id
+        && (!miArea || normalizar(t.area) === miArea))
       .slice(0, 10);
   })();
 
@@ -798,6 +811,7 @@ const SolicitudesCambioTurno = ({
   const enviar = async () => {
     if (!cambios.length) { setError('Agrega al menos un cambio antes de enviar.'); return; }
     if (!motivo.trim()) { setError('Escribe el motivo del cambio. Es obligatorio.'); return; }
+    if (motivo.trim().length < MIN_MOTIVO) { setError(`El motivo debe tener al menos ${MIN_MOTIVO} caracteres.`); return; }
 
     setEnviando(true); setError('');
 
@@ -989,7 +1003,7 @@ const SolicitudesCambioTurno = ({
         <div className="mb-1.5 flex items-baseline justify-between">
           <label htmlFor="motivo" className="text-xs font-semibold text-slate-600">
             Motivo del cambio <span className="text-red-500" aria-hidden="true">*</span>
-            <span className="ml-1 font-normal text-slate-400">(obligatorio)</span>
+            <span className="ml-1 font-normal text-slate-400">(obligatorio, mín. {MIN_MOTIVO} caracteres)</span>
           </label>
           <span className={`text-[10px] tabular-nums ${motivo.length >= MAX_MOTIVO ? 'text-red-500' : 'text-slate-400'}`}>
             {motivo.length}/{MAX_MOTIVO}

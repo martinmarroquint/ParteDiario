@@ -344,6 +344,7 @@ const ModalSolicitudCambioTurno = ({
   userRol: userRolProp = 0,
   userAreas: userAreasProp = [],
   personal = [],
+  companeros = null,
   turnosMap = {},
   onCambioAplicado = null,
   vistaInicial = 'lista',
@@ -454,7 +455,7 @@ const ModalSolicitudCambioTurno = ({
         onEnviado={() => { setVista('lista'); cargar(); }}
         hoja={hoja || ''}
         mes={mes} anio={anio} area={area}
-        personal={personal} turnosMap={turnosMap} userName={userName}
+        personal={personal} companeros={companeros} turnosMap={turnosMap} userName={userName}
       />
     );
   }
