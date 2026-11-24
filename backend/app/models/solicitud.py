@@ -9,6 +9,11 @@ class ParticipanteCambio(BaseModel):
     # Nombre exacto del turno tal como se escribe en la hoja del mes (el
     # codigo puede cambiar en runtime; el nombre es lo que espera el rol).
     turno_nuevo_nombre: str = Field("", max_length=60)
+    # Texto EXACTO que tenia la celda cuando se pidio el cambio. Permite
+    # verificar al aprobar aunque ese texto no sea un turno conocido (antes
+    # el front lo mandaba como "sin turno" y la aprobacion final fallaba).
+    # None = solicitud antigua (sin este dato).
+    turno_actual_nombre: Optional[str] = Field(None, max_length=200)
 
 
 class Participante(BaseModel):
@@ -27,6 +32,9 @@ class SolicitudCreate(BaseModel):
     hoja: str = Field(..., min_length=3, max_length=50)
     mes: int = Field(..., ge=1, le=12)
     anio: int = Field(..., ge=2020)
+    # Clave unica del envio, generada en el navegador. Si la misma solicitud
+    # llega dos veces (timeout + reenvio), se devuelve la ya creada.
+    id_cliente: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9-]{8,64}$")
 
 
 class Solicitud(BaseModel):

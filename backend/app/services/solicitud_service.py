@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import unicodedata
@@ -21,6 +22,10 @@ from app.utils.hojas import ANIO_LEGADO, nombre_hoja, hoy_lima, ahora_lima_iso
 logger = logging.getLogger(__name__)
 
 HOJA_SOLICITUDES = "SOLICITUDES"
+
+# Un lock por id de solicitud en creacion: dos envios con la misma clave no
+# pueden crear dos filas aunque lleguen a la vez.
+_LOCKS_CREACION: dict[str, asyncio.Lock] = {}
 
 # Cabecera canonica de la hoja SOLICITUDES (coincide con el mapeo COL_* de abajo).
 SOLICITUDES_HEADER = [
@@ -109,6 +114,10 @@ def _norm(texto) -> str:
     s = unicodedata.normalize("NFKD", str(texto or ""))
     s = "".join(c for c in s if not unicodedata.combining(c))
     return " ".join(s.upper().split())
+
+
+# Nombres de turno que el sistema reconoce (normalizados).
+_NOMBRES_CONOCIDOS = {_norm(n) for n in _TURNO_NOMBRE.values()}
 
 
 def _lima_hoy() -> date:
@@ -361,8 +370,41 @@ class SolicitudService:
     # CRUD
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _id_desde_cliente(id_cliente: Optional[str]) -> Optional[str]:
+        """'3f9a1c2e-....' -> '3f9a1c2e' (mismo formato que los ids aleatorios)."""
+        limpio = "".join(c for c in (id_cliente or "") if c.isalnum()).lower()
+        return limpio[:8] if len(limpio) >= 8 else None
+
     async def crear_solicitud(self, user_id: int, data: SolicitudCreate) -> Solicitud:
-        """Create a new solicitud."""
+        """Crea una solicitud. Idempotente si el front manda `id_cliente`.
+
+        Si el navegador corta por timeout pero el backend SI la guardo, el
+        reenvio llega con la misma clave y se devuelve la existente en vez de
+        crear un duplicado. El lock cubre el caso en que el reenvio llega
+        mientras la primera peticion todavia se esta procesando.
+        """
+        solicitud_id = self._id_desde_cliente(data.id_cliente)
+        if not solicitud_id:
+            return await self._crear_solicitud(user_id, data, str(uuid.uuid4())[:8])
+
+        # (Los locks no se borran: uno por solicitud creada es despreciable y
+        # borrarlos abriria una carrera con peticiones que esperan.)
+        lock = _LOCKS_CREACION.setdefault(solicitud_id, asyncio.Lock())
+        async with lock:
+            existente = await self.sheets.find_row(HOJA_SOLICITUDES, COL_ID, solicitud_id)
+            if existente:
+                previa = self._row_seguro(existente)
+                if previa and previa.solicitante_id == user_id:
+                    logger.info(f"Solicitud {solicitud_id} ya existia (reenvio): no se duplica")
+                    return previa
+                # Clave ya usada por otra persona: id nuevo al azar.
+                solicitud_id = str(uuid.uuid4())[:8]
+            return await self._crear_solicitud(user_id, data, solicitud_id)
+
+    async def _crear_solicitud(
+        self, user_id: int, data: SolicitudCreate, solicitud_id: str
+    ) -> Solicitud:
         user = await self.user_service.get_user_by_id(user_id)
         if not user:
             raise ValueError("Usuario no encontrado")
@@ -410,7 +452,6 @@ class SolicitudService:
         primer_nivel = cadena[0]["nivel"] if cadena else 4
 
         now = ahora_lima_iso()
-        solicitud_id = str(uuid.uuid4())[:8]
 
         solicitud = Solicitud(
             id=solicitud_id,
@@ -749,9 +790,21 @@ class SolicitudService:
                 nuevo = cambio.turno_nuevo_nombre or _nombre_turno(cambio.turno_nuevo)
                 if _norm(en_hoja) == _norm(nuevo):
                     continue  # ya aplicado (p. ej. reintento tras un fallo)
-                codigo_actual = (cambio.turno_actual or "").strip().upper()
-                verificable = codigo_actual in _TURNO_NOMBRE or codigo_actual in _SIN_TURNO
-                esperado = _nombre_turno(cambio.turno_actual)
+                if cambio.turno_actual_nombre is not None:
+                    # Solicitud nueva: se compara con el texto EXACTO que tenia
+                    # la celda al pedir el cambio (sirve para cualquier texto).
+                    esperado = cambio.turno_actual_nombre.strip()
+                    verificable = True
+                else:
+                    # Solicitud antigua: solo se tiene el codigo.
+                    codigo_actual = (cambio.turno_actual or "").strip().upper()
+                    esperado = _nombre_turno(cambio.turno_actual)
+                    verificable = codigo_actual in _TURNO_NOMBRE or codigo_actual in _SIN_TURNO
+                    # El front antiguo mandaba "sin turno" cuando la celda tenia
+                    # un texto que no reconocia: eso no se puede verificar.
+                    if (codigo_actual in _SIN_TURNO and en_hoja
+                            and _norm(en_hoja) not in _NOMBRES_CONOCIDOS):
+                        verificable = False
                 if verificable and _norm(en_hoja) != _norm(esperado):
                     errores.append(
                         f"{participante.nombre} dia {cambio.dia}: el turno cambio desde que se "
