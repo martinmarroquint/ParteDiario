@@ -175,7 +175,12 @@ class SolicitudService:
         """
         rows = await self.sheets.get_range(HOJA_USUARIOS)
         if not rows:
-            return [{"nombre": "Administrador", "nivel": 4, "user_id": 0}]
+            # get_range devuelve [] cuando falla la lectura: antes la cadena
+            # quedaba solo con el Administrador y se saltaba a los jefes.
+            raise RuntimeError(
+                "No se pudo leer la lista de usuarios para armar la cadena de "
+                "aprobacion. Intente nuevamente en unos segundos."
+            )
 
         jefes = []
         area_norm = _norm(area)
@@ -323,7 +328,12 @@ class SolicitudService:
             ),
         })
         solicitud.actualizado_en = now
-        await self._update_solicitud(solicitud)
+        try:
+            await self._update_solicitud(solicitud)
+        except Exception as e:
+            # El cierre por plazo es perezoso: si no se pudo guardar ahora se
+            # reintenta en la proxima lectura. No debe vaciar los listados.
+            logger.warning(f"No se pudo cerrar por plazo la solicitud {solicitud.id}: {e}")
         logger.info(f"Solicitud {solicitud.id} cerrada por plazo")
         return True
 
@@ -448,8 +458,8 @@ class SolicitudService:
         for row in rows[1:] if rows else []:
             if len(row) <= COL_SOLICITANTE_ID:
                 continue
-            sol = self._row_to_solicitud(row)
-            if sol.solicitante_id != user_id:
+            sol = self._row_seguro(row)
+            if not sol or sol.solicitante_id != user_id:
                 continue
             await self._expirar_si_corresponde(sol)
             result.append(sol)
@@ -476,9 +486,9 @@ class SolicitudService:
         for row in rows[1:] if rows else []:
             if len(row) <= COL_ESTADO:
                 continue
-            sol = self._row_to_solicitud(row)
+            sol = self._row_seguro(row)
 
-            if sol.estado != ESTADO_PENDIENTE:
+            if not sol or sol.estado != ESTADO_PENDIENTE:
                 continue
             if sol.solicitante_id == user_id:
                 continue
@@ -498,8 +508,8 @@ class SolicitudService:
         for row in rows[1:] if rows else []:
             if len(row) <= COL_SOLICITANTE_ID:
                 continue
-            sol = self._row_to_solicitud(row)
-            if sol.solicitante_id != user_id:
+            sol = self._row_seguro(row)
+            if not sol or sol.solicitante_id != user_id:
                 continue
             if sol.estado == ESTADO_PENDIENTE:
                 pendientes += 1
@@ -785,8 +795,13 @@ class SolicitudService:
         la mitad, quedaba el estado nuevo con el historial viejo."""
         row_index = await self.sheets.find_row_index(HOJA_SOLICITUDES, COL_ID, solicitud.id)
         if not row_index:
+            # Antes se ignoraba: la API respondia OK y el cambio no quedaba
+            # guardado. Ahora el error llega al usuario para que reintente.
             logger.error(f"No se encontró solicitud {solicitud.id} para actualizar")
-            return
+            raise RuntimeError(
+                "No se pudo guardar el cambio de la solicitud (no se encontro su fila). "
+                "Intente nuevamente."
+            )
         valores = self._solicitud_to_row(solicitud)[COL_ESTADO:COL_ACTUALIZADO_EN + 1]
         await self.sheets.update_range(HOJA_SOLICITUDES, f"G{row_index}:S{row_index}", [valores])
 
@@ -814,6 +829,17 @@ class SolicitudService:
             s.actualizado_en,                         # S
             "",                                       # T (solicitante_dni — not available from User model directly)
         ]
+
+    def _row_seguro(self, row: list) -> Optional[Solicitud]:
+        """Como _row_to_solicitud, pero una fila danada no tumba el listado.
+
+        Antes, UNA fila con datos invalidos lanzaba excepcion y el endpoint
+        devolvia la lista vacia: el usuario creia que no tenia solicitudes."""
+        try:
+            return self._row_to_solicitud(row)
+        except Exception as e:
+            logger.warning(f"Fila de SOLICITUDES ignorada ({row[0] if row else '?'}): {e}")
+            return None
 
     def _row_to_solicitud(self, row: list) -> Solicitud:
         """Convert a flat sheet row to a Solicitud model."""

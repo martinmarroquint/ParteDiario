@@ -115,6 +115,9 @@ async def crear_solicitud(
         return SolicitudResponse(solicitud=solicitud)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        logger.error(f"Error de almacenamiento creando solicitud: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception(f"Error creando solicitud: {e}")
         raise HTTPException(status_code=500, detail="Error interno al crear solicitud")
@@ -136,6 +139,13 @@ async def approve_solicitud(
         raise HTTPException(status_code=400, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except RuntimeError as e:
+        # Fallo al leer/escribir en Google Sheets: mensaje claro (y con CORS).
+        logger.error(f"Error de almacenamiento en solicitud {solicitud_id}: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error inesperado en solicitud {solicitud_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al procesar la solicitud. Revise su estado e intente nuevamente.")
 
 
 @router.put("/{solicitud_id}/reject", response_model=SolicitudResponse)
@@ -154,6 +164,13 @@ async def reject_solicitud(
         raise HTTPException(status_code=400, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except RuntimeError as e:
+        # Fallo al leer/escribir en Google Sheets: mensaje claro (y con CORS).
+        logger.error(f"Error de almacenamiento en solicitud {solicitud_id}: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error inesperado en solicitud {solicitud_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al procesar la solicitud. Revise su estado e intente nuevamente.")
 
 
 @router.put("/{solicitud_id}/cancel", response_model=SolicitudResponse)
@@ -172,3 +189,10 @@ async def cancel_solicitud(
         raise HTTPException(status_code=400, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except RuntimeError as e:
+        # Fallo al leer/escribir en Google Sheets: mensaje claro (y con CORS).
+        logger.error(f"Error de almacenamiento en solicitud {solicitud_id}: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error inesperado en solicitud {solicitud_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al procesar la solicitud. Revise su estado e intente nuevamente.")
