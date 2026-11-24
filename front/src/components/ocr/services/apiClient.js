@@ -397,7 +397,9 @@ class ApiClient {
   }
 
   async crearSolicitud(data) {
-    return this.post('/solicitudes', data);
+    // Es seguro reintentar: la solicitud lleva `id_cliente` y el backend no
+    // la duplica. 95 s: Cloudflare corta a los 100 s.
+    return this.post('/solicitudes', data, { _timeout: 95000, _retries: 1 });
   }
 
   async aprobarSolicitud(id, data = {}) {

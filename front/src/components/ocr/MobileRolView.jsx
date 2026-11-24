@@ -164,6 +164,8 @@ const MobileRolView = ({
   const [personal, setPersonal] = useState([]);
   const [todoElPersonal, setTodoElPersonal] = useState([]);
   const [turnos, setTurnos] = useState({});
+  // Texto crudo de cada celda (para verificar solicitudes de cambio).
+  const [turnosTexto, setTurnosTexto] = useState({});
   const [turnosBackup, setTurnosBackup] = useState({});
   const [turnoActivo, setTurnoActivo] = useState('M');
   const [rolHabilitado, setRolHabilitado] = useState(() => {
@@ -296,7 +298,7 @@ const MobileRolView = ({
     setSemanaActual(0);
     setPersonal([]);
     setTodoElPersonal([]);
-    setTurnos({});
+    setTurnos({}); setTurnosTexto({});
     setTurnosBackup({});
     setCeldasModificadas(new Map());
     setFrancosDescartados(false);
@@ -413,7 +415,7 @@ const MobileRolView = ({
       if (rows.length < 2) { 
         setPersonal([]); 
         setTodoElPersonal([]);
-        setTurnos({}); 
+        setTurnos({}); setTurnosTexto({}); 
         setTurnosBackup({}); 
         cargadoRef.current = true;
         cargandoRef.current = false;
@@ -421,7 +423,7 @@ const MobileRolView = ({
         return; 
       }
       
-      const todos = [], filtrados = [], tObj = {};
+      const todos = [], filtrados = [], tObj = {}, txObj = {};
       
       for (let i = 1; i < rows.length; i++) {
         const cols = rows[i]; 
@@ -458,9 +460,10 @@ const MobileRolView = ({
           filtrados.push(emp);
         }
         
-        const te = {}; 
+        const te = {}, tx = {};
         for (let d = 0; d < totalDiasMes; d++) {
           const val = (cols[5+d]||'').trim();
+          tx[d+1] = val;
           let codigo = TURNO_MAP[val] ? val : NOMBRE_A_CODIGO[val];
           if (!codigo && val) {
             const valNormalizado = val.replace(/🥳|🎂/g, '').trim().toUpperCase();
@@ -468,7 +471,7 @@ const MobileRolView = ({
           }
           te[d+1] = codigo || '';
         }
-        tObj[i] = te;
+        tObj[i] = te; txObj[i] = tx;
       }
       
       // Verificar si el área está bloqueada
@@ -479,7 +482,7 @@ const MobileRolView = ({
       
       setPersonal(ordenarPersonalPorGrado(filtrados));
       setTodoElPersonal(todos);
-      setTurnos(tObj); 
+      setTurnos(tObj); setTurnosTexto(txObj);
       setTurnosBackup(JSON.parse(JSON.stringify(tObj))); 
       
       // Cargar celdas modificadas via backend proxy
@@ -1360,6 +1363,7 @@ const MobileRolView = ({
           personal={personal}
           companeros={todoElPersonal}
           turnosMap={turnos}
+          turnosTexto={turnosTexto}
         />
       </div>
     );
@@ -1710,6 +1714,7 @@ const MobileRolView = ({
         personal={personal}
         companeros={todoElPersonal}
         turnosMap={turnos}
+        turnosTexto={turnosTexto}
       />
 
       <ModalDescansoMedico

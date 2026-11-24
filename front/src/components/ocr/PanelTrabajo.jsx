@@ -144,6 +144,8 @@ const PanelTrabajo = ({
   const [personal, setPersonal] = useState([]);
   const [todoElPersonal, setTodoElPersonal] = useState([]);
   const [turnos, setTurnos] = useState({});
+  // Texto crudo de cada celda (para verificar solicitudes de cambio).
+  const [turnosTexto, setTurnosTexto] = useState({});
   const [turnosBackup, setTurnosBackup] = useState({});
   const [cargando, setCargando] = useState(false);
   const [errorCarga, setErrorCarga] = useState(null);
@@ -479,22 +481,23 @@ const PanelTrabajo = ({
     try {
       const rows = await readSheet(hojaSeleccionada, 'A:AJ');
       if (rows.length < 2) { 
-        setPersonal([]); setTodoElPersonal([]); setTurnos({}); setTurnosBackup({}); setCambiosArea({}); 
+        setPersonal([]); setTodoElPersonal([]); setTurnos({}); setTurnosTexto({}); setTurnosBackup({}); setCambiosArea({}); 
         cargadoRef.current = true; return; 
       }
       
-      const todos = [], tObj = {}, cObj = {};
+      const todos = [], tObj = {}, cObj = {}, txObj = {};
       for (let i = 1; i < rows.length; i++) {
         const cols = rows[i]; 
         if (!cols || cols.length < 3) continue;
         const af = (cols[3] || '').trim();
         const emp = { id: i, fila: i + 1, dni: (cols[0]||'').trim(), grado: (cols[1]||'').trim(), nombre: (cols[2]||'').trim(), area: af, areaOriginal: af };
         todos.push(emp);
-        const te = {}; 
+        const te = {}, tx = {};
         for (let d = 0; d < totalDiasMes; d++) {
           te[d+1] = valorACodigo(cols[5+d]);
+          tx[d+1] = String(cols[5+d] || '').trim();
         }
-        tObj[i] = te; cObj[i] = af;
+        tObj[i] = te; txObj[i] = tx; cObj[i] = af;
       }
       
       const bloqueadoPorBoton = await verificarAreaFinalizadaEnSheets();
@@ -514,7 +517,7 @@ const PanelTrabajo = ({
       }
       
       setPersonal(ordenarPersonalPorGrado(personalInicial)); 
-      setTurnos(tObj); setTurnosBackup(JSON.parse(JSON.stringify(tObj))); setCambiosArea(cObj); 
+      setTurnos(tObj); setTurnosTexto(txObj); setTurnosBackup(JSON.parse(JSON.stringify(tObj))); setCambiosArea(cObj); 
       
       // Cargar celdas modificadas desde backend proxy (cross-device)
       try {
@@ -639,6 +642,16 @@ const PanelTrabajo = ({
       }
       if (backupCambio) setTurnosBackup(nuevoBackup);
       if (cambiosRemotos) setTurnos(nuevosTurnos);
+      if (backupCambio) {
+        const nuevosTextos = {};
+        for (const emp of todos) {
+          const c = rows[emp.id] || [];
+          const tx = {};
+          for (let d = 1; d <= totalDiasMes; d++) tx[d] = String(c[4 + d] || '').trim();
+          nuevosTextos[emp.id] = tx;
+        }
+        setTurnosTexto(nuevosTextos);
+      }
 
       // Marcas de celdas modificadas (punto verde) de esta pestana.
       try {
@@ -720,7 +733,7 @@ const PanelTrabajo = ({
     guardarSesion(mesDeHoja(nh), anioDeHoja(nh));  
     setPersonal([]); 
     setTodoElPersonal([]);
-    setTurnos({}); 
+    setTurnos({}); setTurnosTexto({}); 
     setTurnosBackup({}); 
     setCambiosArea({}); 
     setFrancosDescartados(false);
@@ -1295,7 +1308,7 @@ const PanelTrabajo = ({
     // Limpiar todo el estado anterior para que no queden datos del mes viejo
     setPersonal([]);
     setTodoElPersonal([]);
-    setTurnos({});
+    setTurnos({}); setTurnosTexto({});
     setTurnosBackup({});
     setCambiosArea({});
     setFrancosDescartados(false);
@@ -1321,7 +1334,7 @@ const PanelTrabajo = ({
     // Limpiar todo para evitar datos stale durante la recarga (igual que handleMesChangeUsuario)
     setPersonal([]);
     setTodoElPersonal([]);
-    setTurnos({});
+    setTurnos({}); setTurnosTexto({});
     setTurnosBackup({});
     setCambiosArea({});
     setFrancosDescartados(false);
@@ -1662,6 +1675,7 @@ const PanelTrabajo = ({
         personal={personal}
         companeros={todoElPersonal}
         turnosMap={turnos}
+        turnosTexto={turnosTexto}
       />
       
       <ImpresionRol isOpen={mostrarImpresion} onClose={() => setMostrarImpresion(false)} area={areaEfectiva} mes={mesSeleccionado} anio={anioSeleccionado} personal={personalFiltrado} turnos={turnos} responsable={responsable} totalDiasMes={totalDiasMes} />

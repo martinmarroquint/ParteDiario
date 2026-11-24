@@ -19,7 +19,7 @@ import {
   AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, UserCheck, UserPlus,
   Search, Info, Check, Scale,
 } from 'lucide-react';
-import { COLOR_PRIMARIO, TURNO_MAP, MESES, hojaDelMesActual } from './constantes';
+import { COLOR_PRIMARIO, TURNO_MAP, NOMBRE_A_CODIGO, MESES, hojaDelMesActual } from './constantes';
 import { solicitudesService } from './services/solicitudesService';
 
 /* ============================================================
@@ -45,6 +45,39 @@ const horasDe = (codigo) => TURNO_MAP[etiquetaTurno(codigo)]?.horas || 0;
 const sumaHoras = (lista, campo) => lista.reduce((acc, c) => acc + horasDe(c[campo]), 0);
 const plural = (n, s, p) => (n === 1 ? s : p);
 const normalizar = (s) => (s || '').toLowerCase().trim();
+
+/** Codigo de turno que corresponde al texto de una celda ('' si no se reconoce). */
+const codigoDeTexto = (texto) => {
+  const t = String(texto || '').trim();
+  if (!t) return '';
+  if (TURNO_MAP[t]) return t;
+  if (NOMBRE_A_CODIGO[t]) return NOMBRE_A_CODIGO[t];
+  const s = t.replace(/🥳|🎂/g, '').trim().toUpperCase();
+  return s.includes('CUMPLEAÑOS') || s.includes('CUMPLEANOS') ? '🎂' : '';
+};
+
+/**
+ * Texto que tiene la celda en la hoja, para que el backend verifique al
+ * aprobar contra el texto real (aunque no sea un turno conocido).
+ * Si el texto guardado ya no corresponde al turno en pantalla (edicion local
+ * posterior), se usa el nombre del turno. null = sin dato (verificacion antigua).
+ */
+const textoActualCelda = (turnosTexto, empId, dia, codigo) => {
+  const fila = turnosTexto?.[empId];
+  if (!fila || fila[dia] === undefined) return null;
+  const raw = String(fila[dia] || '').trim();
+  if (raw.length > 200) return null; // limite del backend
+  if (codigoDeTexto(raw) === (codigo || '')) return raw;
+  return TURNO_MAP[codigo]?.nombre ?? null;
+};
+
+/** Clave unica por envio: si el mismo envio llega dos veces no se duplica. */
+const nuevaClaveEnvio = () => {
+  try {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  } catch { /* sin crypto */ }
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 14)}`;
+};
 
 const FOCO =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-300';
@@ -630,6 +663,8 @@ const SolicitudesCambioTurno = ({
   // Lista amplia para buscar compañero: el usuario comun solo recibe su
   // propia fila en `personal` y por eso no encontraba a nadie.
   companeros = null,
+  // Texto crudo de cada celda: { [empId]: { [dia]: 'MAÑANA' } }.
+  turnosTexto = null,
   turnosMap = {},
   userName = '',
   // eslint-disable-next-line no-unused-vars
@@ -659,6 +694,7 @@ const SolicitudesCambioTurno = ({
 
   const dialogRef = useRef(null);
   const bodyRef = useRef(null);
+  const claveEnvioRef = useRef(nuevaClaveEnvio());
 
   /* ---------- fechas ---------- */
   const hoy = useMemo(() => new Date(), []);
@@ -693,6 +729,7 @@ const SolicitudesCambioTurno = ({
     setModo(null); setPaso(0); setCambios([]); setCompanero(null); setCambiosCompanero([]);
     setMotivo(''); setPormenores(''); setError(''); setBusquedaComp(''); setBuscadorAbierto(false);
     setEnviando(false);
+    claveEnvioRef.current = nuevaClaveEnvio();
   }, [isOpen]);
 
   /* ---------- teclado, foco y bloqueo de scroll ---------- */
@@ -754,6 +791,7 @@ const SolicitudesCambioTurno = ({
     setCambios((prev) => [...prev, {
       dia: datos.dia,
       turnoActual: misTurnos[datos.dia] || SIN_TURNO_VAL,
+      turnoActualNombre: textoActualCelda(turnosTexto, miPersonal?.id, datos.dia, misTurnos[datos.dia]),
       turnoNuevo: datos.turnoNuevo,
     }]);
     setError('');
@@ -768,6 +806,7 @@ const SolicitudesCambioTurno = ({
     setCambiosCompanero((prev) => [...prev, {
       dia: datos.dia,
       turnoActual: mapa[datos.dia] || SIN_TURNO_VAL,
+      turnoActualNombre: textoActualCelda(turnosTexto, companero.id, datos.dia, mapa[datos.dia]),
       turnoNuevo: datos.turnoNuevo,
     }]);
     setError('');
@@ -806,6 +845,7 @@ const SolicitudesCambioTurno = ({
     turno_actual: c.turnoActual,
     turno_nuevo: c.turnoNuevo,
     turno_nuevo_nombre: TURNO_MAP[c.turnoNuevo]?.nombre || c.turnoNuevo,
+    turno_actual_nombre: c.turnoActualNombre ?? null,
   });
 
   const enviar = async () => {
@@ -842,13 +882,21 @@ const SolicitudesCambioTurno = ({
         hoja: hoja || hojaDelMesActual(),
         mes,
         anio,
+        // Misma clave en cada reintento de ESTE envio: el backend no duplica.
+        id_cliente: claveEnvioRef.current,
       });
+      claveEnvioRef.current = nuevaClaveEnvio();
       setEnviando(false);
       onEnviado?.();
       onClose?.();
     } catch (e) {
       setEnviando(false);
-      setError(e?.message || 'No se pudo enviar la solicitud. Revisa tu conexión e inténtalo de nuevo.');
+      const msg = e?.message || 'No se pudo enviar la solicitud. Revisa tu conexión e inténtalo de nuevo.';
+      // Sin respuesta del servidor: pudo haberse guardado igual. Reenviar es
+      // seguro (misma clave, no se duplica), pero conviene avisarlo.
+      setError(/no responde|conexi/i.test(msg)
+        ? `${msg} Es posible que la solicitud sí se haya registrado: revisa "Mis solicitudes". Si vuelves a enviarla no se duplicará.`
+        : msg);
     }
   };
 
