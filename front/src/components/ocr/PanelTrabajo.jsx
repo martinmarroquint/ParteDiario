@@ -32,6 +32,7 @@ import ModalCambiarPassword from './auth/ModalCambiarPassword';
 import ModalFrancosInvalidos from './ModalFrancosInvalidos';
 import { useFrancosInvalidos, useFrancosStats } from './hooks/useFrancosInvalidos';
 import apiClient from './services/apiClient';
+import { descansosService } from './services/descansosService';
 
 const STORAGE_ESTADOS = 'ocr_estados_areas';
 const STORAGE_RESPALDO_LOCAL = 'ocr_respaldo_local';
@@ -1172,31 +1173,26 @@ const PanelTrabajo = ({
     return true;
   }, [config.appsScriptUrl, hojaSeleccionada, areaAsignada, responsable]);
 
-  const guardarDescansoMedico = useCallback((descanso) => {
-    if (!config.appsScriptUrl) return;
-    
-    postToAppsScript(config.appsScriptUrl, {
-      accion: 'registrarDescansoMedico', datos: descanso
-    }).catch(err => console.warn('Error guardando descanso:', err));
-    
-    const emp = personal.find(p => p.dni === descanso.personal_dni);
-    if (!emp) return;
-    
-    const inicio = new Date(descanso.fecha_inicio + 'T00:00:00');
-    const fin = new Date(descanso.fecha_fin + 'T00:00:00');
-    const ultimoDia = fin > inicio ? new Date(fin) : new Date(inicio);
-    if (fin > inicio) ultimoDia.setDate(ultimoDia.getDate() - 1);
-    
-    let d = new Date(inicio);
-    while (d <= ultimoDia) {
-      const dia = d.getDate(), mes = d.getMonth() + 1, anio = d.getFullYear();
-      if (mes === mesSeleccionado && anio === anioSeleccionado) {
-        setTurnos(prev => ({ ...prev, [emp.id]: { ...prev[emp.id], [dia]: 'DM' } }));
-        guardarCeldaInmediato(emp.fila, dia, 'DM');
-      }
-      d.setDate(d.getDate() + 1);
+  // El backend marca el rol (todos los meses afectados, ubicando a la persona
+  // por DNI/nombre) y deja constancia. Antes se hacia desde aqui sin esperar
+  // respuesta, solo para el mes visible y buscando por DNI (con DNI vacio
+  // podia marcar a otra persona). Devuelve el resultado al modal.
+  const guardarDescansoMedico = useCallback(async (descanso) => {
+    const r = await descansosService.registrarEnRol(descanso);
+    if (!r.success) return r;
+    const visible = (r.hojas || []).find(h => h.hoja === hojaSeleccionada);
+    const emp = visible && personal.find(p => String(p.id) === String(descanso.personal_id));
+    if (visible && emp) {
+      const marcar = (prev) => {
+        const fila = { ...(prev[emp.id] || {}) };
+        visible.dias.forEach(dia => { fila[dia] = 'DM'; });
+        return { ...prev, [emp.id]: fila };
+      };
+      setTurnos(marcar);
+      setTurnosBackup(marcar); // ya esta guardado en la hoja
     }
-  }, [config.appsScriptUrl, personal, mesSeleccionado, anioSeleccionado, guardarCeldaInmediato, setTurnos]);
+    return r;
+  }, [personal, hojaSeleccionada, setTurnos]);
 
   const guardarVacaciones = useCallback((vacaciones) => {
     if (!config.appsScriptUrl) return;

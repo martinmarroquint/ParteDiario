@@ -438,6 +438,11 @@ class ApiClient {
     return this.post('/descansos', data);
   }
 
+  /** Descanso medico del personal del ROL: marca el rol y deja constancia. */
+  async registrarDescansoRol(data) {
+    return this.post('/descansos/rol', data, { _timeout: 95000 });
+  }
+
   async eliminarDescanso(id) {
     return this.delete(`/descansos/${id}`);
   }

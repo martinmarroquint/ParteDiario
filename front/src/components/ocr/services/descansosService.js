@@ -67,6 +67,34 @@ export const descansosService = {
   },
 
   /**
+   * Registrar un descanso medico del personal del ROL (lo que usa el panel).
+   * Recibe el objeto que arma ModalDescansoMedico. `fecha_fin` es el dia de
+   * RETORNO (no se marca). El backend ubica a la persona por DNI/nombre,
+   * marca DESCANSO MEDICO en cada mes afectado y deja constancia.
+   * @returns {Promise<{success: boolean, error?: string, dias_marcados?: number,
+   *   hojas?: Array<{hoja: string, fila: number, dias: number[]}>, advertencias?: string[]}>}
+   */
+  async registrarEnRol(descanso) {
+    try {
+      const r = await apiClient.registrarDescansoRol({
+        personal_dni: descanso.personal_dni || '',
+        personal_nombre: descanso.personal_nombre || '',
+        personal_grado: descanso.personal_grado || '',
+        personal_area: descanso.personal_area || '',
+        medico_nombre: descanso.medico_nombre || '',
+        medico_especialidad: descanso.medico_especialidad || '',
+        fecha_inicio: descanso.fecha_inicio,
+        fecha_retorno: descanso.fecha_fin,
+        diagnostico: String(descanso.diagnostico || '').slice(0, 1000),
+        observaciones: String(descanso.observaciones || '').slice(0, 500),
+      });
+      return { ...r, success: true };
+    } catch (error) {
+      return { success: false, error: error.message || 'Error al registrar el descanso' };
+    }
+  },
+
+  /**
    * Eliminar un descanso médico
    * @param {string} id - ID del descanso
    * @returns {Promise<object>}

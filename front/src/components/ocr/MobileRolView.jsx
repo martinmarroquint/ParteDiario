@@ -29,6 +29,7 @@ import ImpresionRol from './ImpresionRol';
 import ModalCambiarPassword from './auth/ModalCambiarPassword';
 import PanelAdminUsuariosOCR from './admin/PanelAdminUsuariosOCR';
 import apiClient from './services/apiClient';
+import { descansosService } from './services/descansosService';
 import { useFrancosInvalidos, useFrancosStats } from './hooks/useFrancosInvalidos';
 
 const STORAGE_RESPALDO_LOCAL = 'ocr_respaldo_local';
@@ -940,30 +941,24 @@ const MobileRolView = ({
   // ============================================
   // GUARDAR DESCANSO MEDICO
   // ============================================
-  const guardarDescansoMedico = useCallback((descanso) => {
-    if (!config.appsScriptUrl) return;
-    postToAppsScript(config.appsScriptUrl, {
-      accion: 'registrarDescansoMedico', datos: descanso
-    }).catch(err => console.warn('Error guardando descanso:', err));
-
-    const emp = personal.find(p => p.dni === descanso.personal_dni);
-    if (!emp) return;
-
-    const inicio = new Date(descanso.fecha_inicio + 'T00:00:00');
-    const fin = new Date(descanso.fecha_fin + 'T00:00:00');
-    const ultimoDia = fin > inicio ? new Date(fin) : new Date(inicio);
-    if (fin > inicio) ultimoDia.setDate(ultimoDia.getDate() - 1);
-
-    let d = new Date(inicio);
-    while (d <= ultimoDia) {
-      const dia = d.getDate(), mes = d.getMonth() + 1, anio = d.getFullYear();
-      if (mes === mesSeleccionado && anio === anioSeleccionado) {
-        setTurnos(prev => ({ ...prev, [emp.id]: { ...prev[emp.id], [dia]: 'DM' } }));
-        guardarCeldaInmediato(emp.fila, dia, 'DM');
-      }
-      d.setDate(d.getDate() + 1);
+  // El backend marca el rol (todos los meses afectados, ubicando a la persona
+  // por DNI/nombre) y deja constancia. Devuelve el resultado al modal.
+  const guardarDescansoMedico = useCallback(async (descanso) => {
+    const r = await descansosService.registrarEnRol(descanso);
+    if (!r.success) return r;
+    const visible = (r.hojas || []).find(h => h.hoja === hojaSeleccionada);
+    const emp = visible && personal.find(p => String(p.id) === String(descanso.personal_id));
+    if (visible && emp) {
+      const marcar = (prev) => {
+        const fila = { ...(prev[emp.id] || {}) };
+        visible.dias.forEach(dia => { fila[dia] = 'DM'; });
+        return { ...prev, [emp.id]: fila };
+      };
+      setTurnos(marcar);
+      setTurnosBackup(marcar); // ya esta guardado en la hoja
     }
-  }, [config.appsScriptUrl, personal, mesSeleccionado, anioSeleccionado, guardarCeldaInmediato]);
+    return r;
+  }, [personal, hojaSeleccionada]);
 
   // ============================================
   // LIMPIAR CELDAS MODIFICADAS
@@ -1724,7 +1719,7 @@ const MobileRolView = ({
         medicos={medicos}
         config={config}
         onGuardarDescanso={guardarDescansoMedico}
-        onSuccess={mostrarToast}
+        onSuccess={(t) => mostrarToast(t?.titulo ? `${t.titulo}: ${t.mensaje}` : String(t?.mensaje || t || ''), t?.tipo || 'success')}
       />
 
       <ModalFrancosInvalidos

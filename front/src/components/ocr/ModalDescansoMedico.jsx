@@ -196,7 +196,8 @@ const ModalDescansoMedico = ({
   const diaEnRango = (dia) => {
     if (!fechaInicio || !fechaFin) return false;
     const fechaDia = crearFechaLocal(anioCalendario, mesCalendario, dia);
-    return fechaDia >= fechaInicio && fechaDia <= fechaFin;
+    // El dia de retorno no se pinta como descanso.
+    return fechaDia >= fechaInicio && fechaDia < fechaFin;
   };
 
   const esDiaExtremo = (dia) => {
@@ -235,8 +236,8 @@ const ModalDescansoMedico = ({
     const [af, mf, df] = fechaFin.split('-').map(Number);
     const inicio = new Date(ai, mi - 1, di);
     const fin = new Date(af, mf - 1, df);
-    const diasCalendario = Math.round((fin - inicio) / (1000 * 60 * 60 * 24)) + 1;
-    return Math.max(1, diasCalendario - 1);
+    // La fecha final es el dia de RETORNO: no cuenta como descanso.
+    return Math.round((fin - inicio) / (1000 * 60 * 60 * 24));
   }, [fechaInicio, fechaFin]);
 
   const personalFiltrado = useMemo(() => {
@@ -297,11 +298,12 @@ const ModalDescansoMedico = ({
     setError('');
   };
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
+    if (guardando) return;
     if (!personalId) { setError('Seleccione el personal'); return; }
     if (!medicoId) { setError('Seleccione el médico'); return; }
-    if (!fechaInicio || !fechaFin) { setError('Seleccione las fechas en el calendario'); return; }
-    if (diasDescanso <= 0) { setError('La fecha de fin debe ser posterior a la de inicio'); return; }
+    if (!fechaInicio || !fechaFin) { setError('Seleccione la fecha de inicio y la de retorno en el calendario'); return; }
+    if (diasDescanso <= 0) { setError('La fecha de retorno debe ser posterior a la de inicio'); return; }
 
     setGuardando(true);
     setError('');
@@ -329,13 +331,31 @@ const ModalDescansoMedico = ({
       registrado_por: 'Sistema PNP',
     };
 
-    if (onGuardarDescanso) onGuardarDescanso(descanso);
+    // Antes no se esperaba la respuesta: se mostraba "registrado" aunque el
+    // guardado fallara. Ahora solo se cierra si el backend confirma.
+    let r;
+    try {
+      r = onGuardarDescanso ? await onGuardarDescanso(descanso) : { success: false, error: 'No disponible' };
+    } catch (e) {
+      r = { success: false, error: e?.message };
+    }
+    if (!r?.success) {
+      setGuardando(false);
+      setError(r?.error || 'No se pudo registrar el descanso. Inténtelo nuevamente.');
+      return;
+    }
+
+    const avisos = r.advertencias || [];
     if (onSuccess) {
       onSuccess({
-        titulo: 'Descanso Médico Registrado',
-        mensaje: `${personalSeleccionado?.grado || ''} ${personalSeleccionado?.nombre || ''} - ${diasDescanso} día(s) de descanso`,
-        tipo: 'success',
+        titulo: avisos.length ? 'Descanso registrado con avisos' : 'Descanso Médico Registrado',
+        mensaje: `${personalSeleccionado?.grado || ''} ${personalSeleccionado?.nombre || ''} - `
+          + `${r.dias_marcados ?? diasDescanso} día(s) marcados en el rol`
+          + (avisos.length ? `. ${avisos.join(' ')}` : ''),
+        tipo: avisos.length ? 'warning' : 'success',
       });
+    } else if (avisos.length) {
+      window.alert(avisos.join('\n'));
     }
 
     resetForm();
@@ -345,14 +365,14 @@ const ModalDescansoMedico = ({
 
   useEffect(() => {
     const h = (e) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape' && isOpen && !guardando) {
         resetForm();
         onClose();
       }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [isOpen, resetForm, onClose]);
+  }, [isOpen, resetForm, onClose, guardando]);
 
   if (!isOpen) return null;
 
@@ -555,7 +575,7 @@ const ModalDescansoMedico = ({
           <div className="rounded-md border border-slate-200 bg-white p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[11px] font-medium text-slate-600">
-                {seleccionando === 'inicio' ? 'Fecha de inicio' : 'Fecha de fin'}
+                {seleccionando === 'inicio' ? 'Fecha de inicio' : 'Fecha de retorno (día que se reincorpora)'}
               </span>
               <button
                 type="button"
@@ -580,7 +600,7 @@ const ModalDescansoMedico = ({
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                   : 'border-slate-200 bg-slate-50 text-slate-400'
               }`}>
-                {fechaFin ? formatearFechaLegible(fechaFin) : 'Fin'}
+                {fechaFin ? `Retorno: ${formatearFechaLegible(fechaFin)}` : 'Retorno'}
               </div>
             </div>
 
@@ -628,7 +648,7 @@ const ModalDescansoMedico = ({
                     </p>
                     {fechaInicio && fechaFin && (
                       <p className="mt-0.5 text-[10px] text-amber-800">
-                        Del {formatearFechaLegible(fechaInicio)} al {formatearFechaLegible(fechaFin)}
+                        Desde el {formatearFechaLegible(fechaInicio)} · se reincorpora el {formatearFechaLegible(fechaFin)}
                         {fechaInicio < hoyStr ? ' · Registro retroactivo' : fechaInicio > hoyStr ? ' · Programado' : ' · Incluye hoy'}
                       </p>
                     )}
@@ -650,8 +670,9 @@ const ModalDescansoMedico = ({
         <footer className="flex flex-shrink-0 justify-end gap-2 border-t border-slate-100 bg-slate-50 px-4 py-2.5 sm:px-5">
           <button
             type="button"
+            disabled={guardando}
             onClick={() => { resetForm(); onClose(); }}
-            className={`h-9 rounded-md border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 ${FOCO}`}
+            className={`h-9 rounded-md border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 ${FOCO}`}
           >
             Cancelar
           </button>
