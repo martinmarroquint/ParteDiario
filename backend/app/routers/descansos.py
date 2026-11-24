@@ -1,14 +1,18 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 
 from app.models.descanso import (
     DescansoMedico, DescansoMedicoCreate,
-    DescansoMedicoResponse, DescansoMedicoListResponse
+    DescansoMedicoResponse, DescansoMedicoListResponse,
+    DescansoRolCreate, DescansoRolResponse,
 )
 from app.services.descanso_service import DescansoService
 from app.services.sheets_service import GoogleSheetsService
 from app.middleware.auth import get_current_user, require_jefe_or_admin
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/descansos", tags=["Descansos Médicos"])
 
@@ -64,6 +68,35 @@ async def registrar_descanso(
         return DescansoMedicoResponse(descanso=descanso)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/rol", response_model=DescansoRolResponse, status_code=201)
+async def registrar_descanso_en_rol(
+    data: DescansoRolCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Registra un descanso medico del personal del ROL (lo que usa el panel).
+
+    Marca DESCANSO MEDICO en las pestanas de mes afectadas y deja constancia
+    en DESCANSOS_MEDICOS. Mismo permiso que antes (cualquier usuario
+    autenticado, incluido el visor). Si algo falla, devuelve el error en vez
+    de dar por registrado lo que no se guardo.
+    """
+    try:
+        return await descanso_service.registrar_en_rol(
+            data, responsable=current_user.nombre or f"user {current_user.id}"
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        logger.error(f"Error de almacenamiento registrando descanso: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error inesperado registrando descanso: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error interno al registrar el descanso. Revise el rol e intente nuevamente.",
+        )
 
 
 @router.delete("/{descanso_id}")
